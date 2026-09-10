@@ -103,8 +103,16 @@ object HeylanaTokens {
     const val AURORA_DRIFT_MS = 6000L
     const val RIPPLE_MS = 900L
 
-    /** The buddy's flight between its dock and the compose position. */
-    const val SPRING_MS = 350L
+    /**
+     * The buddy's flight between its dock and the compose position, as a spring.
+     * Medium-low stiffness with a little bounce left in, so it overshoots once
+     * and settles rather than arriving dead.
+     */
+    const val SPRING_STIFFNESS = 380f
+    const val SPRING_DAMPING = 0.7f
+
+    /** Glass fading in behind the buddy, or out ahead of it. */
+    const val FADE_MS = 180L
 
     // --------------------------------------------------------------- type
 

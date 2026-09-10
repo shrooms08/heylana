@@ -1,6 +1,5 @@
 package xyz.heylana.app.overlay
 
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
@@ -13,10 +12,11 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowInsets
 import android.view.WindowManager
-import android.view.animation.DecelerateInterpolator
-import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
 import xyz.heylana.app.ui.GlassBlur
 import xyz.heylana.app.ui.HeylanaTokens
 import kotlin.math.abs
@@ -70,6 +70,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     /** The user ended a task early. */
     var onDone: (() -> Unit)? = null
 
+    /**
+     * The full-screen layer the disc flies across. Moving a window every frame
+     * is not GPU animated and stutters; a view translation on a layer that is
+     * already full screen is.
+     */
+    var flightStage: HighlightOverlayView? = null
+
     private val windowManager = context.getSystemService(WindowManager::class.java)
 
     /** The buddy's view: the disc plus the room its bloom needs on every side. */
@@ -83,6 +90,15 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private val gutter = dp(HeylanaTokens.SPACE_5_DP)
 
     private val sprite = BuddySpriteView(context)
+
+    /**
+     * The disc that actually crosses the screen. The real one keeps its place in
+     * the layout the whole time, just hidden, so nothing has to be re-parented
+     * into a window that has not been measured yet — which is what makes a
+     * handoff pop.
+     */
+    private val flyer = BuddySpriteView(context)
+
     private val panel = ChatPanelView(context)
 
     /** The dim over the app behind the box. Never shown during a task. */
@@ -132,8 +148,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private var startTop = 0
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
-    private var snapAnimator: ValueAnimator? = null
-    private var flightAnimator: ValueAnimator? = null
+    private var flightX: SpringAnimation? = null
+    private var flightY: SpringAnimation? = null
+    private var flying = false
     private var attached = false
 
     private var measuredContainerWidth = discSize
@@ -193,8 +210,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     fun removeFromWindow() {
         if (!attached) return
         removeCallbacks(longPress)
-        snapAnimator?.cancel(); snapAnimator = null
-        flightAnimator?.cancel(); flightAnimator = null
+        cancelFlight()
         panel.releaseInput()
         windowManager.removeView(this)
         attached = false
@@ -299,7 +315,14 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     // ----------------------------------------------------------------- mode
 
     private fun togglePanel() {
-        if (mode == Mode.DOCKED) enterMode(Mode.COMPOSE) else closePanel()
+        if (mode != Mode.DOCKED) {
+            closePanel()
+            return
+        }
+        // The disc travels first over the bare app; the blurred glass only
+        // arrives once it has landed, so no window moves mid-flight.
+        val flew = flyTo(composeScreenPosition()) { enterMode(Mode.COMPOSE) }
+        if (!flew) enterMode(Mode.COMPOSE)
     }
 
     /**
@@ -363,7 +386,11 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                 scrim.visibility = View.VISIBLE
                 sprite.refreshState()
                 updateLayout()
-                flyIntoCompose()
+                scrim.alpha = 0f
+                panel.alpha = 0f
+                scrim.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
+                panel.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
+                panel.focusInput()
             }
         }
     }
@@ -431,36 +458,99 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         }
     }
 
-    /** How far the docked disc is from where it lands when composing. */
-    private fun flightOffsetX(): Float = (spriteLeft - (usableWidth - discSize) / 2).toFloat()
+    // -------------------------------------------------------------- flight
 
-    private fun flightOffsetY(): Float = (spriteTop - dp(HeylanaTokens.SPACE_5_DP)).toFloat()
+    /** The disc's top-left on the display, right now. */
+    private fun spriteScreenPosition(): PointF {
+        sprite.getLocationOnScreen(spriteLocation)
+        return PointF(spriteLocation[0].toFloat(), spriteLocation[1].toFloat())
+    }
 
-    /** The buddy flies from where it was docked up to the top centre. */
-    private fun flyIntoCompose() {
-        val fromX = flightOffsetX()
-        val fromY = flightOffsetY()
+    /** Where the disc sits on the display when it is docked. */
+    private fun dockedScreenPosition(): PointF =
+        PointF((usableLeft + spriteLeft).toFloat(), (usableTop + spriteTop).toFloat())
 
-        flightAnimator?.cancel()
-        content.translationX = fromX
-        content.translationY = fromY
-        panel.alpha = 0f
-        scrim.alpha = 0f
+    /** Where the disc sits on the display while composing: top centre. */
+    private fun composeScreenPosition(): PointF = PointF(
+        (usableLeft + (usableWidth - discSize) / 2).toFloat(),
+        (usableTop + dp(HeylanaTokens.SPACE_5_DP)).toFloat()
+    )
 
-        flightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = HeylanaTokens.SPRING_MS
-            interpolator = OvershootInterpolator(1.1f)
-            addUpdateListener {
-                val t = it.animatedValue as Float
-                content.translationX = fromX * (1f - t)
-                content.translationY = fromY * (1f - t)
-                val fade = t.coerceIn(0f, 1f)
-                scrim.alpha = fade
-                panel.alpha = fade
+    /**
+     * Flies the disc across the full-screen stage and hands it back when it
+     * settles. Moving this window every frame is not GPU animated and stutters;
+     * a translation on a layer that is already full screen is.
+     *
+     * Returns false when there is no stage to fly on, so the caller can simply
+     * arrive instead of pretending to travel.
+     */
+    private fun flyTo(target: PointF, onLanded: () -> Unit): Boolean {
+        val stage = flightStage ?: return false
+        val from = spriteScreenPosition()
+        if (from.x == 0f && from.y == 0f) return false
+
+        cancelFlight()
+        flying = true
+
+        // The stand-in wears the same face and leaves from exactly where the
+        // real disc is standing.
+        flyer.expression = sprite.expression
+        flyer.talking = sprite.talking
+        flyer.composing = sprite.composing
+        flyer.refreshState()
+
+        stage.addFlyer(flyer, discSize)
+        val origin = stage.stageOrigin()
+        flyer.translationX = from.x - origin.x
+        flyer.translationY = from.y - origin.y
+        sprite.visibility = View.INVISIBLE
+
+        var settled = 0
+        val land = {
+            settled++
+            // Both axes have to stop before the disc is handed back.
+            if (settled == 2 && flying) {
+                flying = false
+                onLanded()
+                // Only once the destination has been measured does the real disc
+                // reappear and the stand-in leave, so the two never disagree.
+                content.post { leaveStage() }
             }
-            start()
         }
-        panel.focusInput()
+
+        flightX = spring(DynamicAnimation.TRANSLATION_X, target.x - origin.x, land)
+        flightY = spring(DynamicAnimation.TRANSLATION_Y, target.y - origin.y, land)
+        return true
+    }
+
+    private fun spring(
+        property: DynamicAnimation.ViewProperty,
+        finalValue: Float,
+        onEnd: () -> Unit
+    ): SpringAnimation = SpringAnimation(flyer, property).apply {
+        this.spring = SpringForce(finalValue).apply {
+            stiffness = HeylanaTokens.SPRING_STIFFNESS
+            dampingRatio = HeylanaTokens.SPRING_DAMPING
+        }
+        addEndListener { _, _, _, _ -> onEnd() }
+        start()
+    }
+
+    private fun cancelFlight() {
+        flightX?.cancel(); flightX = null
+        flightY?.cancel(); flightY = null
+        if (flying) {
+            flying = false
+            leaveStage()
+        }
+    }
+
+    /** Retires the stand-in and shows the real disc again. */
+    private fun leaveStage() {
+        sprite.visibility = View.VISIBLE
+        flightStage?.removeFlyer(flyer)
+        flyer.translationX = 0f
+        flyer.translationY = 0f
     }
 
     fun closePanel() {
@@ -471,29 +561,17 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             onPanelClosed?.invoke()
             return
         }
-        // Let the buddy fly back before the window shrinks again.
-        flightAnimator?.cancel()
-        val toX = flightOffsetX()
-        val toY = flightOffsetY()
-        flightAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = HeylanaTokens.SPRING_MS
-            interpolator = DecelerateInterpolator()
-            addUpdateListener {
-                val t = it.animatedValue as Float
-                content.translationX = toX * t
-                content.translationY = toY * t
-                scrim.alpha = 1f - t
-                panel.alpha = 1f - t
-            }
-            start()
-        }
-        postDelayed({
-            content.translationX = 0f
-            content.translationY = 0f
-            panel.alpha = 1f
+        // The glass goes first, then the disc flies home over the bare app.
+        scrim.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
+        panel.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
+        val flew = flyTo(dockedScreenPosition()) {
             enterMode(Mode.DOCKED)
             onPanelClosed?.invoke()
-        }, HeylanaTokens.SPRING_MS)
+        }
+        if (!flew) {
+            enterMode(Mode.DOCKED)
+            onPanelClosed?.invoke()
+        }
     }
 
     /** The user touched the question field while the window was passive. */
@@ -526,7 +604,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun handleSpriteTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                snapAnimator?.cancel()
+                cancelFlight()
                 refreshMetrics()
                 dragging = false
                 holding = false
@@ -611,25 +689,19 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         } else {
             usableWidth - discSize - dockInset
         }
-        spriteTop = clamp(spriteTop, dockInset, usableHeight - discSize - dockInset)
-        animateLeftTo(targetLeft)
-    }
+        val targetTop = clamp(spriteTop, dockInset, usableHeight - discSize - dockInset)
 
-    private fun animateLeftTo(targetLeft: Int) {
-        if (abs(spriteLeft - targetLeft) < 2) {
+        val flew = flyTo(
+            PointF((usableLeft + targetLeft).toFloat(), (usableTop + targetTop).toFloat())
+        ) {
             spriteLeft = targetLeft
+            spriteTop = targetTop
             applyPosition()
-            return
         }
-        snapAnimator?.cancel()
-        snapAnimator = ValueAnimator.ofInt(spriteLeft, targetLeft).apply {
-            duration = 180L
-            interpolator = DecelerateInterpolator()
-            addUpdateListener {
-                spriteLeft = it.animatedValue as Int
-                applyPosition()
-            }
-            start()
+        if (!flew) {
+            spriteLeft = targetLeft
+            spriteTop = targetTop
+            applyPosition()
         }
     }
 

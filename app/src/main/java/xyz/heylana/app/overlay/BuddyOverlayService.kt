@@ -130,6 +130,8 @@ class BuddyOverlayService : Service() {
         }
 
         overlayView = BuddyOverlayView(this).also { view ->
+            // The pointer's window doubles as the stage the disc flies across.
+            view.flightStage = highlight
             view.onQuestion = { question -> ask(question) }
             view.onHoldStart = { startListening() }
             view.onHoldEnd = { finishListening() }

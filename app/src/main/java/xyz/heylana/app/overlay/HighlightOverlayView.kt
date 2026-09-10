@@ -15,6 +15,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import android.widget.FrameLayout
 import android.view.animation.LinearInterpolator
 import xyz.heylana.app.ui.HeylanaTokens
 import kotlin.math.abs
@@ -33,7 +34,7 @@ import kotlin.math.sin
  * [getLocationOnScreen], so any status bar or cutout offset corrects itself.
  */
 @SuppressLint("ViewConstructor")
-class HighlightOverlayView(context: Context) : View(context) {
+class HighlightOverlayView(context: Context) : FrameLayout(context) {
 
     /** Called when the pointer has finished fading out on its own. */
     var onFadedOut: (() -> Unit)? = null
@@ -93,6 +94,36 @@ class HighlightOverlayView(context: Context) : View(context) {
     private val autoHide = Runnable { fadeOut() }
     private val locationOnScreen = IntArray(2)
 
+    init {
+        // A ViewGroup skips its own drawing unless told otherwise, and this one
+        // draws the pointer underneath whatever is flying across it.
+        setWillNotDraw(false)
+        clipChildren = false
+    }
+
+    /**
+     * Puts a view on this layer so it can be animated across the whole display
+     * without moving a window. The layer is not touchable, so only things that
+     * are purely being animated belong here.
+     */
+    fun addFlyer(view: View, size: Int) {
+        if (view.parent === this) return
+        (view.parent as? android.view.ViewGroup)?.removeView(view)
+        addView(view, LayoutParams(size, size))
+        visibility = View.VISIBLE
+    }
+
+    fun removeFlyer(view: View) {
+        if (view.parent === this) removeView(view)
+        if (!hasTarget && childCount == 0) visibility = View.GONE
+    }
+
+    /** Where this layer's own coordinate space starts on the display. */
+    fun stageOrigin(): PointF {
+        getLocationOnScreen(locationOnScreen)
+        return PointF(locationOnScreen[0].toFloat(), locationOnScreen[1].toFloat())
+    }
+
     fun addToWindow() {
         if (attached) return
         visibility = View.GONE
@@ -146,7 +177,9 @@ class HighlightOverlayView(context: Context) : View(context) {
         if (!hasTarget) return
         cancelEverything()
         hasTarget = false
-        visibility = View.GONE
+        // Something may still be flying across the layer, so it only goes away
+        // when it is carrying nothing at all.
+        if (childCount == 0) visibility = View.GONE
         invalidate()
     }
 

@@ -1,170 +1,170 @@
-# SMOKE TEST — phase 2 behaviours
+# SMOKE TEST — the proxy, the ears and the voice
 
-Four changes: the voice capsule now goes away when it should, the pointer box
-notices you doing the thing, Heylana remembers the last few questions, and the
-connection is opened before you have finished typing.
+The big one. Every key has moved off the phone and into a small server of your
+own, Heylana has proper ears that can hear "Kamino", and a voice of her own
+instead of the phone's.
 
-## Budget for this test: 4 live API calls
+**You have to put the server up first.** That is step 1, and nothing else works
+until it is done.
 
-I sent nothing to the API. Everything I could check without it, I checked on the
-Seeker through the debug states screen.
+## Budget for this test: 4 chat, 4 tts, 3 stt
 
-| Step | Calls |
-|------|-------|
-| 1 debug states, "voice full cycle" | 0 |
-| 2 hold-to-talk in the wallet | 1 |
-| 3 type "how do I swap", then tap Swap | 1 |
-| 4 "what does this do", then "and the other button" | 2 |
+I sent nothing to anything. Everything I could check, I checked against a stub
+running on my machine that answers the same three routes with fixed replies.
 
-**Before you start:**
+| Step | chat | tts | stt |
+|------|------|-----|-----|
+| 1 put the server up | 0 | 0 | 0 |
+| 2 a typed question | 1 | 1 | 0 |
+| 3 hold-to-talk in the wallet | 1 | 1 | 1 |
+| 4 Archie | 1 | 1 | 1 |
+| 5 both fallbacks on | 1 | 1 | 1 |
+| 6 aeroplane mode | 0 | 0 | 0 |
 
-1. Install, run `./scripts/a11y.sh`, close Heylana from recents, reopen it.
-2. Open **Settings**. Turn **Show spoken answers as text** **off** — it is on
-   from the last test, and step 2 is about a spoken answer leaving nothing on
-   screen. Leave **Warm up the connection** **on** for now.
-3. Go back and tap **Start buddy**.
-
----
-
-## 1. The debug states screen — 0 calls
-
-**Settings → Debug states.** The buttons now sit in rows instead of one long
-strip, so all of them are reachable. Tap **voice full cycle** and watch it right
-through without touching anything else:
-
-1. a purple ring around the disc, and a small pill filling in word by word with
-   **where is the seed vault**;
-2. the same pill turns into the drifting **aurora**, purple to blue to cyan to
-   warm orange, and the mark unwinds into a turning ring;
-3. the pill **shrinks and fades away** as the answer lands — it does not sit
-   there, and it does not blink out;
-4. the mark comes back to full white and the disc **sheds rings** while it
-   speaks;
-5. about a second after that, the disc is back to its resting purple and **the
-   screen is empty**.
-
-Tap it a few times. Step 3 is the one that was broken: the pill used to stay on
-screen beside the buddy with the aurora still turning, and nothing ever took it
-away.
-
-The other buttons are unchanged from the last test and still cost nothing.
+Steps 4 and 5 each also play a **three-word sample** when you pick a voice —
+that is one more tiny tts call each, and it is included above.
 
 ---
 
-## 2. Hold-to-talk in the wallet — 1 call
+## 1. Put the server up — 0 calls
 
-Open your **wallet**. **Press and hold the buddy**, say **where is the seed
-vault**, and let go.
+Open **worker/README.md** and follow it top to bottom. It is six steps: sign in,
+make the counter store, put in the three keys, put in the Deepgram project id,
+deploy, and copy the address it prints into `local.properties`.
 
-You should see the same five things as step 1, on the real thing: the ring, your
-words in the pill, the aurora, the pill melting away, the answer spoken aloud
-with **no text**, and the disc back to resting about a second after it stops
-speaking.
+Then rebuild and reinstall the app.
 
-**Nothing should be left on screen except the purple box**, if the answer pointed
-at something. That box has its own rules — see step 3.
+You should see, opening Heylana: **three rows, not four.** The API key row is
+gone — the key is in your server now, not on the phone. **Start buddy** works
+once the first three are ticked.
 
-Then try it once more, **hold the buddy and say nothing at all**, and let go. The
-pill should melt away and the disc go back to resting, with **no message and no
-box**. It used to sit there saying "listening".
-
----
-
-## 3. Type a question, then do the thing — 1 call
-
-Still in the wallet. **Tap the buddy**, type **how do I swap** and tap **ask**.
-
-You should see the answer strip and a **purple box around Swap**.
-
-Now **tap Swap**. The box should **flash green and disappear**, and Heylana
-should **say nothing at all** about it. That is the whole feature: it noticed you
-did the thing and got out of the way.
-
-Try the other half too, on a later question: point at something and **do
-nothing**. After about fifteen seconds the box should **clear quietly** — no
-green, no message. That fifteen seconds is only for an answer's box: during a
-task the box stays until the step changes, however long you take to find the
-thing, and still flashes green when you tap it.
-
-While a box is up, Heylana is watching for that one tap. When there is no box, it
-is watching nothing at all: the notification and the first screen of the app both
-say so now — *reads the screen only when you ask, and watches for your tap only
-while it is pointing at something*.
+If **Start buddy** works but every question comes back saying Heylana is not set
+up, the address did not make it into `local.properties`. Check for a typo, then
+rebuild.
 
 ---
 
-## 4. A follow-up question — 2 calls
+## 2. A typed question — 1 chat, 1 tts
 
-On the **Swap** screen. **Tap the buddy**, type **what does this do** and tap
-**ask**. Read the answer.
+Open **Chrome** on any page. **Tap the buddy**, type **what is the capital of
+japan** and tap **ask**.
 
-Then ask a second question: **and the other button**.
+You should see **Tokyo** in the strip, and hear it **read out in Skylar's voice**
+— a real voice, not the phone's.
 
-The second answer should be about a **different** button on that same screen,
-and should make sense as a follow-up to the first — it knows what you already
-asked. Before this change the second question had nothing to go on and would
-usually answer as if it were the first.
-
-Heylana remembers the **last three questions and answers**, for **ten minutes**,
-in memory only. It forgets them when you stop the buddy, when you ask from a
-different app, and after ten minutes. Closing the box does not make it forget.
-
-Worth trying, at no cost: go to a **different app** and ask something that only
-makes sense as a follow-up. It should not understand it — that is the app-change
-reset doing its job.
-
----
-
-## Optional: the numbers, from the Mac
-
-None of this costs a call; it just reads what the phone already printed.
+**To prove it went through your server and not straight to Anthropic**, from the
+Mac:
 
 ```
-$HOME/Library/Android/sdk/platform-tools/adb logcat -s HeylanaTokens
+$HOME/Library/Android/sdk/platform-tools/adb logcat -s HeylanaTokens HeylanaState
 ```
 
-Each question prints three lines worth reading:
+You should see `mode=quick`, `first_byte_ms=…`, and `voice=cartesia`. You should
+**not** see `api.anthropic.com` anywhere. In another terminal, `npx wrangler
+tail` from `worker/` shows the same request arriving at your server.
 
-- `screen elements=… chars=… memory=N exchanges` — how big the screen listing was
-  and how many remembered exchanges went with it.
-- `input_tokens=… output_tokens=…` — compare the input number with the **744 to
-  844** we were seeing on Haiku before. Memory should add roughly a hundred or so,
-  never hundreds: what is sent is capped at 600 characters however long the
-  answers were.
-- `first_byte_ms=… warmed=true|false` — how long the answer took to start coming
-  back, and whether the connection had been opened in advance.
+---
 
-**To see what the warmup is worth**, run step 2 with **Warm up the connection**
-turned **off** in Settings, and step 3 with it back **on**. That is two calls you
-were spending anyway, and it gives you a `warmed=false` number and a
-`warmed=true` number to compare. I could not produce those two numbers myself:
-getting them means opening a connection to the API host, and I do not touch it.
+## 3. Hold-to-talk in the wallet — 1 chat, 1 tts, 1 stt
+
+Open your **wallet**. **Press and hold the buddy** and say:
+
+**"what does the Kamino earn thing do"**
+
+While you are speaking: the words should **appear in the capsule as you say
+them**, and the ring around the disc should **breathe with your voice**.
+
+The important part: the transcript should say **Kamino**, spelled properly. That
+is the whole point of the new ears — the phone's own recogniser writes it "come
+in oh". Heylana tells Deepgram to expect it, along with the names of the buttons
+actually on your screen.
+
+Then the answer is **spoken in Skylar's voice** and nothing is left on screen but
+the purple box, if it pointed at something.
+
+In the log: `ears=deepgram` and `voice=cartesia`.
+
+---
+
+## 4. Archie — 1 chat, 1 tts, 1 stt (+ a sample)
+
+**Settings → Voice → Archie.** You should hear **three words in Archie's voice**
+the moment you tap it.
+
+Go back, **hold the buddy** and say **"where is the seed vault"**.
+
+The answer should come back in **Archie's voice**, not Skylar's.
+
+---
+
+## 5. Both fallbacks on purpose — 1 chat, 1 tts, 1 stt
+
+**Settings → Force phone ears ON, Force phone voice ON.** Both are near the
+bottom, in the debug section.
+
+**Hold the buddy** and say **"how do I swap"**.
+
+It should **still work**, start to finish — the words still appear as you speak,
+the answer still arrives and is still read out. It will sound like your phone
+rather than like Heylana, and the transcript may spell names worse. That is the
+point: when Deepgram or Cartesia cannot be reached, the user gets an answer
+anyway and is never told why.
+
+In the log: `ears=android` and `voice=android`. Those two are **free** — no stt
+or tts call reaches your server. The chat call still does.
+
+**Turn both switches back off afterwards.**
+
+---
+
+## 6. Aeroplane mode — 0 calls
+
+**Turn aeroplane mode on.** Tap the buddy, type anything, tap **ask**.
+
+You should see a **clear line saying Heylana could not be reached**, and the disc
+should go back to resting. No spinning forever, no crash.
+
+**Turn aeroplane mode off again.**
+
+---
+
+## Two things to watch for, because I could not check them
+
+- **Whether Deepgram hears the names.** I can drive a hold with a cable but I
+  cannot speak into the phone, so every word of step 3 and 4 is unproven. If the
+  capsule stays empty while you talk, say so — and say whether the log said
+  `ears=deepgram` or `ears=android`.
+- **Whether Skylar and Archie sound right.** I have never heard either: my stub
+  plays a tone. If a voice is wrong, or the audio stutters or cuts off early,
+  say which voice and roughly where it broke.
 
 ---
 
 ## What to do if something goes wrong
 
-- **The pill stays on screen after the answer** — say whether it was showing your
-  words or the aurora, and whether the disc had gone back to resting.
-- **The disc never goes back to resting** — say what it was doing when it stuck:
-  turning ring, shedding rings, or purple listening ring.
-- **The box flashes green when you have not touched anything** — say what was on
-  screen and roughly how long after the box appeared.
-- **The box never goes green when you tap the thing** — say which app and which
-  button, and whether it cleared quietly after fifteen seconds instead.
-- **The follow-up answer ignores the first question** — quote both questions and
-  both answers.
-- **Anything gets slower** — quote the `first_byte_ms` lines.
+- **"Heylana is not set up yet"** — the address is missing from
+  `local.properties`; step 1 again.
+- **"That is all Heylana can do today"** — the day's cap. It resets at midnight
+  UTC, and `npx wrangler tail` shows which route ran out.
+- **A question works but nothing is ever spoken** — say whether the log said
+  `voice=cartesia` or `voice=android`, and whether the mute speaker icon on the
+  pane is on.
+- **The words never appear while you hold** — say what the log said after
+  `listen: opening`.
+- **It answers in the phone's voice when the switches are off** — that is the
+  1.5 second fallback firing, which means the server was slow. Say what
+  `first_byte_ms` said.
 
 ---
 
 ## Pass criteria
 
-- The voice pill melts away as the answer lands, every time, and the disc is back
-  to resting about a second after speech ends with nothing left but the box.
-- Holding and saying nothing leaves nothing on screen and says nothing.
-- Tapping what the box points at flashes it green and clears it, silently.
-- Fifteen seconds of nothing clears the box quietly.
-- A follow-up question in the same app understands the one before it.
-- A question in a different app does not.
-- Nothing crashes, and the test costs 4 live calls and no more.
+- Onboarding has three rows and no API key.
+- A typed question is answered and spoken, through your server, with no sign of
+  api.anthropic.com on the phone.
+- Holding and speaking fills the capsule live and spells Kamino properly.
+- Skylar and Archie are different voices, and picking one plays a sample.
+- With both debug switches on it still works, in the phone's own ears and voice,
+  and says so in the log.
+- Aeroplane mode says so plainly and returns to idle.
+- Nothing crashes, and the test costs 4 chat, 4 tts and 3 stt calls and no more.

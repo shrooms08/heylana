@@ -27,23 +27,32 @@ xyz.heylana.app
 │   └── HighlightOverlayView the pointer: pulsing box + arrow, in its own window
 ├── screen/                  reading the app the user is looking at
 │   ├── HeylanaAccessibilityService  on-demand screen reads, no continuous work
-│   └── ScreenSnapshot       the element list + its text rendering for the model
+│   ├── ScreenSnapshot       the element list + its text rendering for the model
+│   ├── Keyterms             the names the ears are told to expect
+│   └── TapWatch             the rule for noticing the user act on what is pointed at
 ├── brain/                   talking to the model
-│   ├── AnthropicClient      POST /v1/messages over OkHttp, JSON in, say/point_at/task out
+│   ├── ProxyClient          POST /chat through the proxy; says quick or task, never a model
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
-│                            (plus Conversation, the last few ordinary exchanges)
+│                            (plus Conversation, the short-term memory)
+├── net/                     everything that leaves the phone
+│   └── Proxy                the address, the device header, the shared client, the warmup
 ├── voice/                   Heylana's mouth and ears
-│   ├── Speaker              text-to-speech; degrades to text only if it will not start
-│   ├── Listener             SpeechRecognizer, held open only while the buddy is held
+│   ├── CartesiaVoice        streams the spoken answer from /tts and plays it as it arrives
+│   ├── Speaker              the phone's own voice, tuned, for when Cartesia cannot be reached
+│   ├── PhoneVoice           which of the phone's voices to use — never the engine default
+│   ├── DeepgramEars         PCM16 over a websocket while the buddy is held, with keyterms
+│   ├── Listener             the phone's own recogniser, behind the same Ears interface
+│   ├── FallbackWindow       how long the good ears and the good voice get before the phone
 │   └── MicPermissionActivity  invisible one-shot prompt for the microphone
 ├── ui/                      how everything looks
 │   ├── HeylanaTokens        every colour, size, radius, duration and typeface
 │   ├── GlassDrawable        the one liquid-glass recipe, used by every surface
 │   └── GlassBlur            asks the window for cross-window blur, honestly
 ├── settings/                stored configuration
-│   ├── HeylanaSettings      EncryptedSharedPreferences: API key + model name
-│   └── SettingsActivity     the settings screen
+│   ├── HeylanaSettings      EncryptedSharedPreferences: device id, voice, advanced bits
+│   ├── DeviceId             the random id the proxy counts a phone's day by
+│   └── SettingsActivity     the voice picker, what leaves the phone, advanced, debug
 └── ui/theme/                Compose theme (scaffolded)
 ```
 
@@ -68,6 +77,48 @@ are that same glass with the band at full strength instead of a solid fill.
 `FLAG_BLUR_BEHIND` only if the platform agrees. The answer picks the fill: thin
 glass when the platform is blurring what is behind, a heavier fill when it is
 not and the surface has to carry itself. Never hardcode one or the other.
+
+## Where the keys are
+
+**Not on the phone.** `worker/` is a Cloudflare Worker holding the Anthropic,
+Cartesia and Deepgram keys, and it is the only thing that ever sees them. The app
+knows one address — `heylana.proxyUrl` in `local.properties`, into `BuildConfig`
+— and its own device id.
+
+- `/chat` — the app sends `mode` (`quick` or `task`) and the worker picks the
+  model. **The app must never name a model or hold a key to send with one.**
+- `/tts` — the answer text comes back as raw 16-bit audio, streamed, so the
+  phone can start playing before the sentence is finished.
+- `/stt-token` — a Deepgram key that stops working after two minutes, so the
+  phone can open the listening socket itself without holding the real one.
+
+Every request carries `X-Heylana-Device`, and each device gets 150 questions,
+150 spoken answers and 300 pairs of ears a day. Over that the worker answers
+`429 daily_cap` and the app says so in plain words. That is budget protection,
+not a product tier.
+
+The one exception is the hidden "use my own key" setting: questions only, on a
+key the user typed in themselves. The voice and the ears keep using the proxy,
+because those keys are not the user's to hold.
+
+`scripts/stub-proxy.py` answers all three routes locally with fixed replies, so
+the whole app can be exercised without spending anything. Debug builds carry a
+network config that lets them reach it on loopback and nothing else.
+
+**Falling back is normal, and it is silent.** Deepgram gets 800ms to produce a
+key, a socket and a microphone; Cartesia gets 1500ms to produce a first byte.
+Miss that and the phone's own recogniser or voice takes over without the user
+being told, because a buddy that answers in a plain voice beats one that says
+nothing. `FallbackWindow` holds the rule; the trace says `ears=deepgram|android`
+and `voice=cartesia|android`.
+
+**What goes where, in the words the app uses.** Heylana reads the screen only
+when you ask, and watches for your tap only while it is pointing at something.
+Your voice goes to Deepgram while you hold the buddy, along with the names of the
+buttons on screen so it spells them right. The spoken answer text goes to
+Cartesia. Nothing else about the screen goes to either. **Keep that copy and the
+code saying the same thing** — if the keyterms ever carry more than labels, the
+sentence changes with them.
 
 ## How the pieces talk to each other
 

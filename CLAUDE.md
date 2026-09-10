@@ -135,8 +135,8 @@ is not touchable and not focusable, so every touch falls straight through to the
 app underneath. It converts accessibility bounds (which are display coordinates)
 through its own `getLocationOnScreen`, so any status bar or cutout offset corrects
 itself rather than being assumed away. For a one-shot answer the box clears after 8
-seconds; during a task it stays up until the step changes, because the user needs
-it while they hunt for the thing. Either way it clears at once when the next
+seconds; during a task it stays up until the step changes or the tap watch below
+ends it, because the user needs it while they hunt for the thing. Either way it clears at once when the next
 question is sent or the panel closes.
 
 **The box answers the tap it asked for.** While it is up, a tap on the element it

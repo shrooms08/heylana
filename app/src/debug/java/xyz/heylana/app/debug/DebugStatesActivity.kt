@@ -10,7 +10,6 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.TextView
 import xyz.heylana.app.overlay.BuddySpriteView
@@ -107,19 +106,31 @@ class DebugStatesActivity : Activity() {
         }
         root.addView(caption)
 
+        // Rows rather than one long scrolling strip: a sideways swipe down here
+        // fights the system's own gesture bar, and half the buttons were
+        // unreachable because of it.
+        val buttons = states().map { (_, label, action) ->
+            button(label) { caption.text = label; action() }
+        } + button("backdrop") { onBlack = !onBlack; applyBackdrop() }
+
         val bar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.BLACK)
+            setPadding(dp(8f), dp(4f), dp(8f), dp(28f))
         }
-        for ((_, label, action) in states()) {
-            bar.addView(button(label) { caption.text = label; action() })
+        for (row in buttons.chunked(PER_ROW)) {
+            val line = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            row.forEach { line.addView(it) }
+            bar.addView(
+                line,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            )
         }
-        bar.addView(button("backdrop") { onBlack = !onBlack; applyBackdrop() })
         root.addView(
-            HorizontalScrollView(this).apply {
-                setBackgroundColor(Color.BLACK)
-                addView(bar)
-            },
+            bar,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             )
@@ -335,6 +346,8 @@ class DebugStatesActivity : Activity() {
 
         /** The same beat BuddyOverlayService waits before it settles. */
         const val SETTLE_MS = 1_000L
+        /** How many buttons fit across the screen without crowding. */
+        const val PER_ROW = 3
         const val EXTRA_STATE = "state"
         const val EXTRA_BACKDROP = "backdrop"
     }

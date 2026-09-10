@@ -1,216 +1,264 @@
-# SMOKE TEST — Phase 1: screen-aware chat
+# SMOKE TEST — Phase 2: pointing, voice out, voice in
 
-The buddy can now read whatever app is on your screen and answer questions about
-it in writing.
+Heylana now points at things on screen, reads its answers out loud, and listens
+when you hold the buddy down.
 
-You will need **your own Anthropic API key** for this test. Have it ready to type
-or paste into the Heylana Settings screen. It goes in that one field and nowhere
-else — never type it into a browser, a chat, a terminal, or any other app.
+Before you start:
+
+- Have **your own Anthropic API key** ready if it is not already saved. It goes in
+  the Heylana Settings screen and nowhere else — never into a browser, a chat, a
+  terminal, or any other app.
+- **Turn the phone's volume up.** Part B and Part D check that Heylana speaks.
 
 Do these in order. After each step, check the screen matches the "You should see"
 line before moving on.
 
 ---
 
-## Part A — Setup checklist
+## Part A — Quick regression (Phase 0 and 1 still work)
 
 **1. Open the app.**
-Tap the **Heylana** icon in the app list.
+Tap the **Heylana** icon.
 
-You should see: the title **Heylana**, a line of explanation, and four grey cards
-in this order:
-- Overlay permission
-- Screen reading (accessibility)
-- Notifications
-- API key
+You should see: the title **Heylana**, then **five** grey cards: Overlay
+permission, Screen reading (accessibility), Notifications, API key, and
+**Microphone (optional)**. Each has a green ✓ or a blue button to fix it.
 
-Each card has either a **green ✓** on the left, or a blue button to fix it.
-At the bottom: a greyed-out **Start buddy** button, the line **"Finish all four
-rows above to start the buddy."**, and a **Settings** button.
+If any of the first four is missing a green ✓, tap its button and follow it
+through, then come back. The **Microphone (optional)** row may stay grey for now —
+it does not block anything. Part D will need it.
 
 ---
 
-**2. Overlay permission.**
-If this card already has a green ✓, skip to step 3.
-Otherwise tap **Allow overlay**, turn the switch next to **Heylana** ON, then
-come back with the back arrow.
-
-You should see: the Overlay permission card now has a **green ✓** and no button.
-
----
-
-**3. Screen reading.**
-On the **Screen reading (accessibility)** card, tap **Open accessibility
-settings**. The card tells you what to do; follow it:
-
-1. Find **Heylana** under **Downloaded apps** or **Installed apps**.
-2. Tap **Heylana** and turn the switch on.
-3. Confirm the dialog (tap **Allow** / **OK**).
-
-Then press back until you are on the Heylana screen again.
-
-You should see: the Screen reading card now has a **green ✓**.
-
----
-
-**4. Notifications.**
-If this card already has a green ✓, skip to step 5.
-Otherwise tap **Allow notifications** and tap **Allow** in the Android popup.
-
-You should see: the Notifications card now has a **green ✓**.
-
----
-
-**5. API key.**
-Tap **Add API key** on the fourth card.
-
-You should see: a screen titled **Settings**, with a card **Anthropic API key**
-containing an empty field labelled **Paste your key**, and a card **Model** with
-**claude-sonnet-5** already filled in.
-
----
-
-**6. Enter your key.**
-Tap the **Paste your key** field and type or paste **your key**. The characters
-show as dots. Then tap **Save**.
-
-You should see: the key field is replaced by **"Key saved · sk-ant-…"** followed
-by the last four characters of your key, with a **Replace** button next to it.
-Under the Save button the word **Saved.** appears.
-
----
-
-**7. Back to the checklist.**
-Tap **Back**.
-
-You should see: **all four cards now have a green ✓**, and the **Start buddy**
-button is now BLUE and tappable. The "Finish all four rows" line is gone.
-
----
-
-## Part B — Ask about a web page
-
-**8. Start the buddy.**
+**2. Start the buddy.**
 Tap the blue **Start buddy** button.
 
-You should see: the button label changes to **Stop buddy**, and the **purple
-pixel face** appears stuck to the RIGHT edge of the screen, about a third of the
-way down.
+You should see: the label change to **Stop buddy**, and the **purple pixel face**
+appear stuck to the RIGHT edge of the screen, about a third of the way down.
 
 ---
 
-**9. Open a news page in Chrome.**
-Press Home, tap **Chrome**, and open any news site — for example type
-**bbc.com/news** in the address bar and go. If Chrome asks about accounts, tap
-**Use without an account** and dismiss anything else it asks.
+**3. Open Chrome on a news page.**
+Press Home, open **Chrome**, and go to any news site, for example **bbc.com**. If
+Chrome asks about accounts, tap **Use without an account**.
 
-You should see: the news page loads, and the **purple buddy is still visible on
-top of Chrome**.
+You should see: the page load, with the **purple buddy still on top of Chrome**.
 
 ---
 
-**10. Open the chat panel.**
-Tap the purple face once.
+**4. Ask a typed question.**
+Tap the purple face once. Type **what is this page about** and tap **Send**.
 
-You should see: a **white card** open beside the buddy, on the side with more
-room (so if the buddy is at the right edge, the card appears to its LEFT). The
-card contains the line **"Ask me about this screen."**, a text field reading
-**"Ask about this screen"**, and a purple **Send** button. The keyboard comes up
-on its own.
+You should see: the keyboard drop away, the card read **thinking…**, and the
+buddy's eyes look UP. Then a short answer about that actual page, read out loud in
+a voice.
 
 ---
 
-**11. Ask the question.**
-Type **what is this page about** and tap **Send**.
+**5. Drag and snap.**
+Press and hold on the face and slide it to the middle-left of the screen, then
+lift.
 
-You should see, immediately: the card text changes to **thinking…**, and the
-buddy's face changes — **the eyes look UP and the mouth goes flat**.
+You should see: the face follows your finger, and snaps flat to the **LEFT edge**
+when you let go. Tap it — the card now opens on its **RIGHT**.
 
-Then, after a few seconds: the face returns to its **normal smile**, and the card
-shows a short answer of one to three sentences describing that news page — it
-should mention the actual headlines or the site, not a generic answer. The text
-field is empty again, ready for the next question.
+Tap somewhere well away from the card. The card closes.
 
----
-
-**12. Ask a follow-up.**
-Type **what should I tap to read the top story** and tap **Send**.
-
-You should see: thinking face, then a short answer naming a headline or link
-actually on that page. Heylana tells you what to tap — it never taps for you and
-nothing on the page moves by itself.
+Drag the buddy back to the right edge before continuing.
 
 ---
 
-## Part C — Ask about the Android Settings app
+## Part B — Pointing, in the Clock app
 
-**13. Open Android Settings.**
-Press Home, then open the phone's **Settings** app (the grey cog icon).
+**6. Open the Clock app on the Alarm tab.**
+Press Home and open **Clock**. Tap **Alarm** in the bottom bar if it is not
+already selected.
 
-You should see: the Android Settings list (Network & internet, Connected devices,
-Apps, Notifications, and so on) — and the **purple buddy still on top of it**.
-
----
-
-**14. Ask about this screen.**
-Tap the purple face, type **how do I change the display settings here**, and tap
-**Send**.
-
-You should see: the thinking face, then a short answer that refers to what is
-actually on that Settings list — it should point you at the **Display** row (or
-tell you to scroll to find it) rather than giving generic advice about a
-different phone.
+You should see: your list of alarms, a large round **+** button near the bottom
+middle of the screen, and the purple buddy floating on top.
 
 ---
 
-**15. Move the buddy and ask again.**
-Drag the purple face to the LEFT edge of the screen and let go — it snaps flat to
-the left edge. Now tap it.
+**7. Ask how to add an alarm.**
+Tap the purple face, type **how do I add an alarm**, and tap **Send**.
 
-You should see: the chat card opens **to the RIGHT of the buddy** this time,
-because that is now the side with room. The buddy does not jump position.
-Ask anything and confirm you still get an answer.
+You should see, in this order:
 
----
-
-**16. Close the panel by tapping away.**
-Tap anywhere on the screen well away from the white card.
-
-You should see: the card closes and the keyboard goes away. The purple face stays
-exactly where it was.
-
----
-
-## Part D — Stop
-
-**17. Check the notification.**
-Swipe down from the top of the screen.
-
-You should see: a silent notification **"Heylana is on your screen"**. Tap the
-small **v** arrow on its right to expand it — a **Stop** button appears.
-
-(While the shade is pulled down the buddy is hidden behind it. That is normal.)
+1. The keyboard disappears and the card reads **thinking…**, eyes UP.
+2. A short answer appears, something like "Just tap the plus button at the bottom
+   of the screen to add a new alarm."
+3. **A purple box appears exactly around the round + button** — hugging it, not
+   off to one side, not around the wrong control.
+4. **The box pulses**, fading gently brighter and dimmer about once a second.
+5. **A curved purple arrow** runs from the buddy down to the box, with an
+   arrowhead touching it.
+6. **The buddy's eyes cut sideways toward the box**, and its **mouth opens and
+   closes** while it talks.
+7. **You hear the answer spoken aloud.**
 
 ---
 
-**18. Stop the buddy.**
-Tap **Stop**.
+**8. Watch the box clear itself.**
+Do nothing and count to ten.
 
-You should see: the notification disappears, and when you swipe the shade back up
-the **purple buddy is gone**.
+You should see: the box and arrow fade away on their own after about 8 seconds,
+and the buddy's eyes return to normal. The written answer stays in the card.
+
+---
+
+**9. Check that the box does not block the app.**
+Ask again (**how do I add an alarm**) so the box comes back, then, while the box
+is still showing, **tap the + button itself**.
+
+You should see: the Clock app opens its new-alarm time picker normally. The box
+does not swallow your tap. Press back to leave the time picker without saving.
+
+---
+
+## Part C — Pointing, in Chrome
+
+**10. Go back to the news site.**
+Press Home, open **Chrome**, and make sure **bbc.com** is on screen.
+
+---
+
+**11. Ask how to search.**
+Tap the purple face, type **how do I search this site**, and tap **Send**.
+
+You should see: a short spoken answer, and a pulsing purple box **around the
+search control on the page** — the magnifying glass or search box — with the arrow
+running to it from the buddy.
+
+If the page has no visible search control, Heylana should say so in words and
+draw **no box at all**. That is correct behaviour, not a failure.
+
+---
+
+## Part D — Voice in
+
+**12. Allow the microphone.**
+Open **Heylana** again. If the **Microphone (optional)** card is not green, tap
+**Allow microphone** and tap **Allow** in the Android popup.
+
+You should see: the Microphone card turn green.
+
+(You can also just hold the buddy — the first hold asks for the microphone too.)
+
+---
+
+**13. Go back to the Clock app, Alarm tab.**
+Press Home, open **Clock**, tap **Alarm**.
+
+---
+
+**14. Hold the buddy and speak.**
+**Press and hold** your finger on the purple face and keep it held. Do not slide.
+
+You should see, while you are still holding:
+
+- The chat card opens by itself and reads **listening…**, with **no keyboard**.
+- The buddy's **eyes go wide** and a **small red dot pulses** in its top corner.
+- Android's own green microphone dot appears at the top of the screen.
+
+Now, still holding, say clearly: **"how do I add an alarm"**.
+
+You should see: **your words appearing in the text field as you speak**.
+
+---
+
+**15. Let go.**
+Lift your finger.
+
+You should see: the wide eyes return to normal, the card goes to **thinking…**,
+and then the same result as step 7 — a short spoken answer plus a **pulsing purple
+box exactly on the + button**.
+
+---
+
+**16. Check that holding and dragging stay separate.**
+Press and hold the face again until the card says **listening…**, then — without
+lifting — **slide your finger** across the screen and let go somewhere else.
+
+You should see: the listening stops the moment you start sliding, the card closes,
+and the buddy simply moves and snaps to the nearest edge. **Nothing is sent** and
+no answer appears.
+
+---
+
+**17. Check the three gestures one after another.**
+
+- **Quick tap** → the card opens. Tap again → it closes.
+- **Slide** → the buddy moves and snaps to an edge. No card, no listening.
+- **Press and hold** → **listening…** and the wide eyes.
+
+You should see: each gesture does only its own thing, every time.
+
+---
+
+## Part E — Mute
+
+**18. Mute Heylana.**
+Tap the purple face to open the card. In the **top-right corner of the card**
+there is a small **speaker icon**. Tap it.
+
+You should see: the speaker icon change to a **speaker with a line struck through
+it**.
+
+---
+
+**19. Ask something while muted.**
+Type **what is this screen** and tap **Send**.
+
+You should see: the written answer appear and the purple box still point at
+whatever the answer is about — but **no sound at all**, and the buddy's **mouth
+stays a smile** instead of opening and closing.
+
+---
+
+**20. Unmute.**
+Tap the speaker icon again.
+
+You should see: the line through the speaker disappear. Ask something else — the
+answer is spoken aloud again and the mouth moves.
+
+---
+
+**21. Check that mute is remembered.**
+Mute it again, then tap **Stop buddy** in the app (or **Stop** in the
+notification), then **Start buddy**, then tap the face.
+
+You should see: the speaker icon still shows the line through it — the setting
+survived the restart. Unmute it again before you finish.
+
+---
+
+## Part F — Stop
+
+**22. Stop from the notification.**
+Swipe down from the top of the screen. Expand the **"Heylana is on your screen"**
+notification with the small **v** arrow and tap **Stop**.
+
+You should see: the notification disappear, and the **purple buddy gone** — along
+with any purple box that was on screen.
 
 ---
 
 ## What to do if something goes wrong
 
-- **The card says "I can't read this screen yet."** — the accessibility service
-  got switched off. Redo step 3.
-- **The card says "API error 401"** — the key is wrong. Open Heylana → Settings,
-  tap **Replace**, enter your key again, Save.
-- **The card says "Couldn't reach the API"** — the phone has no internet. Check
-  the connection and ask again.
-- **The answer is generic and does not mention what is on screen** — that is a
-  real failure of this phase. Note which app you were in and report it.
+- **The box lands next to the button instead of on it** — that is a real failure.
+  Note which app and which button, and report it.
+- **The answer is spoken but no box appears, and the answer clearly names a
+  button** — note the app and the exact question.
+- **The card says "Voice input not available on this device, type instead."** —
+  this phone has no speech recogniser. Typing still works; skip Part D.
+- **The card shows a small "Voice unavailable on this device." note** — the
+  phone's text-to-speech would not start. Answers still appear in writing; skip
+  the listening-for-sound parts.
+- **The card says "I didn't catch that."** — Heylana heard no speech. Hold again
+  and speak while holding.
+- **The card says "API error 401"** — the key is wrong. Heylana → Settings →
+  **Replace**, enter your key, Save.
+- **The card says "Couldn't reach the API"** — no internet. Check the connection.
 
 ---
 
@@ -218,18 +266,19 @@ the **purple buddy is gone**.
 
 The phase passes only if ALL of these are true:
 
-- All four checklist rows can be turned green, and **Start buddy** only becomes
-  tappable once they are.
-- The API key shows as **"Key saved · sk-ant-…"** with a **Replace** button after
-  saving, and is never shown in full again.
-- Tapping the buddy opens a chat card on the side with more room, with a working
-  keyboard.
-- Sending a question shows the **eyes-up thinking face**, then a short written
-  answer of one to three sentences.
-- The answer is clearly about the app actually on screen — the news page in
-  Part B, the Settings list in Part C.
-- Heylana never taps or types anything by itself. Nothing on the screen underneath
+- The purple box lands **exactly on** the element the answer talks about, in both
+  the Clock app and Chrome.
+- The box **pulses**, has an **arrow from the buddy**, and **clears itself after
+  about 8 seconds** — and clears at once when you ask again or close the card.
+- Taps go **through** the box to the app underneath.
+- Answers are **spoken aloud**, and the buddy's mouth moves while it speaks.
+- The **speaker icon** silences the voice, and is remembered after a restart.
+- **Holding** the buddy listens, your words appear in the field as you speak, and
+  letting go sends them.
+- Tap, drag and hold each do **only** their own thing; a hold that turns into a
+  drag sends nothing.
+- Everything from before still works: drag, snap to edge, typed questions, the
+  card opening on the side with room, and the notification **Stop**.
+- Heylana never taps or types anything itself. Nothing on the screen underneath
   moves unless you touch it.
-- Dragging, snapping to the edge, and the notification **Stop** button all still
-  work exactly as in Phase 0.
 - Nothing crashes at any step.

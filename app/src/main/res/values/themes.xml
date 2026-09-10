@@ -2,4 +2,12 @@
 <resources>
 
     <style name="Theme.Heylana" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Used only by the one-shot microphone prompt, which shows no UI of its own. -->
+    <style name="Theme.Heylana.Invisible" parent="android:Theme.Translucent.NoTitleBar">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
 </resources>

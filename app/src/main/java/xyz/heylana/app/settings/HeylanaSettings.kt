@@ -30,6 +30,13 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putString(KEY_MODEL, cleaned).apply()
         }
 
+    /** Whether Heylana's spoken answers are silenced. Default: it speaks. */
+    var voiceMuted: Boolean
+        get() = prefs.getBoolean(KEY_VOICE_MUTED, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_VOICE_MUTED, value).apply()
+        }
+
     val hasApiKey: Boolean get() = apiKey != null
 
     /** "sk-ant-…4f2a" — enough to recognise the key, never enough to use it. */
@@ -45,6 +52,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val FILE_NAME = "heylana_secure_settings"
         private const val KEY_API_KEY = "api_key"
         private const val KEY_MODEL = "model"
+        private const val KEY_VOICE_MUTED = "voice_muted"
 
         @Volatile
         private var instance: HeylanaSettings? = null

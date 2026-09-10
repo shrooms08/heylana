@@ -4,6 +4,7 @@ import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
+import android.graphics.PointF
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -20,17 +21,38 @@ import kotlin.math.hypot
 /**
  * The window-level container for the buddy: [ChatPanelView] + [BuddySpriteView].
  *
- * Owns its own WindowManager layout params, the drag gesture, the snap-to-edge
+ * Owns its own WindowManager layout params, the gestures, the snap-to-edge
  * behaviour, and opening the chat panel on whichever side of the sprite has room.
  *
- * The window is only made focusable while the panel is open, so the rest of the
- * time it never steals touches or the keyboard from the app underneath.
+ * Gestures on the sprite are kept strictly apart:
+ *  - a tap toggles the chat panel,
+ *  - a drag moves the buddy and snaps it to an edge,
+ *  - a press-and-hold opens the microphone; if the hold turns into a drag the
+ *    listening is cancelled and it becomes an ordinary drag.
+ *
+ * The window is only made focusable while the panel was opened by a tap, so the
+ * rest of the time it never steals touches or the keyboard from the app underneath.
  */
 @SuppressLint("ViewConstructor")
 class BuddyOverlayView(context: Context) : LinearLayout(context) {
 
     /** Called with the user's question when they hit Send. */
     var onQuestion: ((String) -> Unit)? = null
+
+    /** The user has held the sprite down: start listening. */
+    var onHoldStart: (() -> Unit)? = null
+
+    /** The user let go after holding: finish listening and send. */
+    var onHoldEnd: (() -> Unit)? = null
+
+    /** The hold turned into a drag: throw the listening away. */
+    var onHoldCancel: (() -> Unit)? = null
+
+    /** The speaker glyph was tapped. */
+    var onMuteToggled: ((Boolean) -> Unit)? = null
+
+    /** The panel just closed, however it closed. */
+    var onPanelClosed: (() -> Unit)? = null
 
     private val windowManager = context.getSystemService(WindowManager::class.java)
 
@@ -46,7 +68,8 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
         PixelFormat.TRANSLUCENT
     ).apply {
         gravity = Gravity.TOP or Gravity.START
-        softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+        softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or
+            WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED
     }
 
     private var usableWidth = 0
@@ -60,6 +83,7 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
     private var panelOnLeft = false
 
     private var dragging = false
+    private var holding = false
     private var downRawX = 0f
     private var downRawY = 0f
     private var startLeft = 0
@@ -72,6 +96,15 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
     private var measuredContainerWidth = spriteSize
     private var measuredContainerHeight = spriteSize
 
+    private val spriteLocation = IntArray(2)
+
+    private val longPress = Runnable {
+        if (!dragging && !holding) {
+            holding = true
+            onHoldStart?.invoke()
+        }
+    }
+
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -79,6 +112,7 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
 
         panel.visibility = View.GONE
         panel.onSend = { question -> onQuestion?.invoke(question) }
+        panel.onMuteToggled = { muted -> onMuteToggled?.invoke(muted) }
 
         addView(sprite, LayoutParams(spriteSize, spriteSize))
         addView(panel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
@@ -106,6 +140,7 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
 
     fun removeFromWindow() {
         if (!attached) return
+        removeCallbacks(longPress)
         snapAnimator?.cancel()
         snapAnimator = null
         panel.releaseInput()
@@ -113,7 +148,18 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
         attached = false
     }
 
+    /** Middle of the sprite in screen coordinates, for the pointer's arrow. */
+    fun spriteCenterOnScreen(): PointF {
+        sprite.getLocationOnScreen(spriteLocation)
+        return PointF(
+            spriteLocation[0] + sprite.width / 2f,
+            spriteLocation[1] + sprite.height / 2f
+        )
+    }
+
     // ------------------------------------------------------------ chat state
+
+    val isPanelOpen: Boolean get() = panelOpen
 
     fun showThinking() {
         sprite.expression = BuddySpriteView.Expression.THINKING
@@ -132,12 +178,76 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
         applyPosition()
     }
 
+    fun showNote(text: String) {
+        panel.showNote(text)
+        applyPosition()
+    }
+
+    fun setMuted(muted: Boolean) = panel.setMuted(muted)
+
+    /** Drops the keyboard so the app underneath un-squeezes before it is read. */
+    fun hideKeyboard() = panel.hideKeyboard()
+
+    fun setTalking(talking: Boolean) {
+        sprite.talking = talking
+    }
+
+    /** Look at whatever is being highlighted. */
+    fun lookAt(targetCenterX: Int) {
+        val center = spriteCenterOnScreen().x
+        sprite.pointDirection = if (targetCenterX < center) -1 else 1
+        sprite.expression = BuddySpriteView.Expression.POINTING
+    }
+
+    fun stopLooking() {
+        if (sprite.expression == BuddySpriteView.Expression.POINTING) {
+            sprite.expression = BuddySpriteView.Expression.IDLE
+        }
+    }
+
+    // ---------------------------------------------------------------- voice
+
+    /** Microphone opened: show the panel without shoving the keyboard in the way. */
+    fun startedListening() {
+        sprite.expression = BuddySpriteView.Expression.LISTENING
+        openPanel(takeFocus = false)
+        panel.showListening()
+        panel.hideKeyboard()
+    }
+
+    fun showPartialSpeech(text: String) = panel.setSpokenText(text)
+
+    fun spokenText(): String = panel.spokenText()
+
+    fun stoppedListening() {
+        if (sprite.expression == BuddySpriteView.Expression.LISTENING) {
+            sprite.expression = BuddySpriteView.Expression.IDLE
+        }
+        // The gesture is over, so it is safe to give the window focus back.
+        if (panelOpen && params.flags != FLAGS_OPEN) {
+            params.flags = FLAGS_OPEN
+            updateLayout()
+        }
+    }
+
     // ---------------------------------------------------------------- panel
 
-    private fun togglePanel() = if (panelOpen) closePanel() else openPanel()
+    private fun togglePanel() = if (panelOpen) closePanel() else openPanel(takeFocus = true)
 
-    private fun openPanel() {
-        if (panelOpen) return
+    /**
+     * [takeFocus] false leaves the window flags alone. Changing focusability
+     * mid-gesture tears down the touch stream, which would swallow the release
+     * that ends a voice hold.
+     */
+    private fun openPanel(takeFocus: Boolean) {
+        if (panelOpen) {
+            if (takeFocus && params.flags != FLAGS_OPEN) {
+                params.flags = FLAGS_OPEN
+                applyPosition()
+                panel.focusInput()
+            }
+            return
+        }
         refreshMetrics()
 
         val roomLeft = spriteLeft
@@ -149,18 +259,19 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
         panel.visibility = View.VISIBLE
 
         panelOpen = true
-        params.flags = FLAGS_OPEN
+        if (takeFocus) params.flags = FLAGS_OPEN
         applyPosition()
-        panel.focusInput()
+        if (takeFocus) panel.focusInput()
     }
 
-    private fun closePanel() {
+    fun closePanel() {
         if (!panelOpen) return
         panel.releaseInput()
         panel.visibility = View.GONE
         panelOpen = false
         params.flags = FLAGS_CLOSED
         applyPosition()
+        onPanelClosed?.invoke()
     }
 
     // ---------------------------------------------------------------- touch
@@ -187,10 +298,12 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
                 snapAnimator?.cancel()
                 refreshMetrics()
                 dragging = false
+                holding = false
                 downRawX = event.rawX
                 downRawY = event.rawY
                 startLeft = spriteLeft
                 startTop = spriteTop
+                postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
                 return true
             }
 
@@ -198,6 +311,11 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
                 val dx = event.rawX - downRawX
                 val dy = event.rawY - downRawY
                 if (!dragging && hypot(dx, dy) > touchSlop) {
+                    removeCallbacks(longPress)
+                    if (holding) {
+                        holding = false
+                        onHoldCancel?.invoke()
+                    }
                     dragging = true
                     // Fold the panel away so only the sprite follows the finger.
                     closePanel()
@@ -207,20 +325,42 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
                     downRawY = event.rawY
                 }
                 if (dragging) {
-                    spriteLeft = clamp(startLeft + (event.rawX - downRawX).toInt(), 0, usableWidth - spriteSize)
-                    spriteTop = clamp(startTop + (event.rawY - downRawY).toInt(), 0, usableHeight - spriteSize)
+                    spriteLeft = clamp(
+                        startLeft + (event.rawX - downRawX).toInt(),
+                        0,
+                        usableWidth - spriteSize
+                    )
+                    spriteTop = clamp(
+                        startTop + (event.rawY - downRawY).toInt(),
+                        0,
+                        usableHeight - spriteSize
+                    )
                     applyPosition()
                 }
                 return true
             }
 
             MotionEvent.ACTION_UP -> {
-                if (dragging) snapToNearestEdge() else togglePanel()
+                removeCallbacks(longPress)
+                when {
+                    holding -> {
+                        holding = false
+                        onHoldEnd?.invoke()
+                    }
+
+                    dragging -> snapToNearestEdge()
+                    else -> togglePanel()
+                }
                 dragging = false
                 return true
             }
 
             MotionEvent.ACTION_CANCEL -> {
+                removeCallbacks(longPress)
+                if (holding) {
+                    holding = false
+                    onHoldCancel?.invoke()
+                }
                 if (dragging) snapToNearestEdge()
                 dragging = false
                 return true

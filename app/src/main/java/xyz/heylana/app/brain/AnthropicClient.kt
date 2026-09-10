@@ -14,7 +14,12 @@ import java.util.concurrent.TimeUnit
 
 /** What the buddy says back, or why it could not. */
 sealed interface BrainReply {
-    data class Say(val text: String) : BrainReply
+    /**
+     * [pointAt] is the id of the one screen element the answer is about, or null.
+     * It is taken on trust here and checked against the live snapshot by the caller.
+     */
+    data class Say(val text: String, val pointAt: Int?) : BrainReply
+
     data class Failed(val message: String) : BrainReply
 }
 
@@ -65,7 +70,7 @@ class AnthropicClient(private val settings: HeylanaSettings) {
                 if (!response.isSuccessful) {
                     return@withContext BrainReply.Failed(httpError(response.code, body))
                 }
-                BrainReply.Say(extractSay(body))
+                extractReply(body)
             }
         } catch (e: IOException) {
             BrainReply.Failed("Couldn't reach the API: ${e.message ?: "no connection"}")
@@ -82,9 +87,11 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         return if (detail.isBlank()) "API error $code." else "API error $code: $detail"
     }
 
-    /** First text block → strip fences → parse {"say": ...} → fall back to raw text. */
-    private fun extractSay(body: String): String {
-        val content = JSONObject(body).optJSONArray("content") ?: return body.trim()
+    /** First text block → strip fences → parse the JSON → fall back to raw text. */
+    private fun extractReply(body: String): BrainReply {
+        val content = JSONObject(body).optJSONArray("content")
+            ?: return BrainReply.Say(body.trim(), null)
+
         var raw: String? = null
         for (i in 0 until content.length()) {
             val block = content.optJSONObject(i) ?: continue
@@ -94,11 +101,30 @@ class AnthropicClient(private val settings: HeylanaSettings) {
             }
         }
         val text = raw?.trim().orEmpty()
-        if (text.isEmpty()) return "Heylana had nothing to say about this screen."
+        if (text.isEmpty()) {
+            return BrainReply.Say("Heylana had nothing to say about this screen.", null)
+        }
 
         val unfenced = stripFences(text)
-        val parsed = runCatching { JSONObject(unfenced).optString("say") }.getOrNull()
-        return if (!parsed.isNullOrBlank()) parsed else unfenced
+        val json = runCatching { JSONObject(unfenced) }.getOrNull()
+            ?: return BrainReply.Say(unfenced, null)
+
+        val say = json.optString("say").trim()
+        return if (say.isEmpty()) {
+            BrainReply.Say(unfenced, null)
+        } else {
+            BrainReply.Say(say, readPointAt(json))
+        }
+    }
+
+    /**
+     * Missing, null, non-numeric or negative all mean "do not point at anything".
+     * Whether the id actually exists on screen is the caller's check.
+     */
+    private fun readPointAt(json: JSONObject): Int? {
+        if (!json.has("point_at") || json.isNull("point_at")) return null
+        val id = json.optInt("point_at", -1)
+        return if (id >= 0) id else null
     }
 
     private fun stripFences(text: String): String {

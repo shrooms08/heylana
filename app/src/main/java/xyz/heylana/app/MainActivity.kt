@@ -44,12 +44,16 @@ import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.settings.SettingsActivity
 import xyz.heylana.app.ui.theme.HeylanaTheme
 
-/** The four things Heylana needs before it can answer anything. */
+/**
+ * The four things Heylana needs before it can answer anything, plus the
+ * microphone — which is optional: without it typing still works.
+ */
 private data class Checklist(
     val overlay: Boolean = false,
     val accessibility: Boolean = false,
     val notifications: Boolean = false,
-    val apiKey: Boolean = false
+    val apiKey: Boolean = false,
+    val microphone: Boolean = false
 ) {
     val allDone: Boolean get() = overlay && accessibility && notifications && apiKey
 }
@@ -68,6 +72,9 @@ class MainActivity : ComponentActivity() {
                 val notificationLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestPermission()
                 ) { refreshStatus() }
+                val microphoneLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { refreshStatus() }
 
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     SetupScreen(
@@ -79,6 +86,9 @@ class MainActivity : ComponentActivity() {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                 notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
+                        },
+                        onAllowMicrophone = {
+                            microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         },
                         onOpenSettings = ::openHeylanaSettings,
                         onToggleBuddy = {
@@ -101,7 +111,11 @@ class MainActivity : ComponentActivity() {
             overlay = Settings.canDrawOverlays(this),
             accessibility = HeylanaAccessibilityService.isEnabled(this),
             notifications = notificationsAllowed(),
-            apiKey = HeylanaSettings.get(this).hasApiKey
+            apiKey = HeylanaSettings.get(this).hasApiKey,
+            microphone = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
         )
         buddyRunning.value = BuddyOverlayService.isRunning
     }
@@ -146,6 +160,7 @@ private fun SetupScreen(
     onAllowOverlay: () -> Unit,
     onOpenAccessibility: () -> Unit,
     onAllowNotifications: () -> Unit,
+    onAllowMicrophone: () -> Unit,
     onOpenSettings: () -> Unit,
     onToggleBuddy: () -> Unit,
     modifier: Modifier = Modifier
@@ -160,7 +175,8 @@ private fun SetupScreen(
         Text(text = "Heylana", style = MaterialTheme.typography.headlineLarge)
         Text(
             text = "Four things to switch on, then your buddy can answer questions " +
-                "about whatever app is on your screen.",
+                "about whatever app is on your screen. The microphone is optional — " +
+                "it only lets you talk to the buddy instead of typing.",
             style = MaterialTheme.typography.bodyMedium
         )
 
@@ -199,6 +215,17 @@ private fun SetupScreen(
             onAction = onOpenSettings
         )
 
+        ChecklistRow(
+            title = "Microphone (optional)",
+            done = checklist.microphone,
+            actionLabel = "Allow microphone",
+            onAction = onAllowMicrophone,
+            instructions = listOf(
+                "Only needed to talk to Heylana by holding the buddy.",
+                "Typing works without it."
+            )
+        )
+
         Spacer(modifier = Modifier.height(8.dp))
 
         Button(
@@ -211,7 +238,7 @@ private fun SetupScreen(
 
         if (!checklist.allDone) {
             Text(
-                text = "Finish all four rows above to start the buddy.",
+                text = "Finish the first four rows above to start the buddy.",
                 style = MaterialTheme.typography.bodySmall
             )
         }

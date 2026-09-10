@@ -31,6 +31,9 @@ data class ScreenSnapshot(
 
     val isEmpty: Boolean get() = nodes.isEmpty()
 
+    /** Resolves an id the model gave back. Unknown ids simply mean "no pointer". */
+    fun node(id: Int?): ScreenNode? = id?.let { wanted -> nodes.firstOrNull { it.id == wanted } }
+
     /** Compact indented list for the model — one element per line. */
     fun toPromptText(): String = buildString {
         append("Foreground app: ")

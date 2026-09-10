@@ -312,7 +312,13 @@ class BuddyOverlayService : Service() {
         inFlight = scope.launch {
             delay(KEYBOARD_SETTLE_MS)
 
-            val snapshot = readScreen(view) ?: return@launch
+            // A screen with nothing readable on it is not a reason to refuse.
+            // Plenty of questions are not about the screen at all, and some apps
+            // hand us an empty tree however hard we look — Chrome does unless
+            // something is subscribed to its events, which Heylana deliberately
+            // is not. The model is told the screen was unreadable and answers
+            // from general knowledge. A task step is different: see advance().
+            val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: ScreenSnapshot.empty()
 
             val screenText = snapshot.toPromptText()
             logScreenSize(snapshot, screenText)

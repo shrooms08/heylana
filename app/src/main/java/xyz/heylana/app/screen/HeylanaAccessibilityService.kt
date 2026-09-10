@@ -9,6 +9,7 @@ import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import xyz.heylana.app.HeylanaLog
 
 /**
  * Reads the current screen — and only when asked.
@@ -126,7 +127,13 @@ class HeylanaAccessibilityService : AccessibilityService() {
 
     /** Reads the topmost window that is not Heylana's own overlay. */
     fun snapshot(): ScreenSnapshot {
-        val root = topmostForeignRoot() ?: return ScreenSnapshot.empty()
+        val root = topmostForeignRoot()
+        // Counts only: how much was there to read, never a word of what.
+        HeylanaLog.state(
+            "screen: windows=${runCatching { windows.size }.getOrDefault(-1)} " +
+                "root=${root != null}"
+        )
+        if (root == null) return ScreenSnapshot.empty()
         val targetPackage = root.packageName?.toString() ?: "unknown"
 
         val nodes = ArrayList<ScreenNode>(ScreenSnapshot.MAX_NODES)

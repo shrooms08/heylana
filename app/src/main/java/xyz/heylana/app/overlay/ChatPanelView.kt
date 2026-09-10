@@ -266,17 +266,27 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
      */
     fun applyGlass(blurBehind: Boolean) {
         this.blurBehind = blurBehind
-        background = GlassDrawable(context, HeylanaTokens.RADIUS_CARD_DP, blurBehind)
-        input.background = GlassDrawable(context, HeylanaTokens.RADIUS_MD_DP, blurBehind)
-        stepChip.background = GlassDrawable(context, HeylanaTokens.RADIUS_FULL_DP, blurBehind)
+        background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_CARD_DP, blurBehind, GlassDrawable.Kind.PANEL
+        )
+        // The field is a lighter sheet sunk into the panel, never a darker hole.
+        input.background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_MD_DP, blurBehind, GlassDrawable.Kind.INPUT
+        )
+        stepChip.background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL
+        )
         ask.background = GlassDrawable(
-            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, HeylanaTokens.bandPrimary
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
+            HeylanaTokens.bandPrimary
         )
         next.background = GlassDrawable(
-            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, HeylanaTokens.bandPrimary
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
+            HeylanaTokens.bandPrimary
         )
         done.background = GlassDrawable(
-            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, HeylanaTokens.purpleBand
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
+            HeylanaTokens.purpleBand
         )
         invalidate()
     }

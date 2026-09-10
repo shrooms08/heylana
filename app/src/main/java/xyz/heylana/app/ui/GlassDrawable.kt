@@ -16,46 +16,57 @@ import kotlin.math.hypot
 import kotlin.math.sin
 
 /**
- * One liquid-glass recipe, used by every glass surface: the message box, its
- * buttons, and the buddy's disc.
+ * One liquid-glass recipe, used by every glass surface: the message box, the
+ * reply strip, the task HUD, their buttons and the buddy's disc.
  *
- * In order, inside a rounded rectangle:
- *  1. the fill — thin when the platform is blurring what is behind the window,
- *     heavier when it is not and the fill has to carry the surface alone,
- *  2. a soft purple refraction band running at 122 degrees near the top-left,
- *  3. a bevel: light along the top and left edges, dark along the bottom and
- *     right, both fading out toward the middle,
- *  4. a hairline border.
+ * Bottom to top:
+ *  1. a vertical fill, brighter at the top where light would catch it — lifted
+ *     when the platform will not blur behind the window and the fill has to do
+ *     the separating on its own,
+ *  2. a soft purple refraction band at 122 degrees near the top-left,
+ *  3. a border that runs bright at the top-left and almost vanishes bottom-right,
+ *  4. a hairline of light just inside the top edge, fading out at the corners.
  *
- * [blurBehind] should be whatever the window actually got, not what was asked
- * for — see [GlassBlur.isAvailable].
+ * There is deliberately no outer shadow. A background drawable is clipped to its
+ * own bounds, so a shadow layer comes out as a hard rectangle, and hanging it on
+ * the view's elevation instead paints a pale band across a translucent sheet on
+ * a bright backdrop. Doing it properly needs a padded wrapper to draw into.
+ *
+ * [Kind] picks which of those a given surface wants; a question field is a
+ * lighter sheet with no shadow, a primary button is the same glass with the
+ * band at full strength.
  */
 class GlassDrawable(
     context: Context,
     private val cornerRadiusDp: Float,
     private val blurBehind: Boolean,
-    /** The refraction band. [HeylanaTokens.bandPrimary] makes a button read as primary. */
+    private val kind: Kind = Kind.PANEL,
+    /** The refraction band. [HeylanaTokens.bandPrimary] makes a button primary. */
     private val bandColor: Int = HeylanaTokens.purpleBand
 ) : Drawable() {
 
+    enum class Kind {
+        /** A full sheet: gradient fill, gradient border, top highlight. */
+        PANEL,
+
+        /** A field sunk into a panel: lighter, flat, no shadow. */
+        INPUT,
+
+        /** A button or chip: panel glass with a highlight along the top. */
+        PILL
+    }
+
     private val radius = HeylanaTokens.dp(context, cornerRadiusDp)
-    private val borderWidth = HeylanaTokens.dp(context, 1f)
-    private val bevelWidth = HeylanaTokens.dp(context, 1.5f)
-
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (blurBehind) HeylanaTokens.glassFill else HeylanaTokens.glassFillNoBlur
-    }
+    private val borderWidth = HeylanaTokens.dp(context, HeylanaTokens.GLASS_BORDER_DP)
+    private val inputBorderWidth = HeylanaTokens.dp(context, HeylanaTokens.INPUT_BORDER_DP)
+    private val highlightWidth = HeylanaTokens.dp(context, HeylanaTokens.GLASS_HIGHLIGHT_DP)
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val bevelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val highlightPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = bevelWidth
+        strokeWidth = highlightWidth
     }
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = borderWidth
-        color = HeylanaTokens.glassBorder
-    }
-
     private val shape = Path()
     private val body = RectF()
     private var built = false
@@ -73,15 +84,24 @@ class GlassDrawable(
         shape.reset()
         shape.addRoundRect(body, r, r, Path.Direction.CW)
 
+        fillPaint.shader = when (kind) {
+            Kind.INPUT -> null
+            else -> LinearGradient(
+                body.left, body.top, body.left, body.bottom,
+                if (blurBehind) HeylanaTokens.glassFillTop else HeylanaTokens.glassFillTopNoBlur,
+                if (blurBehind) HeylanaTokens.glassFillBottom else HeylanaTokens.glassFillBottomNoBlur,
+                Shader.TileMode.CLAMP
+            )
+        }
+        if (kind == Kind.INPUT) fillPaint.color = HeylanaTokens.inputFill
+
         // The refraction band: a soft diagonal wash whose peak sits about a
         // third of the way along, near the top-left corner.
         val angle = Math.toRadians(122.0)
         val span = hypot(body.width(), body.height())
-        val dx = cos(angle).toFloat() * span
-        val dy = sin(angle).toFloat() * span
         bandPaint.shader = LinearGradient(
             body.left, body.top,
-            body.left + dx, body.top + dy,
+            body.left + cos(angle).toFloat() * span, body.top + sin(angle).toFloat() * span,
             intArrayOf(
                 HeylanaTokens.withAlpha(bandColor, 0f),
                 bandColor,
@@ -91,18 +111,29 @@ class GlassDrawable(
             Shader.TileMode.CLAMP
         )
 
-        // The bevel is one stroke shaded from light at the top-left corner to
-        // dark at the bottom-right, transparent through the middle.
-        bevelPaint.shader = LinearGradient(
-            body.left, body.top,
-            body.right, body.bottom,
+        borderPaint.strokeWidth = if (kind == Kind.INPUT) inputBorderWidth else borderWidth
+        borderPaint.shader = if (kind == Kind.INPUT) {
+            null
+        } else {
+            LinearGradient(
+                body.left, body.top, body.right, body.bottom,
+                HeylanaTokens.glassBorderBright, HeylanaTokens.glassBorderDim,
+                Shader.TileMode.CLAMP
+            )
+        }
+        if (kind == Kind.INPUT) borderPaint.color = HeylanaTokens.inputBorder
+
+        // The inner top line is brightest in the middle and gone by the corners,
+        // so it reads as light catching the edge rather than a drawn stroke.
+        highlightPaint.shader = LinearGradient(
+            body.left, body.top, body.right, body.top,
             intArrayOf(
-                HeylanaTokens.bevelLight,
                 Color.TRANSPARENT,
-                Color.TRANSPARENT,
-                HeylanaTokens.bevelDark
+                HeylanaTokens.glassTopHighlight,
+                HeylanaTokens.glassTopHighlight,
+                Color.TRANSPARENT
             ),
-            floatArrayOf(0f, 0.35f, 0.65f, 1f),
+            floatArrayOf(0f, 0.22f, 0.78f, 1f),
             Shader.TileMode.CLAMP
         )
         built = true
@@ -118,26 +149,29 @@ class GlassDrawable(
 
         canvas.drawRoundRect(body, r, r, fillPaint)
 
-        val save = canvas.save()
-        canvas.clipPath(shape)
-        canvas.drawRoundRect(body, r, r, bandPaint)
-        canvas.restoreToCount(save)
+        if (kind != Kind.INPUT) {
+            val save = canvas.save()
+            canvas.clipPath(shape)
+            canvas.drawRoundRect(body, r, r, bandPaint)
+            canvas.restoreToCount(save)
+        }
 
-        // Both the bevel and the border ride just inside the edge so neither is
-        // clipped in half by the shape.
-        val bevelInset = bevelWidth / 2f
-        canvas.drawRoundRect(
-            body.left + bevelInset, body.top + bevelInset,
-            body.right - bevelInset, body.bottom - bevelInset,
-            r - bevelInset, r - bevelInset, bevelPaint
-        )
-
-        val borderInset = borderWidth / 2f
+        val borderInset = borderPaint.strokeWidth / 2f
         canvas.drawRoundRect(
             body.left + borderInset, body.top + borderInset,
             body.right - borderInset, body.bottom - borderInset,
             r - borderInset, r - borderInset, borderPaint
         )
+
+        if (kind != Kind.INPUT) {
+            // A line just inside the top edge, inset past the corner curve so it
+            // does not double up with the border where they would meet.
+            val y = body.top + borderPaint.strokeWidth + highlightWidth
+            val inset = r * 0.7f
+            canvas.drawLine(
+                body.left + inset, y, body.right - inset, y, highlightPaint
+            )
+        }
     }
 
     override fun setAlpha(alpha: Int) = Unit

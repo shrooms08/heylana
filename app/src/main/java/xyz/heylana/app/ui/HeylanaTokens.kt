@@ -26,17 +26,30 @@ object HeylanaTokens {
     /** The bloom behind an active buddy. */
     val glow = withAlpha(Color.parseColor("#B98BFF"), 0.55f)
 
-    /** Liquid glass, when the platform is blurring what is behind it. */
-    val glassFill = withAlpha(Color.WHITE, 0.06f)
+    /**
+     * The glass fill is a vertical gradient, brighter at the top where light
+     * would catch it. These are the two ends of it.
+     */
+    val glassFillTop = withAlpha(Color.WHITE, 0.16f)
+    val glassFillBottom = withAlpha(Color.WHITE, 0.06f)
 
-    /** The same glass when blur is unavailable and the fill has to carry it alone. */
-    val glassFillNoBlur = withAlpha(Color.WHITE, 0.14f)
+    /** The same gradient lifted, for when the platform will not blur behind. */
+    val glassFillTopNoBlur = withAlpha(Color.WHITE, 0.24f)
+    val glassFillBottomNoBlur = withAlpha(Color.WHITE, 0.12f)
 
-    val glassBorder = withAlpha(Color.WHITE, 0.09f)
+    /** The border runs bright at the top-left down to almost nothing bottom-right. */
+    val glassBorderBright = withAlpha(Color.WHITE, 0.45f)
+    val glassBorderDim = withAlpha(Color.WHITE, 0.08f)
 
-    /** Bevel: light down the top and left edges, dark up the bottom and right. */
-    val bevelLight = withAlpha(Color.WHITE, 0.35f)
-    val bevelDark = withAlpha(Color.BLACK, 0.55f)
+    /** A hairline of light just inside the top edge, fading out at the corners. */
+    val glassTopHighlight = withAlpha(Color.WHITE, 0.30f)
+
+    /** The question field: lighter than the panel it sits on, never darker. */
+    val inputFill = withAlpha(Color.WHITE, 0.08f)
+    val inputBorder = withAlpha(Color.WHITE, 0.14f)
+
+    /** The highlight along the top edge of a primary button. */
+    val pillHighlight = withAlpha(Color.WHITE, 0.35f)
 
     /** The refraction band that sits inside the glass near its top-left corner. */
     val purpleBand = withAlpha(accent, 0.20f)
@@ -46,8 +59,12 @@ object HeylanaTokens {
 
     val discBorder = withAlpha(Color.WHITE, 0.12f)
 
-    /** The dim laid over the app behind the message box. */
-    val scrim = withAlpha(Color.BLACK, 0.45f)
+    /**
+     * The dim over the app behind the message box. Light, because the blur and
+     * the glass do most of the separating; more than this and it reads as a
+     * modal rather than a layer.
+     */
+    val scrim = withAlpha(Color.BLACK, 0.25f)
 
     /** How far the mark is knocked back when the buddy is resting. */
     const val MARK_DULLED = 0.55f
@@ -56,7 +73,12 @@ object HeylanaTokens {
     // -------------------------------------------------------------- shape
 
     /** Blur radius behind glass surfaces. */
-    const val BLUR_DP = 24f
+    const val BLUR_DP = 40f
+
+    /** Border, inner highlight and shadow geometry. */
+    const val GLASS_BORDER_DP = 1.5f
+    const val GLASS_HIGHLIGHT_DP = 1f
+    const val INPUT_BORDER_DP = 1f
 
     const val RADIUS_SM_DP = 8f
     const val RADIUS_MD_DP = 14f

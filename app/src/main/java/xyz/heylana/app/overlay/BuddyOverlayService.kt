@@ -43,6 +43,7 @@ import xyz.heylana.app.screen.ScreenSnapshot
 import xyz.heylana.app.screen.TapWatch
 import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
+import xyz.heylana.app.voice.CartesiaVoice
 import xyz.heylana.app.voice.DeepgramEars
 import xyz.heylana.app.voice.EarCallbacks
 import xyz.heylana.app.voice.Ears
@@ -70,7 +71,8 @@ class BuddyOverlayService : Service() {
     private val settings: HeylanaSettings by lazy { HeylanaSettings.get(this) }
     private val brain: ProxyClient by lazy { ProxyClient(settings) }
 
-    private var speaker: Speaker? = null
+    /** Heylana's voice: Cartesia when it can be reached, the phone's own when not. */
+    private var mouth: CartesiaVoice? = null
 
     /** The phone's own ears: always there, and what everything falls back to. */
     private var phoneEars: Listener? = null
@@ -128,15 +130,23 @@ class BuddyOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        speaker = Speaker(this) { speaking ->
-            HeylanaLog.state("speak: speaking=$speaking")
-            overlayView?.setTalking(speaking)
-            main.removeCallbacks(settleToIdle)
-            if (!speaking && exchange.maySettle) {
-                HeylanaLog.state("settle: scheduled")
-                main.postDelayed(settleToIdle, SETTLE_MS)
+        val onSpeaking: (Boolean) -> Unit = { speaking ->
+            main.post {
+                HeylanaLog.state("speak: speaking=$speaking")
+                overlayView?.setTalking(speaking)
+                main.removeCallbacks(settleToIdle)
+                if (!speaking && exchange.maySettle) {
+                    HeylanaLog.state("settle: scheduled")
+                    main.postDelayed(settleToIdle, SETTLE_MS)
+                }
             }
         }
+        mouth = CartesiaVoice(
+            settings = settings,
+            scope = scope,
+            phone = Speaker(this) { speaking -> onSpeaking(speaking) },
+            onSpeaking = onSpeaking
+        )
         phoneEars = Listener(this, earCallbacks)
     }
 
@@ -207,8 +217,8 @@ class BuddyOverlayService : Service() {
         phoneEars?.shutdown()
         phoneEars = null
         ears = null
-        speaker?.shutdown()
-        speaker = null
+        mouth?.shutdown()
+        mouth = null
         highlight?.removeFromWindow()
         highlight = null
         overlayView?.removeFromWindow()
@@ -242,13 +252,13 @@ class BuddyOverlayService : Service() {
             view.onHoldCancel = { abandonListening() }
             view.onMuteToggled = { muted ->
                 settings.voiceMuted = muted
-                if (muted) speaker?.stop()
+                if (muted) mouth?.stop()
             }
             view.onNext = { advance(userAsked = true) }
             view.onDone = { stopSessionOnRequest() }
             view.onPanelClosed = {
                 HeylanaLog.state("panel: closed")
-                speaker?.stop()
+                mouth?.stop()
                 stopTapWatch()
                 highlight?.hide()
                 view.stopLooking()
@@ -278,7 +288,7 @@ class BuddyOverlayService : Service() {
 
         // A new question drops whatever the last one left behind, including any
         // task that was running.
-        speaker?.stop()
+        mouth?.stop()
         stopTapWatch()
         highlight?.hide()
         view.stopLooking()
@@ -505,7 +515,7 @@ class BuddyOverlayService : Service() {
             return
         }
 
-        speaker?.stop()
+        mouth?.stop()
         view.showThinking()
         view.hideKeyboard()
 
@@ -575,7 +585,7 @@ class BuddyOverlayService : Service() {
     /** The user tapped Done: say so, then close the task down. */
     private fun stopSessionOnRequest() {
         if (session == null) return
-        speaker?.stop()
+        mouth?.stop()
         overlayView?.showAnswer(STOPPED_LINE)
         speak(STOPPED_LINE)
         endSession(clearBox = true)
@@ -597,7 +607,7 @@ class BuddyOverlayService : Service() {
 
     /** True if the answer really is being read out, so speech will report its end. */
     private fun speak(text: String): Boolean {
-        val voice = speaker ?: return false
+        val voice = mouth ?: return false
         if (settings.voiceMuted) return false
         if (!voice.available) {
             if (voice.settled && !noteShown) {
@@ -606,8 +616,7 @@ class BuddyOverlayService : Service() {
             }
             return false
         }
-        voice.speak(text)
-        return true
+        return voice.speak(text)
     }
 
     // ---------------------------------------------------------------- voice
@@ -632,7 +641,7 @@ class BuddyOverlayService : Service() {
         // Before anything else: stopping the speaker below reports "no longer
         // speaking", and that report books a settle unless it knows better.
         exchange.listening()
-        speaker?.stop()
+        mouth?.stop()
         stopTapWatch()
         highlight?.hide()
         view.stopLooking()

@@ -28,6 +28,11 @@ class Speaker(context: Context, private val onSpeakingChanged: (Boolean) -> Unit
     private val main = Handler(Looper.getMainLooper())
     private var engine: TextToSpeech? = null
 
+    /** Which of the phone's voices was picked, for the debug trace. */
+    @Volatile
+    var chosenVoice: String? = null
+        private set
+
     init {
         engine = TextToSpeech(context.applicationContext) { status ->
             val ok = status == TextToSpeech.SUCCESS
@@ -36,6 +41,7 @@ class Speaker(context: Context, private val onSpeakingChanged: (Boolean) -> Unit
                 val usable = result != TextToSpeech.LANG_MISSING_DATA &&
                     result != TextToSpeech.LANG_NOT_SUPPORTED
                 if (!usable) engine?.setLanguage(Locale.US)
+                tune()
                 available = true
             }
             settled = true
@@ -51,9 +57,36 @@ class Speaker(context: Context, private val onSpeakingChanged: (Boolean) -> Unit
         }
     }
 
-    fun speak(text: String) {
-        if (!available || text.isBlank()) return
+    /**
+     * Picks a voice rather than taking whatever the engine hands out, and sits
+     * it a touch above flat. The default on most phones is the satnav voice.
+     */
+    private fun tune() {
+        val engine = engine ?: return
+        engine.setPitch(PhoneVoice.PITCH)
+        engine.setSpeechRate(PhoneVoice.RATE)
+
+        val offered = runCatching { engine.voices }.getOrNull().orEmpty()
+        val best = PhoneVoice.best(
+            offered.map { voice ->
+                PhoneVoice.Option(
+                    name = voice.name.orEmpty(),
+                    locale = voice.locale?.toString().orEmpty(),
+                    quality = voice.quality,
+                    needsNetwork = voice.isNetworkConnectionRequired
+                )
+            }
+        ) ?: return
+
+        offered.firstOrNull { it.name == best.name }?.let { engine.voice = it }
+        chosenVoice = best.name
+    }
+
+    /** True if something is going to speak, so a "finished" will follow. */
+    fun speak(text: String): Boolean {
+        if (!available || text.isBlank()) return false
         engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
+        return true
     }
 
     fun stop() {

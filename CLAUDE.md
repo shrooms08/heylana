@@ -108,6 +108,30 @@ becomes an ordinary drag. The overlay window only becomes focusable while the
 panel was opened by a tap — never mid-gesture, because changing focusability tears
 down the touch stream and would swallow the release that ends a hold.
 
+## API budget
+
+The operator pays for every request out of a small budget. Treat their key as
+money, because it is.
+
+**Claude Code never uses the operator's real API key.** Not once, not to "just
+check the happy path". Self-tests are run with a deliberately fake key and verify
+the error path only: that the failure line renders, that nothing crashes, and that
+the surrounding flow still behaves. Setting a fake key in Settings overwrites the
+stored real one, so say so plainly in the report and tell the operator to re-enter
+theirs.
+
+**The operator performs all real-answer testing.** Anything that needs a genuine
+model reply — answer quality, pointing accuracy, whether a task completes — is
+written up in `SMOKE.md` for them to run, never run here.
+
+**Every `SMOKE.md` states the expected number of live API calls**, near the top,
+before the first step. Keep that number as small as the phase allows and make the
+test spend it deliberately.
+
+Cost discipline in the code itself: send the smallest screen listing that still
+works, keep the system prompt tight, cap `max_tokens`, and route cheap work to the
+cheap model.
+
 ## Working rules
 
 1. **Every phase is built on its own branch.** Phase 0 lives on `phase0-overlay`,

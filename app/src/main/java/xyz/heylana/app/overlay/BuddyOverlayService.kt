@@ -15,6 +15,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.MainActivity
 import xyz.heylana.app.R
 import xyz.heylana.app.brain.AnthropicClient
@@ -137,7 +139,7 @@ class BuddyOverlayService : Service() {
                 if (muted) speaker?.stop()
             }
             view.onNext = { advance(userAsked = true) }
-            view.onDone = { endSession(clearBox = true) }
+            view.onDone = { stopSessionOnRequest() }
             view.onPanelClosed = {
                 speaker?.stop()
                 highlight?.hide()
@@ -187,7 +189,10 @@ class BuddyOverlayService : Service() {
 
             val snapshot = readScreen(view) ?: return@launch
 
-            when (val reply = brain.ask(question, snapshot.toPromptText(), conversation.asPromptText())) {
+            val screenText = snapshot.toPromptText()
+            logScreenSize(snapshot, screenText)
+
+            when (val reply = brain.ask(question, screenText, conversation.asPromptText())) {
                 is BrainReply.Say -> {
                     val task = reply.task
                     if (task != null && !task.done) {
@@ -214,6 +219,19 @@ class BuddyOverlayService : Service() {
             view.lookAt(node.bounds.centerX())
         }
         speak(reply.text)
+    }
+
+    /**
+     * Debug builds only: how big the screen listing is before it is sent, so the
+     * cost of a request can be watched without making one. Counts only, never a
+     * word of what is on screen.
+     */
+    private fun logScreenSize(snapshot: ScreenSnapshot, screenText: String) {
+        if (!BuildConfig.DEBUG) return
+        Log.d(
+            AnthropicClient.USAGE_TAG,
+            "screen elements=${snapshot.nodes.size} chars=${screenText.length}"
+        )
     }
 
     private fun readScreen(view: BuddyOverlayView): ScreenSnapshot? {
@@ -300,11 +318,15 @@ class BuddyOverlayService : Service() {
             delay(KEYBOARD_SETTLE_MS)
             val snapshot = readScreen(view) ?: return@launch
 
+            val screenText = snapshot.toPromptText()
+            logScreenSize(snapshot, screenText)
+
             val reply = brain.nextStep(
                 goal = current.goal,
                 historyText = current.historyText(),
-                screenText = snapshot.toPromptText(),
-                stepNumber = current.stepNumber + 1
+                screenText = screenText,
+                stepNumber = current.stepNumber + 1,
+                needPointerHint = current.lastStepHadNoPointer
             )
 
             when (reply) {
@@ -353,6 +375,15 @@ class BuddyOverlayService : Service() {
         val pointedGone = current.pointedKey?.let { !snapshot.contains(it) } ?: false
 
         if (movedApp || pointedGone) advance(userAsked = false)
+    }
+
+    /** The user tapped Done: say so, then close the task down. */
+    private fun stopSessionOnRequest() {
+        if (session == null) return
+        speaker?.stop()
+        overlayView?.showAnswer(STOPPED_LINE)
+        speak(STOPPED_LINE)
+        endSession(clearBox = true)
     }
 
     private fun endSession(clearBox: Boolean) {
@@ -495,6 +526,8 @@ class BuddyOverlayService : Service() {
 
         /** Lets a screen settle after a tap before deciding the step is finished. */
         private const val AUTO_ADVANCE_DEBOUNCE_MS = 900L
+
+        private const val STOPPED_LINE = "Okay, stopping here."
 
         private const val STUCK_LINE =
             "Looks like that didn't work. Try tapping it again, or tell me what you see."

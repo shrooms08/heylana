@@ -68,7 +68,8 @@ private fun SettingsScreen(
     var savedKeyMask by remember { mutableStateOf(settings.maskedApiKey()) }
     var replacingKey by remember { mutableStateOf(settings.maskedApiKey() == null) }
     var keyInput by remember { mutableStateOf("") }
-    var model by remember { mutableStateOf(settings.model) }
+    var quickModel by remember { mutableStateOf(settings.quickModel) }
+    var taskModel by remember { mutableStateOf(settings.taskModel) }
     var status by remember { mutableStateOf("") }
 
     Column(
@@ -125,18 +126,33 @@ private fun SettingsScreen(
 
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Model", style = MaterialTheme.typography.titleMedium)
+                Text(text = "Models", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
-                    value = model,
-                    onValueChange = { model = it },
-                    label = { Text(text = "Model name") },
+                    value = quickModel,
+                    onValueChange = { quickModel = it },
+                    label = { Text(text = "Quick model") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Default is ${HeylanaSettings.DEFAULT_MODEL}.",
+                    text = "Used for single questions. Cheaper. Default is " +
+                        "${HeylanaSettings.DEFAULT_QUICK_MODEL}.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = taskModel,
+                    onValueChange = { taskModel = it },
+                    label = { Text(text = "Task model") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Used for the steps of a task. Default is " +
+                        "${HeylanaSettings.DEFAULT_TASK_MODEL}.",
                     style = MaterialTheme.typography.bodySmall
                 )
             }
@@ -150,8 +166,10 @@ private fun SettingsScreen(
                     savedKeyMask = settings.maskedApiKey()
                     replacingKey = false
                 }
-                settings.model = model
-                model = settings.model
+                settings.quickModel = quickModel
+                settings.taskModel = taskModel
+                quickModel = settings.quickModel
+                taskModel = settings.taskModel
                 status = if (settings.hasApiKey) "Saved." else "Saved, but there is still no API key."
             },
             modifier = Modifier.fillMaxWidth()

@@ -23,11 +23,28 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             }.apply()
         }
 
-    var model: String
-        get() = prefs.getString(KEY_MODEL, null)?.takeIf { it.isNotBlank() } ?: DEFAULT_MODEL
+    /** The cheap model, used for one-shot questions. */
+    var quickModel: String
+        get() = prefs.getString(KEY_QUICK_MODEL, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_QUICK_MODEL
         set(value) {
-            val cleaned = value.trim().ifBlank { DEFAULT_MODEL }
-            prefs.edit().putString(KEY_MODEL, cleaned).apply()
+            val cleaned = value.trim().ifBlank { DEFAULT_QUICK_MODEL }
+            prefs.edit().putString(KEY_QUICK_MODEL, cleaned).apply()
+        }
+
+    /**
+     * The stronger model, used for the steps of a guidance task.
+     *
+     * Falls back to the single "model" setting older builds wrote, so anyone
+     * upgrading keeps the model they had chosen for the harder work.
+     */
+    var taskModel: String
+        get() = prefs.getString(KEY_TASK_MODEL, null)?.takeIf { it.isNotBlank() }
+            ?: prefs.getString(KEY_LEGACY_MODEL, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_TASK_MODEL
+        set(value) {
+            val cleaned = value.trim().ifBlank { DEFAULT_TASK_MODEL }
+            prefs.edit().putString(KEY_TASK_MODEL, cleaned).apply()
         }
 
     /** Whether Heylana's spoken answers are silenced. Default: it speaks. */
@@ -47,11 +64,14 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
     }
 
     companion object {
-        const val DEFAULT_MODEL = "claude-sonnet-5"
+        const val DEFAULT_QUICK_MODEL = "claude-haiku-4-5-20251001"
+        const val DEFAULT_TASK_MODEL = "claude-sonnet-5"
 
         private const val FILE_NAME = "heylana_secure_settings"
         private const val KEY_API_KEY = "api_key"
-        private const val KEY_MODEL = "model"
+        private const val KEY_LEGACY_MODEL = "model"
+        private const val KEY_QUICK_MODEL = "quick_model"
+        private const val KEY_TASK_MODEL = "task_model"
         private const val KEY_VOICE_MUTED = "voice_muted"
 
         @Volatile

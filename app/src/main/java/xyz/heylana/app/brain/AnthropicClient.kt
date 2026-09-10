@@ -1,5 +1,6 @@
 package xyz.heylana.app.brain
 
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -8,6 +9,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.settings.HeylanaSettings
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -41,26 +43,34 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         .callTimeout(75, TimeUnit.SECONDS)
         .build()
 
-    /** An ordinary question, optionally with the recent conversation for context. */
+    /**
+     * An ordinary question, optionally with the recent conversation for context.
+     * Runs on the quick model — this also covers the first turn of a task, since
+     * nothing knows it is a task until the reply comes back.
+     */
     suspend fun ask(question: String, screenText: String, history: String? = null): BrainReply =
-        send(HeylanaPrompt.userMessage(screenText, question, history))
+        send(HeylanaPrompt.userMessage(screenText, question, history), settings.quickModel)
 
-    /** The next step of a task already under way. */
+    /** The next step of a task already under way. Runs on the stronger model. */
     suspend fun nextStep(
         goal: String,
         historyText: String,
         screenText: String,
-        stepNumber: Int
-    ): BrainReply = send(HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber))
+        stepNumber: Int,
+        needPointerHint: Boolean
+    ): BrainReply = send(
+        HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber, needPointerHint),
+        settings.taskModel
+    )
 
-    private suspend fun send(userMessage: String): BrainReply = withContext(Dispatchers.IO) {
+    private suspend fun send(userMessage: String, model: String): BrainReply = withContext(Dispatchers.IO) {
         val key = settings.apiKey
         if (key.isNullOrBlank()) {
             return@withContext BrainReply.Failed("No API key yet. Add your key in Heylana → Settings.")
         }
 
         val payload = JSONObject()
-            .put("model", settings.model)
+            .put("model", model)
             .put("max_tokens", MAX_TOKENS)
             .put("system", HeylanaPrompt.SYSTEM)
             .put(
@@ -84,6 +94,7 @@ class AnthropicClient(private val settings: HeylanaSettings) {
                 if (!response.isSuccessful) {
                     return@withContext BrainReply.Failed(httpError(response.code, body))
                 }
+                logUsage(model, body)
                 extractReply(body)
             }
         } catch (e: IOException) {
@@ -91,6 +102,21 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         } catch (_: Exception) {
             BrainReply.Failed("Something went wrong reading the reply.")
         }
+    }
+
+    /**
+     * Debug builds only: prints how many input tokens a request cost, so the
+     * operator can watch the budget in Logcat. Counts and the model name only —
+     * never a word of the screen or the conversation.
+     */
+    private fun logUsage(model: String, body: String) {
+        if (!BuildConfig.DEBUG) return
+        val usage = runCatching { JSONObject(body).optJSONObject("usage") }.getOrNull() ?: return
+        Log.d(
+            USAGE_TAG,
+            "model=$model input_tokens=${usage.optInt("input_tokens", -1)} " +
+                "output_tokens=${usage.optInt("output_tokens", -1)}"
+        )
     }
 
     /** "401: invalid x-api-key" — short and readable, never a stack trace. */
@@ -165,7 +191,10 @@ class AnthropicClient(private val settings: HeylanaSettings) {
     companion object {
         private const val ENDPOINT = "https://api.anthropic.com/v1/messages"
         private const val ANTHROPIC_VERSION = "2023-06-01"
-        private const val MAX_TOKENS = 600
+        private const val MAX_TOKENS = 300
+
+        /** Logcat tag for the token counter. */
+        const val USAGE_TAG = "HeylanaTokens"
         private val JSON = "application/json".toMediaType()
     }
 }

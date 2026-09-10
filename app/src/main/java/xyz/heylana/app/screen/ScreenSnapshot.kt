@@ -7,6 +7,9 @@ import android.graphics.Rect
  *
  * Snapshots are read on demand, handed straight to the brain, and dropped.
  * They are never logged and never written to disk.
+ *
+ * [bounds] stays on this side of the wire: the model only ever sees ids, and the
+ * id it picks is turned back into coordinates from the snapshot we kept.
  */
 data class ScreenNode(
     val id: Int,
@@ -17,6 +20,7 @@ data class ScreenNode(
     val viewId: String?,
     val clickable: Boolean,
     val editable: Boolean,
+    val scrollable: Boolean,
     val checked: Boolean?,
     val bounds: Rect
 ) {
@@ -58,42 +62,43 @@ data class ScreenSnapshot(
     /** True if an element that was pointed at earlier is still on screen. */
     fun contains(key: String): Boolean = nodes.any { it.key == key }
 
-    /** Compact indented list for the model — one element per line. */
+    /**
+     * The screen as the model sees it: one short line per element, no coordinates.
+     *
+     * Bounds are deliberately absent — they were a large share of every request and
+     * the model never needed them. It answers with an id; the coordinates are
+     * looked up here from the snapshot we kept.
+     */
     fun toPromptText(): String = buildString {
-        append("Foreground app: ")
+        append("App: ")
         append(appLabel ?: "unknown")
         append(" (")
         append(packageName)
         append(")\n")
         if (nodes.isEmpty()) {
-            append("(no readable elements on screen)")
+            append("(nothing readable on screen)")
             return@buildString
         }
-        append("Screen elements:\n")
         for (node in nodes) {
             append(INDENT.repeat(node.depth.coerceAtMost(MAX_INDENT)))
             append('[').append(node.id).append("] ").append(node.className)
             node.viewId?.let { append(" #").append(it) }
-            if (node.clickable) append(" clickable")
-            if (node.editable) append(" editable")
-            node.checked?.let { append(if (it) " checked" else " unchecked") }
+            if (node.clickable) append(" tap")
+            if (node.editable) append(" type")
+            if (node.scrollable) append(" scroll")
+            node.checked?.let { append(if (it) " on" else " off") }
             node.text?.let { append(" \"").append(it).append('"') }
-            node.contentDescription?.let { append(" desc=\"").append(it).append('"') }
-            append(" (")
-                .append(node.bounds.left).append(',')
-                .append(node.bounds.top).append(',')
-                .append(node.bounds.right).append(',')
-                .append(node.bounds.bottom)
-                .append(")\n")
+            node.contentDescription?.let { append(" (").append(it).append(')') }
+            append('\n')
         }
-        if (truncated) append("(list truncated at ").append(MAX_NODES).append(" elements)\n")
+        if (truncated) append("(cut at ").append(MAX_NODES).append(")\n")
     }.trimEnd()
 
     companion object {
-        const val MAX_NODES = 250
-        const val MAX_TEXT = 120
-        private const val INDENT = "  "
-        private const val MAX_INDENT = 8
+        const val MAX_NODES = 120
+        const val MAX_TEXT = 60
+        private const val INDENT = " "
+        private const val MAX_INDENT = 6
 
         fun empty(packageName: String = "unknown") =
             ScreenSnapshot(packageName, null, emptyList(), false)

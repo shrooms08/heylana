@@ -1,7 +1,23 @@
 package xyz.heylana.app.brain
 
-/** One step Heylana has already given, so the model knows where the user got to. */
-data class GuidanceStep(val say: String, val elementLabel: String?)
+/**
+ * One step Heylana has already given, so the model knows where the user got to.
+ *
+ * Only [summary] is ever sent back — one short line, not the full sentence, since
+ * the whole history is resent on every advance.
+ */
+data class GuidanceStep(val say: String, val elementLabel: String?) {
+
+    val summary: String
+        get() {
+            val trimmed = if (say.length > SUMMARY_CHARS) say.take(SUMMARY_CHARS).trimEnd() + "…" else say
+            return if (elementLabel != null) "$trimmed [$elementLabel]" else trimmed
+        }
+
+    private companion object {
+        const val SUMMARY_CHARS = 70
+    }
+}
 
 /**
  * A task being walked through one step at a time.
@@ -32,6 +48,10 @@ class GuidanceSession(val goal: String) {
     var stuck: Boolean = false
         private set
 
+    /** True when the last step came back without an element to point at. */
+    var lastStepHadNoPointer: Boolean = false
+        private set
+
     val stepNumber: Int get() = recorded.size
 
     /** True once the last allowed step has been given. */
@@ -44,6 +64,7 @@ class GuidanceSession(val goal: String) {
         pointedKey = elementKey
         pointedPackage = packageName
         stuck = repeated
+        lastStepHadNoPointer = elementKey == null
         return repeated
     }
 
@@ -52,16 +73,14 @@ class GuidanceSession(val goal: String) {
         stuck = false
     }
 
-    /** The prior steps, written out for the model. */
+    /** The prior steps as one short line each. */
     fun historyText(): String = if (recorded.isEmpty()) {
-        "No steps given yet. This is the first step."
+        "No steps yet."
     } else {
         buildString {
-            append("Steps already given to the user, in order:\n")
+            append("Steps so far:\n")
             recorded.forEachIndexed { index, step ->
-                append(index + 1).append(". ").append(step.say)
-                step.elementLabel?.let { append(" (pointed at \"").append(it).append("\")") }
-                append('\n')
+                append(index + 1).append(". ").append(step.summary).append('\n')
             }
         }.trimEnd()
     }
@@ -75,7 +94,7 @@ class GuidanceSession(val goal: String) {
  * The last few ordinary question-and-answer turns, so follow-ups like "and then?"
  * have something to refer back to. Capped, in memory only, cleared with the panel.
  */
-class Conversation(private val limit: Int = 4) {
+class Conversation(private val limit: Int = 2) {
 
     private val turns = ArrayDeque<Pair<String, String>>()
 
@@ -90,7 +109,7 @@ class Conversation(private val limit: Int = 4) {
     fun asPromptText(): String? {
         if (turns.isEmpty()) return null
         return buildString {
-            append("Recent conversation, oldest first:\n")
+            append("Earlier:\n")
             for ((question, answer) in turns) {
                 append("User: ").append(question).append('\n')
                 append("You: ").append(answer).append('\n')

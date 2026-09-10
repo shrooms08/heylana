@@ -116,14 +116,32 @@ class HeylanaAccessibilityService : AccessibilityService() {
         if (out.size >= ScreenSnapshot.MAX_NODES) return true
         if (!node.isVisibleToUser) return false
 
-        val text = node.text?.toString()?.clean()
-        val description = node.contentDescription?.toString()?.clean()
+        var text = node.text?.toString()?.clean()
+        var description = node.contentDescription?.toString()?.clean()
         val viewId = node.viewIdResourceName?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
         val editable = node.isEditable
         val clickable = node.isClickable
+        val checkable = node.isCheckable
+        val scrollable = node.isScrollable
 
-        // Keep only nodes that say something useful, or that the user can act on.
-        val worthKeeping = text != null || description != null || clickable || editable
+        // Whose children to walk next. Normally this node's own.
+        var childSource = node
+
+        // A tappable wrapper whose label lives on a lone child inside it is one
+        // thing to the user, so send one line rather than two or three.
+        if (clickable && text == null && description == null) {
+            soleLabelledDescendant(node)?.let { inner ->
+                text = inner.text?.toString()?.clean()
+                description = inner.contentDescription?.toString()?.clean()
+                childSource = inner
+            }
+        }
+
+        // Keep only what the user can read or act on. Pure layout and decoration
+        // is dropped: it was most of the list and none of the meaning.
+        val worthKeeping = text != null || description != null ||
+            clickable || editable || checkable || scrollable
+
         var childDepth = depth
         if (worthKeeping) {
             val bounds = Rect().also { node.getBoundsInScreen(it) }
@@ -137,18 +155,38 @@ class HeylanaAccessibilityService : AccessibilityService() {
                     viewId = viewId,
                     clickable = clickable,
                     editable = editable,
-                    checked = if (node.isCheckable) node.isChecked else null,
+                    scrollable = scrollable,
+                    checked = if (checkable) node.isChecked else null,
                     bounds = bounds
                 )
             )
             childDepth = depth + 1
         }
 
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i) ?: continue
+        for (i in 0 until childSource.childCount) {
+            val child = childSource.getChild(i) ?: continue
             if (collect(child, childDepth, out)) return true
         }
         return out.size >= ScreenSnapshot.MAX_NODES
+    }
+
+    /**
+     * Follows a single-child chain down from a tappable wrapper and returns the
+     * one node inside that actually carries a label, or null if the wrapper holds
+     * more than one thing.
+     */
+    private fun soleLabelledDescendant(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        var current = node
+        repeat(MAX_COLLAPSE_DEPTH) {
+            val visibleChildren = (0 until current.childCount)
+                .mapNotNull { current.getChild(it) }
+                .filter { it.isVisibleToUser }
+            if (visibleChildren.size != 1) return null
+            val only = visibleChildren.first()
+            if (!only.text.isNullOrBlank() || !only.contentDescription.isNullOrBlank()) return only
+            current = only
+        }
+        return null
     }
 
     private fun appLabel(pkg: String): String? = try {
@@ -173,6 +211,9 @@ class HeylanaAccessibilityService : AccessibilityService() {
         private var connected: HeylanaAccessibilityService? = null
 
         private val WHITESPACE = Regex("\\s+")
+
+        /** How far to follow a single-child chain when collapsing a wrapper. */
+        private const val MAX_COLLAPSE_DEPTH = 3
 
         /** True once Android has actually bound and connected the service. */
         val isConnected: Boolean get() = connected != null

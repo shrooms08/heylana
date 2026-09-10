@@ -37,11 +37,12 @@ class BuddySpriteView(context: Context) : View(context) {
             }
         }
 
-    /** True while text-to-speech is talking. */
+    /** True while text-to-speech is talking; sheds rings while it is. */
     var talking: Boolean = false
         set(value) {
             if (field != value) {
                 field = value
+                syncRings()
                 syncActive()
             }
         }
@@ -70,6 +71,16 @@ class BuddySpriteView(context: Context) : View(context) {
         strokeWidth = HeylanaTokens.dp(context, 1f)
         color = HeylanaTokens.discBorder
     }
+
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = HeylanaTokens.dp(context, 2f)
+        color = HeylanaTokens.glow
+    }
+
+    /** Where the shed rings are in their cycle while Heylana speaks. */
+    private var ringPhase = 0f
+    private var ringAnimator: ValueAnimator? = null
 
     private val discDiameter = HeylanaTokens.dp(context, HeylanaTokens.DISC_DP)
     private val glowBlur = HeylanaTokens.dp(context, HeylanaTokens.GLOW_BLUR_DP)
@@ -112,7 +123,33 @@ class BuddySpriteView(context: Context) : View(context) {
     override fun onDetachedFromWindow() {
         breatheAnimator?.cancel(); breatheAnimator = null
         activeAnimator?.cancel(); activeAnimator = null
+        ringAnimator?.cancel(); ringAnimator = null
         super.onDetachedFromWindow()
+    }
+
+    /**
+     * Rings shed outward while the answer is being spoken. Real syllable peaks
+     * are not available from the platform, so this runs at a steady cadence for
+     * as long as the utterance lasts.
+     */
+    private fun syncRings() {
+        if (!talking) {
+            ringAnimator?.cancel()
+            ringAnimator = null
+            ringPhase = 0f
+            invalidate()
+            return
+        }
+        if (ringAnimator != null) return
+        ringAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = HeylanaTokens.RIPPLE_MS
+            repeatCount = ValueAnimator.INFINITE
+            addUpdateListener {
+                ringPhase = it.animatedValue as Float
+                invalidate()
+            }
+            start()
+        }
     }
 
     private fun startBreathing() {
@@ -169,6 +206,17 @@ class BuddySpriteView(context: Context) : View(context) {
                 Shader.TileMode.CLAMP
             )
             canvas.drawCircle(cx, cy, outer, glowPaint)
+        }
+
+        if (talking) {
+            // Two rings, half a cycle apart, so one is always on its way out.
+            for (offset in floatArrayOf(0f, 0.5f)) {
+                val t = (ringPhase + offset) % 1f
+                val radius = discRadius + (glowBlur * 0.9f) * t
+                if (radius > minOf(w, h) / 2f) continue
+                ringPaint.alpha = ((1f - t) * 150f).toInt().coerceIn(0, 255)
+                canvas.drawCircle(cx, cy, radius, ringPaint)
+            }
         }
 
         val save = canvas.save()

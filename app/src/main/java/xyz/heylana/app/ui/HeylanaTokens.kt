@@ -59,6 +59,14 @@ object HeylanaTokens {
 
     val discBorder = withAlpha(Color.WHITE, 0.12f)
 
+    /** The aurora that drifts inside the thinking capsule. */
+    val auroraStops = intArrayOf(
+        Color.parseColor("#8F5BFF"),
+        Color.parseColor("#6B3BFF"),
+        Color.parseColor("#35E0E8"),
+        Color.parseColor("#FF9A4D")
+    )
+
     /**
      * The dim over the app behind the message box. Light, because the blur and
      * the glass do most of the separating; more than this and it reads as a

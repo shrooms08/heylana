@@ -151,6 +151,8 @@ class BuddyOverlayService : Service() {
                 conversation.clear()
             }
             view.setMuted(settings.voiceMuted)
+            view.voiceShowsText = settings.showTextForVoice
+            view.onShowTextToggled = { shows -> settings.showTextForVoice = shows }
             view.addToWindow()
         }
     }

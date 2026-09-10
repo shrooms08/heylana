@@ -70,6 +70,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     /** The user ended a task early. */
     var onDone: (() -> Unit)? = null
 
+    /** The user asked to see, or stop seeing, the words of a spoken answer. */
+    var onShowTextToggled: ((Boolean) -> Unit)? = null
+
     /**
      * The full-screen layer the disc flies across. Moving a window every frame
      * is not GPU animated and stutters; a view translation on a layer that is
@@ -174,6 +177,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         panel.onNext = { onNext?.invoke() }
         panel.onDone = { onDone?.invoke() }
         panel.onInputTapped = { takeFocusForTyping() }
+        panel.onShowTextToggled = { shows ->
+            voiceShowsText = shows
+            onShowTextToggled?.invoke(shows)
+        }
 
         content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
         content.addView(
@@ -253,6 +260,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     fun setMuted(muted: Boolean) = panel.setMuted(muted)
 
+    /** Remembered preference: whether spoken answers also show their words. */
+    var voiceShowsText: Boolean = false
+        set(value) {
+            field = value
+            panel.setVoiceMode(voice = panel.isVoiceMode, showsText = value)
+        }
+
     /** Drops the keyboard so the app underneath un-squeezes before it is read. */
     fun hideKeyboard() = panel.hideKeyboard()
 
@@ -295,9 +309,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** Microphone opened: show the box without shoving the keyboard in the way. */
     fun startedListening() {
-        ensurePanelOpen()
+        panel.setVoiceMode(voice = true, showsText = voiceShowsText)
         sprite.expression = BuddySpriteView.Expression.LISTENING
         sprite.refreshState()
+        openCompose()
         panel.showListening()
         panel.hideKeyboard()
     }
@@ -319,8 +334,16 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             closePanel()
             return
         }
-        // The disc travels first over the bare app; the blurred glass only
-        // arrives once it has landed, so no window moves mid-flight.
+        panel.setVoiceMode(voice = false, showsText = voiceShowsText)
+        openCompose()
+    }
+
+    /**
+     * The disc travels first over the bare app; the blurred glass only arrives
+     * once it has landed, so no window moves mid-flight.
+     */
+    private fun openCompose() {
+        if (mode == Mode.COMPOSE) return
         val flew = flyTo(composeScreenPosition()) { enterMode(Mode.COMPOSE) }
         if (!flew) enterMode(Mode.COMPOSE)
     }
@@ -390,7 +413,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                 panel.alpha = 0f
                 scrim.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
                 panel.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
-                panel.focusInput()
+                // A spoken question has no field to type in.
+                if (!panel.isVoiceMode) panel.focusInput()
             }
         }
     }

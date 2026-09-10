@@ -105,11 +105,18 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     /** Called when the user taps the question field, so the window can take focus. */
     var onInputTapped: (() -> Unit)? = null
 
+    /** Called with the new preference when the show-text chip is tapped. */
+    var onShowTextToggled: ((Boolean) -> Unit)? = null
+
     private val answer = TextView(context)
     private val note = TextView(context)
     private val input = EditText(context)
     private val ask = TextView(context)
     private val mute = MuteToggleView(context)
+
+    private val capsule = AuroraCapsuleView(context)
+    private val showText = TextView(context)
+    private val inputRow = LinearLayout(context)
 
     private val sessionRow = LinearLayout(context)
     private val stepChip = TextView(context)
@@ -152,6 +159,18 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
                 onMuteToggled?.invoke(muted)
             }
         }
+        // Only offered when the answer is being spoken, since typing already
+        // shows the text.
+        stylePill(showText, SHOW_TEXT, HeylanaTokens.textSecondary) {
+            voiceShowsText = !voiceShowsText
+            applyVoiceVisibility()
+            onShowTextToggled?.invoke(voiceShowsText)
+        }
+        showText.visibility = View.GONE
+        topRow.addView(
+            showText,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        )
         topRow.addView(
             mute,
             LayoutParams(dp(26f), dp(26f)).apply { marginStart = dp(HeylanaTokens.SPACE_3_DP) }
@@ -189,8 +208,18 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             }
         )
 
+        // ------------------------------------------------- the thinking capsule
+        capsule.visibility = View.GONE
+        addView(
+            capsule,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                topMargin = dp(HeylanaTokens.SPACE_2_DP)
+            }
+        )
+
         // ------------------------------------------------------ field + ask
-        val row = LinearLayout(context).apply {
+        val row = inputRow.apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
@@ -310,6 +339,47 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         view.setOnClickListener { onTap() }
     }
 
+    // ----------------------------------------------------------- voice mode
+
+    /** True while the current question was asked by voice rather than typed. */
+    var isVoiceMode = false
+        private set
+
+    /** Whether a spoken answer also shows its words. Remembered in settings. */
+    private var voiceShowsText = false
+
+    fun setVoiceMode(voice: Boolean, showsText: Boolean) {
+        isVoiceMode = voice
+        voiceShowsText = showsText
+        applyVoiceVisibility()
+    }
+
+    /**
+     * In voice mode the box is a stage, not a transcript: no field to type in,
+     * and no wall of text unless the user has asked to see it.
+     */
+    private fun applyVoiceVisibility() {
+        inputRow.visibility = if (isVoiceMode) View.GONE else View.VISIBLE
+        showText.visibility = if (isVoiceMode) View.VISIBLE else View.GONE
+        showText.text = if (voiceShowsText) HIDE_TEXT else SHOW_TEXT
+        if (isVoiceMode && !voiceShowsText && capsule.visibility != View.VISIBLE) {
+            answer.visibility = View.GONE
+        } else if (isVoiceMode && voiceShowsText) {
+            answer.visibility = if (answer.text.isNullOrBlank()) View.GONE else View.VISIBLE
+        }
+    }
+
+    /** The aurora capsule, shown while a spoken question is being worked on. */
+    fun showThinkingCapsule() {
+        answer.visibility = View.GONE
+        capsule.visibility = View.VISIBLE
+        enable(false)
+    }
+
+    private fun hideCapsule() {
+        capsule.visibility = View.GONE
+    }
+
     private fun submit() {
         val question = input.text.toString().trim()
         if (question.isEmpty()) return
@@ -324,19 +394,28 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         input.isEnabled = enabled
     }
 
-    /** Shows the answer area only when there is something in it to read. */
+    /**
+     * Shows the answer area only when there is something to read — and, when the
+     * question was spoken, only if the user has asked to see the words at all.
+     */
     private fun say(text: String) {
         answer.text = text
-        answer.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
+        val wanted = text.isNotBlank() && (!isVoiceMode || voiceShowsText)
+        answer.visibility = if (wanted) View.VISIBLE else View.GONE
         answer.scrollTo(0, 0)
     }
 
     fun showThinking() {
+        if (isVoiceMode) {
+            showThinkingCapsule()
+            return
+        }
         say(THINKING)
         enable(false)
     }
 
     fun showAnswer(text: String) {
+        hideCapsule()
         say(text)
         enable(true)
         input.setText("")
@@ -344,7 +423,11 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     /** A notice or error — keeps whatever the user typed so they can retry. */
     fun showNotice(text: String) {
-        say(text)
+        hideCapsule()
+        // A problem is always worth reading, whatever the user asked for.
+        answer.text = text
+        answer.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
+        answer.scrollTo(0, 0)
         enable(true)
     }
 
@@ -416,6 +499,8 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         private const val THINKING = "thinking…"
         private const val LISTENING = "listening…"
         private const val MAX_ANSWER_LINES = 8
+        private const val SHOW_TEXT = "show text"
+        private const val HIDE_TEXT = "hide text"
         private const val MUTE_LABEL = "Mute Heylana's voice"
         private const val UNMUTE_LABEL = "Unmute Heylana's voice"
     }

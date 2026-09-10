@@ -54,6 +54,16 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_VOICE_MUTED, value).apply()
         }
 
+    /**
+     * Whether a spoken answer also shows its text. Off by default: asking by
+     * voice is asking to be answered by voice.
+     */
+    var showTextForVoice: Boolean
+        get() = prefs.getBoolean(KEY_SHOW_TEXT_VOICE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SHOW_TEXT_VOICE, value).apply()
+        }
+
     val hasApiKey: Boolean get() = apiKey != null
 
     /** "sk-ant-…4f2a" — enough to recognise the key, never enough to use it. */
@@ -73,6 +83,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_QUICK_MODEL = "quick_model"
         private const val KEY_TASK_MODEL = "task_model"
         private const val KEY_VOICE_MUTED = "voice_muted"
+        private const val KEY_SHOW_TEXT_VOICE = "show_text_voice"
 
         @Volatile
         private var instance: HeylanaSettings? = null

@@ -16,6 +16,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
+import xyz.heylana.app.ui.HeylanaTokens
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -272,7 +273,7 @@ class HighlightOverlayView(context: Context) : View(context) {
     )
 
     private companion object {
-        val PURPLE = Color.parseColor("#7C3AED")
+        val PURPLE = HeylanaTokens.accent
         const val MIN_ALPHA = 0.6f
         const val PULSE_HALF_CYCLE_MS = 500L
         const val VISIBLE_MS = 8_000L

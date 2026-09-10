@@ -37,11 +37,37 @@ xyz.heylana.app
 │   ├── Speaker              text-to-speech; degrades to text only if it will not start
 │   ├── Listener             SpeechRecognizer, held open only while the buddy is held
 │   └── MicPermissionActivity  invisible one-shot prompt for the microphone
+├── ui/                      how everything looks
+│   ├── HeylanaTokens        every colour, size, radius, duration and typeface
+│   ├── GlassDrawable        the one liquid-glass recipe, used by every surface
+│   └── GlassBlur            asks the window for cross-window blur, honestly
 ├── settings/                stored configuration
 │   ├── HeylanaSettings      EncryptedSharedPreferences: API key + model name
 │   └── SettingsActivity     the settings screen
 └── ui/theme/                Compose theme (scaffolded)
 ```
+
+## Look and feel
+
+**Tokens live in `ui/HeylanaTokens`, and nothing that draws carries its own
+values.** Colours, radii, spacing, durations, type sizes and weights all come
+from there. A magic number in a view is a bug: if a value is a design decision,
+or is needed twice, it belongs in the tokens file. The type is Outfit, shipped as
+one variable font in `res/font` and instanced at 300, 400 and 500; if the font
+resource will not load, the tokens fall back to the platform's light sans.
+
+**The glass recipe is `ui/GlassDrawable`, and there is only one of it.** The
+message box, its buttons, the chips and the buddy's disc are all the same
+surface at different radii. In order: a fill, a soft purple refraction band at
+122 degrees near the top-left, a bevel that runs light down the top and left
+edges and dark up the bottom and right, then a hairline border. Primary buttons
+are that same glass with the band at full strength instead of a solid fill.
+
+**Blur is asked for, never assumed.** `ui/GlassBlur` checks
+`isCrossWindowBlurEnabled` at the moment a window is shown and sets
+`FLAG_BLUR_BEHIND` only if the platform agrees. The answer picks the fill: thin
+glass when the platform is blurring what is behind, a heavier fill when it is
+not and the surface has to carry itself. Never hardcode one or the other.
 
 ## How the pieces talk to each other
 
@@ -96,10 +122,23 @@ seconds; during a task it stays up until the step changes, because the user need
 it while they hunt for the thing. Either way it clears at once when the next
 question is sent or the panel closes.
 
+**Re-parenting the buddy resets its animation.** Moving the disc between the
+docked, compose and HUD layouts detaches the view, which cancels any running
+cross-fade part way. The owner calls `refreshState()` after every re-parent
+rather than trusting the attach callbacks to have fired in a useful order.
+
 **Reading the screen.** The snapshot is taken after the keyboard is dismissed and
 the app underneath has been given a moment to lay itself out again. With the
 keyboard up, the bottom of the app is squeezed off screen — which is exactly where
 the button the answer is about usually lives.
+
+**The overlay window has three modes, and everything follows from which one.**
+Docked, it is a small window holding just the disc, so touches anywhere else
+reach the app underneath. Composing, it takes the whole screen: the app behind
+is dimmed, the buddy flies to the top centre and the glass box drops in beneath
+it with the keyboard. As a task HUD it is small again and passive — no dim, no
+keyboard — because during guidance a tap outside the box is the user doing the
+step, not a request to dismiss.
 
 **Gestures on the sprite, kept strictly apart.** A tap toggles the chat panel. A
 drag moves the buddy and snaps it to an edge. A press-and-hold opens the

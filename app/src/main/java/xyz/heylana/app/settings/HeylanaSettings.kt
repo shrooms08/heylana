@@ -23,6 +23,62 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             }.apply()
         }
 
+    /**
+     * The id this install is known by at the proxy. Made once, kept until the
+     * app is uninstalled, and sent with every request so a single phone cannot
+     * spend the whole day's budget.
+     */
+    val deviceId: String
+        get() = DeviceId.readOrCreate(
+            read = { prefs.getString(KEY_DEVICE_ID, null) },
+            write = { prefs.edit().putString(KEY_DEVICE_ID, it).apply() }
+        )
+
+    /**
+     * An address for the proxy that overrides the one built into the app. For
+     * pointing a test build at a stub, and empty the rest of the time.
+     */
+    var proxyUrlOverride: String
+        get() = prefs.getString(KEY_PROXY_URL, null).orEmpty()
+        set(value) {
+            val cleaned = value.trim().trimEnd('/')
+            prefs.edit().apply {
+                if (cleaned.isEmpty()) remove(KEY_PROXY_URL) else putString(KEY_PROXY_URL, cleaned)
+            }.apply()
+        }
+
+    /**
+     * Off by default and hidden away: talk to Anthropic directly with a key of
+     * your own instead of going through Heylana's proxy. Nothing else — the
+     * voice and the ears still need the proxy, because their keys are not the
+     * user's to hold.
+     */
+    var useOwnKey: Boolean
+        get() = prefs.getBoolean(KEY_USE_OWN_KEY, false) && apiKey != null
+        set(value) {
+            prefs.edit().putBoolean(KEY_USE_OWN_KEY, value).apply()
+        }
+
+    /** Which voice reads the answers out. */
+    var voice: String
+        get() = prefs.getString(KEY_VOICE, null)?.takeIf { it in VOICES } ?: VOICE_SKYLAR
+        set(value) {
+            prefs.edit().putString(KEY_VOICE, if (value in VOICES) value else VOICE_SKYLAR).apply()
+        }
+
+    /** Debug switches: pretend the good ears and the good voice are not there. */
+    var forcePhoneEars: Boolean
+        get() = prefs.getBoolean(KEY_FORCE_PHONE_EARS, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_FORCE_PHONE_EARS, value).apply()
+        }
+
+    var forcePhoneVoice: Boolean
+        get() = prefs.getBoolean(KEY_FORCE_PHONE_VOICE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_FORCE_PHONE_VOICE, value).apply()
+        }
+
     /** The cheap model, used for one-shot questions. */
     var quickModel: String
         get() = prefs.getString(KEY_QUICK_MODEL, null)?.takeIf { it.isNotBlank() }
@@ -87,6 +143,19 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
     companion object {
         const val DEFAULT_QUICK_MODEL = "claude-haiku-4-5-20251001"
         const val DEFAULT_TASK_MODEL = "claude-sonnet-5"
+
+        /** Cartesia's two, and the phone's own as the third choice. */
+        const val VOICE_SKYLAR = "skylar"
+        const val VOICE_ARCHIE = "archie"
+        const val VOICE_PHONE = "phone"
+        val VOICES = listOf(VOICE_SKYLAR, VOICE_ARCHIE, VOICE_PHONE)
+
+        private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_PROXY_URL = "proxy_url"
+        private const val KEY_USE_OWN_KEY = "use_own_key"
+        private const val KEY_VOICE = "voice"
+        private const val KEY_FORCE_PHONE_EARS = "force_phone_ears"
+        private const val KEY_FORCE_PHONE_VOICE = "force_phone_voice"
 
         private const val KEY_WARM_UP = "warm_up_connection"
 

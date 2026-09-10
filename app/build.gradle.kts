@@ -1,7 +1,22 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+/**
+ * Where Heylana's proxy lives. It is one line in local.properties, which is not
+ * in git, so the address stays on the machine that built the app:
+ *
+ *     heylana.proxyUrl=https://heylana-proxy.<account>.workers.dev
+ *
+ * Empty means "not set up yet", and the app says so rather than guessing.
+ */
+val proxyUrl: String = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}.getProperty("heylana.proxyUrl").orEmpty().trim().trimEnd('/')
 
 android {
     namespace = "xyz.heylana.app"
@@ -17,6 +32,8 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "PROXY_URL", "\"$proxyUrl\"")
     }
 
     buildTypes {

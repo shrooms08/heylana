@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only: lets the app talk to a stub proxy running on the machine
+  that built it, reached over `adb reverse`. Plain http, and only to the phone's
+  own loopback address — nothing else on the network is trusted, and release
+  builds do not carry this file at all.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

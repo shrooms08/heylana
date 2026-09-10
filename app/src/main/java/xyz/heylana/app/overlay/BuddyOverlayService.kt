@@ -29,10 +29,11 @@ import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.MainActivity
 import xyz.heylana.app.R
-import xyz.heylana.app.brain.AnthropicClient
+import xyz.heylana.app.brain.ProxyClient
 import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.GuidanceSession
+import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
 import xyz.heylana.app.screen.ScreenNode
 import xyz.heylana.app.screen.ScreenSignal
@@ -61,7 +62,7 @@ class BuddyOverlayService : Service() {
     private var inFlight: Job? = null
 
     private val settings: HeylanaSettings by lazy { HeylanaSettings.get(this) }
-    private val brain: AnthropicClient by lazy { AnthropicClient(settings) }
+    private val brain: ProxyClient by lazy { ProxyClient(settings) }
 
     private var speaker: Speaker? = null
     private var listener: Listener? = null
@@ -331,7 +332,7 @@ class BuddyOverlayService : Service() {
     private fun logScreenSize(snapshot: ScreenSnapshot, screenText: String) {
         if (!BuildConfig.DEBUG) return
         Log.d(
-            AnthropicClient.USAGE_TAG,
+            Proxy.USAGE_TAG,
             "screen elements=${snapshot.nodes.size} chars=${screenText.length} " +
                 "memory=${conversation.size} exchanges"
         )

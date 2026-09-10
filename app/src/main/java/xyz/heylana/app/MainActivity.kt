@@ -52,10 +52,10 @@ private data class Checklist(
     val overlay: Boolean = false,
     val accessibility: Boolean = false,
     val notifications: Boolean = false,
-    val apiKey: Boolean = false,
+
     val microphone: Boolean = false
 ) {
-    val allDone: Boolean get() = overlay && accessibility && notifications && apiKey
+    val allDone: Boolean get() = overlay && accessibility && notifications
 }
 
 class MainActivity : ComponentActivity() {
@@ -111,7 +111,6 @@ class MainActivity : ComponentActivity() {
             overlay = Settings.canDrawOverlays(this),
             accessibility = HeylanaAccessibilityService.isEnabled(this),
             notifications = notificationsAllowed(),
-            apiKey = HeylanaSettings.get(this).hasApiKey,
             microphone = ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.RECORD_AUDIO
@@ -174,11 +173,14 @@ private fun SetupScreen(
     ) {
         Text(text = "Heylana", style = MaterialTheme.typography.headlineLarge)
         Text(
-            text = "Four things to switch on, then your buddy can answer questions " +
+            text = "Three things to switch on, then your buddy can answer questions " +
                 "about whatever app is on your screen. The microphone is optional — " +
                 "it only lets you talk to the buddy instead of typing.\n\n" +
                 "Heylana reads the screen only when you ask, and watches for your tap " +
-                "only while it is pointing at something.",
+                "only while it is pointing at something.\n\n" +
+                "Your voice goes to Deepgram to be transcribed while you hold the " +
+                "buddy. The spoken answer text goes to Cartesia to become speech. The " +
+                "screen never goes to either.",
             style = MaterialTheme.typography.bodyMedium
         )
 
@@ -211,13 +213,6 @@ private fun SetupScreen(
         )
 
         ChecklistRow(
-            title = "API key",
-            done = checklist.apiKey,
-            actionLabel = "Add API key",
-            onAction = onOpenSettings
-        )
-
-        ChecklistRow(
             title = "Microphone (optional)",
             done = checklist.microphone,
             actionLabel = "Allow microphone",
@@ -240,7 +235,7 @@ private fun SetupScreen(
 
         if (!checklist.allDone) {
             Text(
-                text = "Finish the first four rows above to start the buddy.",
+                text = "Finish the first three rows above to start the buddy.",
                 style = MaterialTheme.typography.bodySmall
             )
         }

@@ -5,17 +5,14 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import xyz.heylana.app.BuildConfig
+import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.settings.HeylanaSettings
 import java.io.IOException
-import java.util.concurrent.TimeUnit
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
 
 /** A multi-step task the model says it is walking the user through. */
 data class TaskState(val goal: String, val done: Boolean)
@@ -33,66 +30,37 @@ sealed interface BrainReply {
 }
 
 /**
- * Talks to the Anthropic Messages API.
+ * Asks the question.
  *
- * The API key is read from [HeylanaSettings] at call time and never stored here,
- * never logged, and never written anywhere else.
+ * Everything goes through Heylana's proxy, which is where the keys are: the app
+ * says what kind of work it is — a quick question or the step of a task — and
+ * the proxy chooses the model. The app cannot name one, and does not hold a key
+ * to send with it.
+ *
+ * The one exception is the hidden "use my own key" setting, which talks to
+ * Anthropic directly with a key the user typed in themselves. That key is read
+ * from [HeylanaSettings] at call time and never logged or written anywhere else.
  */
-class AnthropicClient(private val settings: HeylanaSettings) {
+class ProxyClient(private val settings: HeylanaSettings) {
 
-    private val http = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .callTimeout(75, TimeUnit.SECONDS)
-        .build()
+    private val proxy = Proxy(settings)
 
-    /** When the connection to the API host was last opened ahead of a request. */
-    @Volatile
-    private var warmedAt = 0L
-
-    private val warm: Boolean
-        get() = warmedAt != 0L && SystemClock.elapsedRealtime() - warmedAt < WARM_TTL_MS
-
-    /**
-     * Opens the connection to the API host before there is anything to send, so
-     * the request that follows does not wait for DNS, for the radio to come out
-     * of idle, or for a full TLS handshake.
-     *
-     * **No request is made.** Not a byte of a body, no headers, and above all no
-     * API key: this is a socket and a handshake to a hostname, and then it is
-     * closed again. What survives is the DNS answer, a woken radio, and the TLS
-     * session, which the platform caches per host and OkHttp's default socket
-     * factory can resume.
-     */
-    suspend fun warmUp() = withContext(Dispatchers.IO) {
-        if (!settings.warmUpConnection) return@withContext
-        if (warm) return@withContext
-        val started = SystemClock.elapsedRealtime()
-        val opened = runCatching {
-            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-            (factory.createSocket(HOST, HTTPS_PORT) as SSLSocket).use { socket ->
-                socket.soTimeout = WARM_TIMEOUT_MS
-                socket.startHandshake()
-            }
-        }.isSuccess
-        if (opened) warmedAt = SystemClock.elapsedRealtime()
-        if (BuildConfig.DEBUG) {
-            Log.d(
-                USAGE_TAG,
-                "warmup opened=$opened in ${SystemClock.elapsedRealtime() - started}ms"
-            )
-        }
+    /** Opens the connection to whichever host the next request will go to. */
+    suspend fun warmUp() {
+        if (settings.useOwnKey) return
+        proxy.warmUp()
     }
 
     /**
      * An ordinary question, optionally with the recent conversation for context.
-     * Runs on the quick model — this also covers the first turn of a task, since
-     * nothing knows it is a task until the reply comes back.
+     * Quick work — the proxy sends it to the cheap model. This also covers the
+     * first turn of a task, since nothing knows it is a task until the reply
+     * comes back.
      */
     suspend fun ask(question: String, screenText: String, history: String? = null): BrainReply =
-        send(HeylanaPrompt.userMessage(screenText, question, history), settings.quickModel)
+        send(HeylanaPrompt.userMessage(screenText, question, history), MODE_QUICK)
 
-    /** The next step of a task already under way. Runs on the stronger model. */
+    /** The next step of a task already under way. The proxy uses the stronger model. */
     suspend fun nextStep(
         goal: String,
         historyText: String,
@@ -101,55 +69,68 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         needPointerHint: Boolean
     ): BrainReply = send(
         HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber, needPointerHint),
-        settings.taskModel
+        MODE_TASK
     )
 
-    private suspend fun send(userMessage: String, model: String): BrainReply = withContext(Dispatchers.IO) {
-        val key = settings.apiKey
-        if (key.isNullOrBlank()) {
-            return@withContext BrainReply.Failed("No API key yet. Add your key in Heylana → Settings.")
+    private suspend fun send(userMessage: String, mode: String): BrainReply = withContext(Dispatchers.IO) {
+        val ownKey = settings.useOwnKey
+        val request = if (ownKey) ownKeyRequest(userMessage, mode) else proxyRequest(userMessage, mode)
+        if (request == null) {
+            return@withContext BrainReply.Failed(if (ownKey) NO_KEY else NO_PROXY)
         }
 
-        val payload = JSONObject()
-            .put("model", model)
-            .put("max_tokens", MAX_TOKENS)
-            .put("system", HeylanaPrompt.SYSTEM)
-            .put(
-                "messages",
-                JSONArray().put(
-                    JSONObject().put("role", "user").put("content", userMessage)
-                )
-            )
-
-        val request = Request.Builder()
-            .url(ENDPOINT)
-            .addHeader("x-api-key", key)
-            .addHeader("anthropic-version", ANTHROPIC_VERSION)
-            .addHeader("content-type", "application/json")
-            .post(payload.toString().toRequestBody(JSON))
-            .build()
-
-        val warmed = warm
+        val warmed = proxy.warm
         val started = SystemClock.elapsedRealtime()
         try {
-            http.newCall(request).execute().use { response ->
+            Proxy.http.newCall(request).execute().use { response ->
                 // execute() returns as the response headers land, which is the
                 // first byte back — the part a warm connection actually changes.
                 logFirstByte(SystemClock.elapsedRealtime() - started, warmed)
-                warmedAt = 0L
+                proxy.spendWarmth()
                 val body = response.body.string()
                 if (!response.isSuccessful) {
                     return@withContext BrainReply.Failed(httpError(response.code, body))
                 }
-                logUsage(model, body)
+                logUsage(mode, body)
                 extractReply(body)
             }
         } catch (e: IOException) {
-            BrainReply.Failed("Couldn't reach the API: ${e.message ?: "no connection"}")
+            BrainReply.Failed("Couldn't reach Heylana: ${e.message ?: "no connection"}")
         } catch (_: Exception) {
             BrainReply.Failed("Something went wrong reading the reply.")
         }
     }
+
+    /** What the app sends: the kind of work, not the model. */
+    private fun proxyRequest(userMessage: String, mode: String): Request? {
+        if (!proxy.isConfigured) return null
+        return proxy.post("chat", payload(userMessage).put("mode", mode).toString())
+    }
+
+    /** The hidden way round: straight to Anthropic with the user's own key. */
+    private fun ownKeyRequest(userMessage: String, mode: String): Request? {
+        val key = settings.apiKey ?: return null
+        val model = if (mode == MODE_TASK) {
+            HeylanaSettings.DEFAULT_TASK_MODEL
+        } else {
+            HeylanaSettings.DEFAULT_QUICK_MODEL
+        }
+        return Request.Builder()
+            .url(ANTHROPIC_ENDPOINT)
+            .addHeader("x-api-key", key)
+            .addHeader("anthropic-version", ANTHROPIC_VERSION)
+            .addHeader("content-type", "application/json")
+            .post(payload(userMessage).put("model", model).toString().toRequestBody(JSON))
+            .build()
+    }
+
+    private fun payload(userMessage: String): JSONObject = JSONObject()
+        .put("max_tokens", MAX_TOKENS)
+        .put("system", HeylanaPrompt.SYSTEM)
+        .put(
+            "messages",
+            JSONArray().put(JSONObject().put("role", "user").put("content", userMessage))
+        )
 
     /**
      * Debug builds only: how long the request waited for its first byte back, and
@@ -157,7 +138,7 @@ class AnthropicClient(private val settings: HeylanaSettings) {
      */
     private fun logFirstByte(millis: Long, warmed: Boolean) {
         if (!BuildConfig.DEBUG) return
-        Log.d(USAGE_TAG, "first_byte_ms=$millis warmed=$warmed")
+        Log.d(Proxy.USAGE_TAG, "first_byte_ms=$millis warmed=$warmed")
     }
 
     /**
@@ -165,22 +146,24 @@ class AnthropicClient(private val settings: HeylanaSettings) {
      * operator can watch the budget in Logcat. Counts and the model name only —
      * never a word of the screen or the conversation.
      */
-    private fun logUsage(model: String, body: String) {
+    private fun logUsage(mode: String, body: String) {
         if (!BuildConfig.DEBUG) return
         val usage = runCatching { JSONObject(body).optJSONObject("usage") }.getOrNull() ?: return
         Log.d(
-            USAGE_TAG,
-            "model=$model input_tokens=${usage.optInt("input_tokens", -1)} " +
+            Proxy.USAGE_TAG,
+            "mode=$mode input_tokens=${usage.optInt("input_tokens", -1)} " +
                 "output_tokens=${usage.optInt("output_tokens", -1)}"
         )
     }
 
-    /** "401: invalid x-api-key" — short and readable, never a stack trace. */
+    /** Short and readable, never a stack trace, and never a key. */
     private fun httpError(code: Int, body: String): String {
+        val reason = runCatching { JSONObject(body).optString("reason") }.getOrDefault("")
+        if (reason == "daily_cap") return DAILY_CAP
         val detail = runCatching {
             JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
         }.getOrDefault("")
-        return if (detail.isBlank()) "API error $code." else "API error $code: $detail"
+        return if (detail.isBlank()) "Something went wrong ($code)." else "Error $code: $detail"
     }
 
     /** First text block → strip fences → parse the JSON → fall back to raw text. */
@@ -245,18 +228,21 @@ class AnthropicClient(private val settings: HeylanaSettings) {
     }
 
     companion object {
-        private const val HOST = "api.anthropic.com"
-        private const val HTTPS_PORT = 443
-        private const val ENDPOINT = "https://$HOST/v1/messages"
-
-        /** How long an opened connection is worth counting on. */
-        private const val WARM_TTL_MS = 60_000L
-        private const val WARM_TIMEOUT_MS = 5_000
+        private const val ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages"
         private const val ANTHROPIC_VERSION = "2023-06-01"
         private const val MAX_TOKENS = 300
 
-        /** Logcat tag for the token counter. */
-        const val USAGE_TAG = "HeylanaTokens"
+        /** What the app is allowed to say about the work. The proxy picks the model. */
+        const val MODE_QUICK = "quick"
+        const val MODE_TASK = "task"
+
+        private const val NO_PROXY =
+            "Heylana is not set up yet. Whoever built this app needs to add the proxy address."
+        private const val NO_KEY =
+            "No API key yet. Add your key in Heylana \u2192 Settings, or switch off Use my own key."
+        private const val DAILY_CAP =
+            "That is all Heylana can do today. Try again tomorrow."
+
         private val JSON = "application/json".toMediaType()
     }
 }

@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+design/refs/
+design/*.html

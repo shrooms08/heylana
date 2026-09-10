@@ -1,208 +1,83 @@
-# SMOKE TEST — Phase 2c: token trim and model routing
+# SMOKE TEST — design v1: vector brand mark and launcher icon
 
-This phase makes every question cost less. The test below is deliberately small.
+This one is about how things look. Nothing in the app's behaviour was touched.
 
-## Budget for this test: EXACTLY 4 live API calls
+## Budget for this test: 0 live API calls
 
-That is the whole cost of running this page, and it breaks down like this:
+Nothing here talks to the API. Do not ask the buddy anything.
 
-| Call | What triggers it | Which model |
-|------|------------------|-------------|
-| 1 | The question in Chrome (Part B) | Quick model — Haiku |
-| 2 | The question in Clock (Part C) | Quick model — Haiku |
-| 3 | Starting the timer task (Part D) | Quick model — Haiku |
-| 4 | The task moving to step 2 by itself (Part D) | Task model — Sonnet |
-
-Pressing **Done** in Part E costs **nothing** — that is why Part E uses the task
-that is already running rather than starting a new one.
-
-**Do not re-send a question to "check it again".** Every send is money. If a step
-does not do what this page says, write down what happened and move on.
+Note: the API key on this emulator is still the **fake** one from the last phase.
+That does not matter for these four checks. Put your real key back when you next
+want to use the buddy.
 
 ---
 
-## Part A — Put your key back (no API calls)
+**1. Check the trace against the original.**
+On the computer, open **design/compare.png**.
 
-Your real key was **replaced with a fake one** during development, on purpose, so
-that no test could ever spend your budget. You need to put yours back before
-anything below will work.
+You should see: three panels side by side.
 
-**1. Open Settings.**
-Tap the **Heylana** icon, then the **Settings** button at the bottom.
+- **ORIGINAL** — your logo, with slightly stair-stepped edges when you look close.
+- **TRACED** — the same swirl, with **smooth edges** and the four rounded tips
+  still properly **round**, not clipped flat or pointed.
+- **OVERLAP** — the two laid on top of each other. It should be **almost entirely
+  yellow**. Yellow means the two agree. Any thick red or green area would mean
+  the trace has drifted; a hairline of colour around the edge is normal.
 
-You should see: **"Key saved · sk-ant-…0000"** — that is the fake key — and below
-it a **Models** card with two fields:
-
-- **Quick model**, showing **claude-haiku-4-5-20251001**
-- **Task model**, showing **claude-sonnet-5**
-
----
-
-**2. Replace the key.**
-Tap **Replace**, type or paste **your key**, tap **Save**.
-
-You should see: **"Key saved · sk-ant-…"** ending in the last four characters of
-**your** key, and the word **Saved.**
-
-Tap **Back**, check all five checklist rows, then tap **Start buddy**.
+Look especially at the small teardrop on the left and the hook on the right —
+both should be present and rounded.
 
 ---
 
-## Part B — Call 1: a question in Chrome
+**2. Find the new launcher icon.**
+On the emulator, swipe up from the bottom of the home screen to open the app
+drawer, and find **Heylana** in the alphabetical list.
 
-**3. Open a news page.**
-Press Home, open **Chrome**, go to **bbc.com**.
-
----
-
-**4. Ask one question.**
-Tap the purple face, type **what is this page about**, tap **Send**.
-
-You should see: **thinking…**, then a short spoken answer about that page.
-
-**No step chip, no Next, no Done** — this was a question, not a task.
-
-That was **call 1**, on the quick model.
+You should see: a **black circle with the white swirl inside it**, sitting between
+**Google** and **Maps**. The old green Android robot icon should be gone.
 
 ---
 
-## Part C — Call 2: pointing in Clock
+**3. Check the adaptive shape.**
+Press and hold the **Heylana** icon until the menu pops up, then drag it a little
+onto the home screen and drop it.
 
-**5. Open the Clock app.**
-Press Home, open **Clock**, tap the **Alarm** tab.
-
----
-
-**6. Ask one question.**
-Tap the purple face, type **how do I add an alarm**, tap **Send**.
-
-You should see: a short spoken answer and a **pulsing purple box exactly on the
-round + button**, with the arrow from the buddy. Still **no step chip**.
-
-That was **call 2**, on the quick model. The box fades by itself after about
-eight seconds.
+You should see: the icon keep its shape as the launcher masks it — the black
+background fills the whole shape edge to edge with **no white corners and no gap**,
+and the swirl stays **fully inside** with room around it, never touching the edge
+or getting cut off.
 
 ---
 
-## Part D — Calls 3 and 4: a two-step task on the Timer tab
+**4. Check the app itself is unchanged.**
+Tap the **Heylana** icon to open the app.
 
-**7. Go to the Timer tab.**
-In the Clock app, tap **Timer** in the bottom bar.
+You should see: exactly what you saw before — the title **Heylana**, the same five
+checklist rows, **Start buddy** and **Settings**. Nothing about the screen should
+look different.
 
-You should see: the timer keypad, with digits and a start button.
-
----
-
-**8. Ask for the task.**
-Tap the purple face, type **start a 1 minute timer**, tap **Send**.
-
-You should see: a **"step 1"** chip, a **Next** button, a **Done** button, a
-spoken first step, and a **purple box** on whatever you should touch first —
-usually the **1** on the keypad.
-
-That was **call 3**, on the quick model.
-
----
-
-**9. Do the step, and do not press Next.**
-Tap whatever is boxed.
-
-You should see: within a few seconds, and with no input from you, the chip becomes
-**"step 2"** with a new spoken step and the box moved to the next control —
-usually the **start** button.
-
-That was **call 4**, on the task model. **Stop here — do not tap the boxed start
-button**, or the task will spend a fifth call finishing itself.
-
----
-
-## Part E — Done costs nothing
-
-**10. End the task.**
-Tap the **Done** button in the card.
-
-You should see and hear:
-
-- Heylana say **"Okay, stopping here."** out loud, and the same words in the card.
-- The **step chip, Next and Done disappear**.
-- The **purple box and arrow vanish**.
-
-No API call is made by pressing Done.
-
----
-
-## Part F — Reading the token count in Logcat (no API calls)
-
-This is how you check what a question actually cost.
-
-**11. Open Logcat.**
-On the computer, open **Android Studio** with the Heylana project. At the bottom
-of the window click the **Logcat** tab. If you cannot see it, use the menu
-**View → Tool Windows → Logcat**.
-
-You should see: a fast-scrolling list of messages, and the emulator selected in
-the dropdown at the top left.
-
----
-
-**12. Filter it.**
-Click the search box at the top of the Logcat panel and type exactly:
-
-```
-tag:HeylanaTokens
-```
-
-You should see: the list shrink to only Heylana's own counter lines.
-
----
-
-**13. Read the numbers.**
-Scroll to the top of what is left and find the lines from **call 1** — the Chrome
-question. There are two kinds:
-
-```
-screen elements=24 chars=1211
-model=claude-haiku-4-5-20251001 input_tokens=... output_tokens=...
-```
-
-The **input_tokens** number on the second line is what that question cost you to
-send. That is the number this phase set out to reduce.
-
-You should see: the model on **calls 1, 2 and 3** is
-**claude-haiku-4-5-20251001**, and on **call 4** it is **claude-sonnet-5**. That
-proves the cheap model is doing the ordinary work.
-
-These lines contain only counts and model names — never anything from your screen
-or your conversation.
+Tap **Start buddy** and confirm the purple pixel-face buddy still appears at the
+right edge, then tap **Stop buddy**.
 
 ---
 
 ## What to do if something goes wrong
 
-- **"API error 401"** — the key is wrong or you skipped Part A. Settings →
-  **Replace** → your key → **Save**.
-- **"Couldn't reach the API"** — no internet.
-- **The Logcat filter shows nothing** — check the emulator is picked in the
-  dropdown, and that you have asked at least one question since opening Logcat.
-- **A question comes back noticeably worse than before** — the quick model is
-  cheaper and may be weaker. Note the question and the answer. You can put
-  **claude-sonnet-5** into the **Quick model** field in Settings to undo the
-  routing, at higher cost.
-- **The count of live calls does not match the table** — that matters for the
-  budget. Note where the extra call happened.
+- **The old Android robot icon is still showing** — Android caches launcher icons.
+  Long-press the home screen, or reboot the emulator, and look again.
+- **The swirl looks cut off in the icon** — note whether it is cut at the top,
+  bottom or sides.
+- **The overlap panel has thick red or green patches** — the trace has drifted
+  from your logo. Say roughly where.
+- **Anything in the app looks different** — that would be a mistake; nothing in
+  the app's behaviour was meant to change.
 
 ---
 
 ## Pass criteria
 
-- Both model fields appear in Settings with the right defaults, and both save.
-- A question gives a one-shot answer with **no step chip**; a task gives a chip
-  with **Next** and **Done**.
-- The task moves to step 2 **by itself**.
-- **Done** says **"Okay, stopping here."** and clears the chip, buttons and box.
-- Logcat under **tag:HeylanaTokens** shows **Haiku for calls 1 to 3** and
-  **Sonnet for call 4**, with an input token count for each.
-- The whole test cost **4 live calls** and no more.
-- Answers are still good enough to be useful, and the box still lands on the right
-  control.
-- Nothing crashes.
+- The traced mark matches the original, with smooth edges and rounded tips.
+- The launcher icon is the black-and-white swirl, at every size it is shown.
+- The adaptive icon fills its shape with the mark safely inside.
+- The app opens and behaves exactly as before.
+- No API calls were made.

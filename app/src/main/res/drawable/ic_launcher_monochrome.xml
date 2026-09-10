@@ -2,7 +2,7 @@
 <!-- Heylana brand mark. Generated from design/refs/heylana_logo.png; edit that
      and re-run the trace rather than hand-editing this path. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:name="heylana_launcher_foreground"
+    android:name="heylana_launcher_monochrome"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="1080"

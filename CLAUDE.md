@@ -89,8 +89,8 @@ goal is met. A malformed or goal-less task object degrades to an ordinary answer
 **Guidance sessions.** A task is stateful. `GuidanceSession` holds the goal, every
 step already given (its spoken text and the label of what it pointed at), and when
 it started. Each advance sends the model the goal, the steps so far, and a **fresh**
-snapshot, and asks for the next single step. Ordinary questions instead carry the
-last four exchanges, so "and then?" has something to refer back to.
+snapshot, and asks for the next single step. Ordinary questions instead carry Heylana's
+short-term memory, so "and then?" has something to refer back to.
 
 A session advances two ways: the user taps **Next**, or it advances itself when the
 element it pointed at is gone from a fresh snapshot, or the foreground app changed
@@ -98,6 +98,13 @@ element it pointed at is gone from a fresh snapshot, or the foreground app chang
 when the panel closes, when the buddy stops, on any API error, or at 8 steps. If two
 steps in a row point at the same element the session is treated as stuck: it says so
 and stops advancing itself until the user acts.
+
+**Short-term memory.** `Conversation` keeps the last three ordinary exchanges —
+question, answer and the app they happened in — in memory and nowhere else: never
+a file, never a log, never a preference. Each is forgotten ten minutes after it
+happened, and the whole lot goes the moment the user asks from a different app or
+the buddy stops. What is actually sent is capped at 600 characters, oldest
+dropped first, so remembering cannot quietly grow the cost of a request.
 
 **Events only while something is waiting for them.** This is a privacy rule, not
 an optimisation. The accessibility service subscribes to *nothing* by default —

@@ -91,29 +91,94 @@ class GuidanceSession(val goal: String) {
 }
 
 /**
- * The last few ordinary question-and-answer turns, so follow-ups like "and then?"
- * have something to refer back to. Capped, in memory only, cleared with the panel.
+ * Heylana's short-term memory: the last few ordinary exchanges, so a follow-up
+ * like "and the other one" has something to refer back to.
+ *
+ * It lives in memory and nowhere else — never a file, never a log, never a
+ * preference. It holds at most [limit] exchanges, each one forgotten [windowMs]
+ * after it happened, and the whole lot is dropped the moment the user moves to a
+ * different app or the buddy stops. What goes over the wire is capped at
+ * [MAX_CHARS] as well, oldest first, so remembering can never quietly grow the
+ * cost of a request.
  */
-class Conversation(private val limit: Int = 2) {
+class Conversation(
+    private val limit: Int = MAX_TURNS,
+    private val windowMs: Long = WINDOW_MS,
+    private val now: () -> Long = { System.currentTimeMillis() }
+) {
 
-    private val turns = ArrayDeque<Pair<String, String>>()
+    private data class Turn(
+        val question: String,
+        val answer: String,
+        val packageName: String?,
+        val at: Long
+    )
 
-    fun record(question: String, answer: String) {
-        turns.addLast(question to answer)
+    private val turns = ArrayDeque<Turn>()
+
+    /** How many exchanges are being remembered right now. */
+    val size: Int get() = turns.size
+
+    fun record(question: String, answer: String, packageName: String?) {
+        forgetStaleOrForeign(packageName)
+        turns.addLast(
+            Turn(
+                question = question.trim().take(QUESTION_CHARS),
+                answer = answer.trim().take(ANSWER_CHARS),
+                packageName = packageName,
+                at = now()
+            )
+        )
         while (turns.size > limit) turns.removeFirst()
     }
 
     fun clear() = turns.clear()
 
-    /** Null when there is nothing worth sending. */
-    fun asPromptText(): String? {
+    /**
+     * The remembered exchanges as the model sees them, or null when there is
+     * nothing worth sending. Asking from a different app forgets the lot first:
+     * "the other one" never means something from another screen.
+     */
+    fun asPromptText(packageName: String? = null): String? {
+        forgetStaleOrForeign(packageName)
         if (turns.isEmpty()) return null
+
+        val lines = turns.map { "User: ${it.question}\nYou: ${it.answer}" }
+        val kept = ArrayDeque<String>()
+        var budget = MAX_CHARS
+        // Oldest is the first to go if it will not all fit.
+        for (line in lines.asReversed()) {
+            if (budget - line.length < 0) break
+            budget -= line.length
+            kept.addFirst(line)
+        }
+        if (kept.isEmpty()) return null
+
         return buildString {
             append("Earlier:\n")
-            for ((question, answer) in turns) {
-                append("User: ").append(question).append('\n')
-                append("You: ").append(answer).append('\n')
-            }
+            kept.forEach { append(it).append('\n') }
         }.trimEnd()
+    }
+
+    /** Drops anything too old, and everything if the app has changed. */
+    private fun forgetStaleOrForeign(packageName: String?) {
+        val cutoff = now() - windowMs
+        while (turns.isNotEmpty() && turns.first().at <= cutoff) turns.removeFirst()
+        if (packageName == null) return
+        if (turns.isNotEmpty() && turns.last().packageName != packageName) turns.clear()
+    }
+
+    companion object {
+        /** How many exchanges back Heylana can refer to. */
+        const val MAX_TURNS = 3
+
+        /** How long an exchange stays worth remembering. */
+        const val WINDOW_MS = 10 * 60 * 1_000L
+
+        /** The most memory that may be spent on any one request. */
+        const val MAX_CHARS = 600
+
+        private const val QUESTION_CHARS = 90
+        private const val ANSWER_CHARS = 150
     }
 }

@@ -141,6 +141,8 @@ class BuddyOverlayService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        // Stop means forget: the memory never outlives the buddy.
+        conversation.clear()
         endSession(clearBox = false)
         stopTapWatch()
         main.removeCallbacksAndMessages(null)
@@ -232,7 +234,8 @@ class BuddyOverlayService : Service() {
             val screenText = snapshot.toPromptText()
             logScreenSize(snapshot, screenText)
 
-            when (val reply = brain.ask(question, screenText, conversation.asPromptText())) {
+            val memory = conversation.asPromptText(snapshot.packageName)
+            when (val reply = brain.ask(question, screenText, memory)) {
                 is BrainReply.Say -> {
                     // The capsule goes as the answer lands, whichever way it
                     // was asked for.
@@ -241,7 +244,7 @@ class BuddyOverlayService : Service() {
                     if (task != null && !task.done) {
                         startSession(task.goal, reply, snapshot)
                     } else {
-                        conversation.record(question, reply.text)
+                        conversation.record(question, reply.text, snapshot.packageName)
                         showOneShot(reply, snapshot)
                     }
                 }
@@ -288,7 +291,8 @@ class BuddyOverlayService : Service() {
         if (!BuildConfig.DEBUG) return
         Log.d(
             AnthropicClient.USAGE_TAG,
-            "screen elements=${snapshot.nodes.size} chars=${screenText.length}"
+            "screen elements=${snapshot.nodes.size} chars=${screenText.length} " +
+                "memory=${conversation.size} exchanges"
         )
     }
 

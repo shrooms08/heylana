@@ -83,10 +83,22 @@ class Proxy(private val settings: HeylanaSettings) {
     /**
      * Borrowed ears: a Deepgram key that stops working two minutes from now.
      * Null when the proxy is unreachable or has run the day's allowance out.
+     *
+     * The key is kept until it is nearly out of time, so holding the buddy twice
+     * in a minute does not mint twice — the first hold pays for the round trip
+     * and the second one starts listening immediately.
      */
     suspend fun sttToken(): String? = withContext(Dispatchers.IO) {
         if (!isConfigured) return@withContext null
-        runCatching {
+
+        borrowed?.let { key ->
+            if (SystemClock.elapsedRealtime() < borrowedUntil) {
+                HeylanaLog.state("proxy: stt-token from cache")
+                return@withContext key
+            }
+        }
+
+        val minted = runCatching {
             http.newCall(post("stt-token", "{}")).execute().use { response ->
                 if (!response.isSuccessful) {
                     HeylanaLog.state("proxy: stt-token refused ${response.code}")
@@ -97,6 +109,18 @@ class Proxy(private val settings: HeylanaSettings) {
                     .takeIf { it.isNotBlank() }
             }
         }.getOrNull()
+
+        if (minted != null) {
+            borrowed = minted
+            borrowedUntil = SystemClock.elapsedRealtime() + STT_KEY_KEEP_MS
+        }
+        minted
+    }
+
+    /** The last borrowed key is no good any more — the socket said so. */
+    fun forgetSttToken() {
+        borrowed = null
+        borrowedUntil = 0L
     }
 
     companion object {
@@ -111,8 +135,20 @@ class Proxy(private val settings: HeylanaSettings) {
 
         private val JSON = "application/json".toMediaType()
 
+        /**
+         * The worker mints these for two minutes; keeping them for ninety
+         * seconds leaves room for the hold that is already under way.
+         */
+        private const val STT_KEY_KEEP_MS = 90_000L
+
         @Volatile
         private var warmedAt = 0L
+
+        @Volatile
+        private var borrowed: String? = null
+
+        @Volatile
+        private var borrowedUntil = 0L
 
         /**
          * One client for questions, voice and ears alike: they share a host, so

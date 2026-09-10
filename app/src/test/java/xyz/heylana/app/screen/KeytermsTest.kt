@@ -12,6 +12,25 @@ class KeytermsTest {
         labels.map { Keyterms.Labelled(it.first, it.second) }
 
     @Test
+    fun `what the ears are told carries the fixed words and nothing off the screen`() {
+        val terms = Keyterms.forEars(onScreen("Receive" to 900, "12.44" to 800))
+        assertEquals(Keyterms.ALWAYS, terms)
+        assertFalse(terms.contains("Receive"))
+    }
+
+    @Test
+    fun `Kamino is one of the fixed words, since that is the one that gets misheard`() {
+        assertTrue(Keyterms.ALWAYS.contains("Kamino"))
+        assertTrue(Keyterms.forEars(emptyList()).contains("Kamino"))
+    }
+
+    @Test
+    fun `the screen's labels can be put back with one argument`() {
+        val terms = Keyterms.forEars(onScreen("Receive" to 900), includeScreen = true)
+        assertTrue(terms.contains("Receive"))
+    }
+
+    @Test
     fun `the words this phone is about are always sent`() {
         val terms = Keyterms.from(emptyList())
         assertTrue(terms.containsAll(Keyterms.ALWAYS))

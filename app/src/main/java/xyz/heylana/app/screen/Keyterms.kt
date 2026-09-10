@@ -30,6 +30,22 @@ object Keyterms {
     private const val MAX_LABEL_CHARS = 40
 
     /**
+     * What the ears are actually told, and the only version the app calls.
+     *
+     * [includeScreen] is **false**, and it is deliberate. The socket is opened
+     * the moment the buddy is touched — long before anyone knows whether that
+     * touch will become a hold — so anything sent with it would go on every tap
+     * and every drag too, not only when someone is speaking. The fixed list
+     * carries the words that actually get misheard, Kamino among them, and the
+     * screen stays on the phone.
+     *
+     * Pass true to put the screen's labels back; [from] is unchanged and tested
+     * either way.
+     */
+    fun forEars(onScreen: List<Labelled>, includeScreen: Boolean = false): List<String> =
+        if (includeScreen) from(onScreen) else from(emptyList())
+
+    /**
      * The fixed words first, then the screen's biggest tappable labels, with
      * anything repeated or useless dropped. Case is kept as it appears.
      */

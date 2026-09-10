@@ -64,6 +64,12 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      */
     var onTouched: (() -> Unit)? = null
 
+    /**
+     * The touch is over and it was never a hold — a tap, or a drag. Whatever was
+     * got ready on the way down can be put away again.
+     */
+    var onNotAHold: (() -> Unit)? = null
+
     /** The user has held the disc down: start listening. */
     var onHoldStart: (() -> Unit)? = null
 
@@ -786,6 +792,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                     if (holding) {
                         holding = false
                         onHoldCancel?.invoke()
+                    } else {
+                        onNotAHold?.invoke()
                     }
                     // The buddy is parked while composing; dragging it is not a thing.
                     if (mode == Mode.COMPOSE) return true
@@ -823,7 +831,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                     }
 
                     dragging -> snapToNearestEdge()
-                    else -> togglePanel()
+                    else -> {
+                        onNotAHold?.invoke()
+                        togglePanel()
+                    }
                 }
                 dragging = false
                 return true
@@ -835,6 +846,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                 if (holding) {
                     holding = false
                     onHoldCancel?.invoke()
+                } else {
+                    onNotAHold?.invoke()
                 }
                 if (dragging) snapToNearestEdge()
                 dragging = false

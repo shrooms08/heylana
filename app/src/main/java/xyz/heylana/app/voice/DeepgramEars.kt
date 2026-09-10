@@ -44,8 +44,19 @@ class DeepgramEars(
     private val scope: CoroutineScope,
     private val callbacks: EarCallbacks,
     private val onReady: () -> Unit,
-    private val onUnavailable: () -> Unit
+    private val onUnavailable: (String) -> Unit
 ) : Ears {
+
+    /** How far along getting ready to listen has got. */
+    enum class Stage { IDLE, TOKEN, SOCKET, READY, FAILED }
+
+    @Volatile
+    var stage: Stage = Stage.IDLE
+        private set
+
+    /** Set once the user is actually holding: record as soon as we can. */
+    @Volatile
+    private var wanted = false
 
     private var socket: WebSocket? = null
     private var recorder: AudioRecord? = null
@@ -70,33 +81,60 @@ class DeepgramEars(
     /** Nothing to check up front: the proxy answers that when it is asked. */
     override fun available(): Boolean = proxy.isConfigured
 
-    @SuppressLint("MissingPermission")
-    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    override fun start(keyterms: List<String>) {
-        if (listening) return
+    /**
+     * Gets everything ready without opening the microphone: borrows a key and
+     * opens the socket.
+     *
+     * This runs the moment the buddy is touched, long before anyone knows
+     * whether that touch will become a hold, so that a hold can start listening
+     * the instant it begins rather than waiting on a round trip. If the touch
+     * turns out to be a tap or a drag, [discard] closes it again quietly.
+     */
+    fun prepare(keyterms: List<String>) {
+        if (stage != Stage.IDLE && stage != Stage.FAILED) return
         abandoned = false
         released = false
+        wanted = false
         heard.setLength(0)
         nothingHeard.started()
-        listening = true
+        stage = Stage.TOKEN
 
         scope.launch {
             val key = proxy.sttToken()
-            if (key == null || abandoned) {
-                listening = false
-                if (!abandoned) {
-                    HeylanaLog.state("deepgram: no token")
-                    onUnavailable()
-                }
+            if (abandoned) return@launch
+            if (key == null) {
+                stage = Stage.FAILED
+                onUnavailable(if (proxy.isConfigured) REASON_NO_NETWORK else REASON_NOT_SET_UP)
                 return@launch
             }
+            stage = Stage.SOCKET
             open(key, keyterms)
         }
     }
 
+    /**
+     * The user is holding: start recording. Safe to call before the socket is
+     * open — the microphone starts the moment it is.
+     */
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    fun beginSpeaking() {
+        wanted = true
+        if (stage == Stage.READY) startRecordingNow()
+    }
+
+    /** Prepare and record as soon as possible: the plain Ears way in. */
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    override fun start(keyterms: List<String>) {
+        prepare(keyterms)
+        beginSpeaking()
+    }
+
     private fun open(key: String, keyterms: List<String>) {
+        HeylanaLog.state("deepgram: opening socket, keyterms=${keyterms.size}")
         val request = Request.Builder()
-            .url(socketUrl(keyterms))
+            .url(deepgramUrl(keyterms, SAMPLE_RATE))
             .addHeader("Authorization", "Token $key")
             .build()
 
@@ -106,9 +144,11 @@ class DeepgramEars(
                     webSocket.cancel()
                     return
                 }
+                stage = Stage.READY
                 HeylanaLog.state("deepgram: socket open")
-                startRecording(webSocket)
                 onReady()
+                // The hold may have started while the socket was still opening.
+                if (wanted) startRecordingNow()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -117,42 +157,28 @@ class DeepgramEars(
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                HeylanaLog.state("deepgram: socket failed")
+                val refused = response?.code
+                HeylanaLog.state("deepgram: socket failed code=${refused ?: 0}")
                 stopRecording()
                 if (abandoned) return
+                val wasReady = stage == Stage.READY
+                stage = Stage.FAILED
                 listening = false
+                // A key the socket would not take is not worth keeping.
+                if (refused == 401 || refused == 403) proxy.forgetSttToken()
                 // Before the user let go this is still recoverable: the phone's
                 // own ears can take over without them noticing.
-                if (!released) onUnavailable() else finish()
+                if (!released) onUnavailable(REASON_SOCKET_ERROR) else if (wasReady) finish()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 stopRecording()
                 if (abandoned) return
+                stage = Stage.IDLE
                 listening = false
                 finish()
             }
         })
-    }
-
-    /**
-     * Deepgram's URL carries the whole configuration, keyterms included. Nova-3
-     * with interim results on so the capsule fills in live, endpointing off
-     * because the finger decides when it is over, and smart formatting so names
-     * and numbers come back written properly.
-     */
-    private fun socketUrl(keyterms: List<String>): String = buildString {
-        append("wss://api.deepgram.com/v1/listen")
-        append("?model=nova-3")
-        append("&interim_results=true")
-        append("&endpointing=false")
-        append("&smart_format=true")
-        append("&encoding=linear16")
-        append("&sample_rate=").append(SAMPLE_RATE)
-        append("&channels=1")
-        for (term in keyterms) {
-            append("&keyterm=").append(URLEncoder.encode(term, "UTF-8"))
-        }
     }
 
     /** Deepgram sends a message per guess; only the settled ones are kept. */
@@ -177,10 +203,14 @@ class DeepgramEars(
     }
 
     @SuppressLint("MissingPermission")
-    private fun startRecording(webSocket: WebSocket) {
+    private fun startRecordingNow() {
+        if (listening) return
+        val webSocket = socket ?: return
+        listening = true
         val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
         if (minimum <= 0) {
-            onUnavailable()
+            listening = false
+            onUnavailable(REASON_NO_MICROPHONE)
             return
         }
         val size = maxOf(minimum, FRAME_BYTES * 4)
@@ -193,8 +223,9 @@ class DeepgramEars(
 
         if (record == null || record.state != AudioRecord.STATE_INITIALIZED) {
             record?.release()
+            listening = false
             HeylanaLog.state("deepgram: microphone would not open")
-            onUnavailable()
+            onUnavailable(REASON_NO_MICROPHONE)
             return
         }
 
@@ -266,10 +297,20 @@ class DeepgramEars(
         }
     }
 
+    /** The touch was a tap or a drag after all: close it again, quietly. */
+    fun discard() {
+        if (stage == Stage.IDLE) return
+        HeylanaLog.state("deepgram: not a hold, closing")
+        cancel()
+    }
+
     override fun cancel() {
         abandoned = true
+        wanted = false
         listening = false
+        stage = Stage.IDLE
         stopRecording()
+        socket?.close(NORMAL_CLOSE, null)
         socket?.cancel()
         socket = null
     }
@@ -296,5 +337,34 @@ class DeepgramEars(
         const val NORMAL_CLOSE = 1000
 
         val CLOSE_STREAM: String = JSONObject().put("type", "CloseStream").toString()
+
+        /** Why the phone's own ears had to take over. */
+        const val REASON_NO_NETWORK = "no_network"
+        const val REASON_NOT_SET_UP = "not_set_up"
+        const val REASON_SOCKET_ERROR = "socket_error"
+        const val REASON_NO_MICROPHONE = "no_microphone"
+    }
+}
+
+/**
+ * Deepgram's URL carries the whole configuration, keyterms included: nova-3 with
+ * interim results on so the capsule fills in live, endpointing off because the
+ * finger decides when it is over, and smart formatting so names and numbers come
+ * back written properly.
+ *
+ * Keyterms are one repeated `keyterm=` parameter each, which is what nova-3
+ * expects — a comma-joined list is read as one long term and boosts nothing.
+ */
+internal fun deepgramUrl(keyterms: List<String>, sampleRate: Int): String = buildString {
+    append("wss://api.deepgram.com/v1/listen")
+    append("?model=nova-3")
+    append("&interim_results=true")
+    append("&endpointing=false")
+    append("&smart_format=true")
+    append("&encoding=linear16")
+    append("&sample_rate=").append(sampleRate)
+    append("&channels=1")
+    for (term in keyterms) {
+        append("&keyterm=").append(URLEncoder.encode(term, "UTF-8"))
     }
 }

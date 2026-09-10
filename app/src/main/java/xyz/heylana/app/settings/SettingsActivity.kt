@@ -20,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -71,6 +72,7 @@ private fun SettingsScreen(
     var quickModel by remember { mutableStateOf(settings.quickModel) }
     var taskModel by remember { mutableStateOf(settings.taskModel) }
     var status by remember { mutableStateOf("") }
+    var showSpokenText by remember { mutableStateOf(settings.showTextForVoice) }
 
     Column(
         modifier = modifier
@@ -121,6 +123,34 @@ private fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.fillMaxWidth(0.8f)) {
+                    Text(
+                        text = "Show spoken answers as text",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Off by default. When you ask by holding the buddy, " +
+                            "Heylana answers out loud without showing the words.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Spacer(modifier = Modifier.fillMaxWidth(0.05f))
+                Switch(
+                    checked = showSpokenText,
+                    onCheckedChange = {
+                        showSpokenText = it
+                        settings.showTextForVoice = it
+                    }
+                )
             }
         }
 

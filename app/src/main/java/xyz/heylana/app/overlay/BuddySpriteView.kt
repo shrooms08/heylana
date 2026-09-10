@@ -56,6 +56,13 @@ class BuddySpriteView(context: Context) : View(context) {
             }
         }
 
+    /** 0 to 1, how loud the microphone is hearing. Breathes the listening ring. */
+    var micLevel: Float = 0f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            if (expression == Expression.LISTENING) invalidate()
+        }
+
     /** Which way the eyes look. Kept for the pointing animation in part two. */
     var pointDirection: Int = 1
         set(value) {
@@ -77,6 +84,12 @@ class BuddySpriteView(context: Context) : View(context) {
         strokeWidth = HeylanaTokens.dp(context, 2f)
         color = HeylanaTokens.glow
     }
+
+    private val listenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = HeylanaTokens.accent
+    }
+    private val listenRing = HeylanaTokens.dp(context, 3f)
 
     /** Where the shed rings are in their cycle while Heylana speaks. */
     private var ringPhase = 0f
@@ -206,6 +219,13 @@ class BuddySpriteView(context: Context) : View(context) {
                 Shader.TileMode.CLAMP
             )
             canvas.drawCircle(cx, cy, outer, glowPaint)
+        }
+
+        if (expression == Expression.LISTENING) {
+            // A ring that breathes with the voice it is hearing.
+            listenPaint.strokeWidth = listenRing
+            val swell = discRadius + listenRing * (0.6f + 1.4f * micLevel)
+            if (swell < minOf(w, h) / 2f) canvas.drawCircle(cx, cy, swell, listenPaint)
         }
 
         if (talking) {

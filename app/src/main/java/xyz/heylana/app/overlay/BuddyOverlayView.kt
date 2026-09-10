@@ -44,7 +44,14 @@ import kotlin.math.hypot
 @SuppressLint("ViewConstructor")
 class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
-    private enum class Mode { DOCKED, COMPOSE, HUD }
+    private enum class Mode {
+        DOCKED,
+        COMPOSE,
+
+        /** A spoken exchange: the disc stays put, a capsule sits beside it. */
+        CAPSULE,
+        HUD
+    }
 
     /** Called with the user's question when they ask. */
     var onQuestion: ((String) -> Unit)? = null
@@ -69,9 +76,6 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** The user ended a task early. */
     var onDone: (() -> Unit)? = null
-
-    /** The user asked to see, or stop seeing, the words of a spoken answer. */
-    var onShowTextToggled: ((Boolean) -> Unit)? = null
 
     /**
      * The full-screen layer the disc flies across. Moving a window every frame
@@ -99,6 +103,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         dp(HeylanaTokens.GLASS_SHADOW_DP)).coerceAtLeast(0)
 
     private val sprite = BuddySpriteView(context)
+    private val capsule = VoiceCapsuleView(context)
 
     /**
      * The disc that actually crosses the screen. The real one keeps its place in
@@ -183,11 +188,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         panel.onNext = { onNext?.invoke() }
         panel.onDone = { onDone?.invoke() }
         panel.onInputTapped = { takeFocusForTyping() }
-        panel.onShowTextToggled = { shows ->
-            voiceShowsText = shows
-            onShowTextToggled?.invoke(shows)
-        }
 
+        capsule.visibility = View.GONE
         content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
         content.addView(
             panel,
@@ -314,13 +316,38 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     // ---------------------------------------------------------------- voice
 
     /** Microphone opened: show the box without shoving the keyboard in the way. */
+    /**
+     * Microphone opened. The disc stays exactly where it is docked: no flight,
+     * no dim, no blur. A small capsule appears on whichever side has room and
+     * fills in with the words as they are heard.
+     */
     fun startedListening() {
         panel.setVoiceMode(voice = true, showsText = voiceShowsText)
         sprite.expression = BuddySpriteView.Expression.LISTENING
+        sprite.micLevel = 0f
         sprite.refreshState()
-        openCompose()
-        panel.showListening()
-        panel.hideKeyboard()
+        capsule.showTranscript("")
+        enterMode(Mode.CAPSULE)
+    }
+
+    fun showMicLevel(level: Float) {
+        sprite.micLevel = level
+    }
+
+    /** The words so far, as they are heard. */
+    fun showHeard(text: String) = capsule.showTranscript(text)
+
+    /** Released: the capsule turns into the aurora while the answer is fetched. */
+    fun showThinkingCapsule() {
+        sprite.expression = BuddySpriteView.Expression.THINKING
+        sprite.micLevel = 0f
+        sprite.refreshState()
+        capsule.showThinking()
+    }
+
+    /** The answer is in: the capsule goes and the disc speaks. */
+    fun endVoiceExchange() {
+        if (mode == Mode.CAPSULE) enterMode(Mode.DOCKED)
     }
 
     fun showPartialSpeech(text: String) = panel.setSpokenText(text)
@@ -381,6 +408,22 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                 applyPosition()
             }
 
+            Mode.CAPSULE -> {
+                panel.releaseInput()
+                panel.visibility = View.GONE
+                scrim.visibility = View.GONE
+                scrim.alpha = 0f
+                sprite.composing = false
+                layoutBeside()
+                capsule.visibility = View.VISIBLE
+                params.width = WindowManager.LayoutParams.WRAP_CONTENT
+                params.height = WindowManager.LayoutParams.WRAP_CONTENT
+                params.flags = FLAGS_PASSIVE
+                GlassBlur.clear(params)
+                sprite.refreshState()
+                applyPosition()
+            }
+
             Mode.HUD -> {
                 panel.releaseInput()
                 panel.visibility = View.VISIBLE
@@ -435,16 +478,22 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         panelOnLeft = roomLeft > roomRight
         content.removeView(sprite)
         content.removeView(panel)
+        content.removeView(capsule)
         val discParams = LinearLayout.LayoutParams(discSize, discSize)
         val boxParams = LinearLayout.LayoutParams(
             panel.hudWidth, LinearLayout.LayoutParams.WRAP_CONTENT
         )
+        val capsuleParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
         if (panelOnLeft) {
+            content.addView(capsule, capsuleParams)
             content.addView(panel, boxParams)
             content.addView(sprite, discParams)
         } else {
             content.addView(sprite, discParams)
             content.addView(panel, boxParams)
+            content.addView(capsule, capsuleParams)
         }
     }
 
@@ -459,6 +508,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         )
         content.removeView(sprite)
         content.removeView(panel)
+        content.removeView(capsule)
+        capsule.visibility = View.GONE
         content.addView(
             sprite,
             LinearLayout.LayoutParams(discSize, discSize).apply {
@@ -801,6 +852,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun reorderBeside() {
         content.removeView(sprite)
         content.removeView(panel)
+        content.removeView(capsule)
         val discParams = LinearLayout.LayoutParams(discSize, discSize)
         val boxParams = LinearLayout.LayoutParams(
             panel.hudWidth, LinearLayout.LayoutParams.WRAP_CONTENT

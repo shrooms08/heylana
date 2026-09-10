@@ -78,10 +78,13 @@ class BuddyOverlayService : Service() {
         speaker = Speaker(this) { speaking -> overlayView?.setTalking(speaking) }
         listener = Listener(
             context = this,
-            onPartial = { text -> overlayView?.showPartialSpeech(text) },
+            onPartial = { text -> overlayView?.showHeard(text) },
             onFinal = { text -> ask(text) },
             onProblem = { message ->
                 overlayView?.stoppedListening()
+                // Nothing was heard, so nothing will be asked — the capsule has
+                // to go, or it sits there saying "listening" for ever.
+                overlayView?.endVoiceExchange()
                 overlayView?.showNotice(message)
             }
         )
@@ -152,7 +155,6 @@ class BuddyOverlayService : Service() {
             }
             view.setMuted(settings.voiceMuted)
             view.voiceShowsText = settings.showTextForVoice
-            view.onShowTextToggled = { shows -> settings.showTextForVoice = shows }
             view.addToWindow()
         }
     }
@@ -198,6 +200,9 @@ class BuddyOverlayService : Service() {
 
             when (val reply = brain.ask(question, screenText, conversation.asPromptText())) {
                 is BrainReply.Say -> {
+                    // The capsule goes as the answer lands, whichever way it
+                    // was asked for.
+                    view.endVoiceExchange()
                     val task = reply.task
                     if (task != null && !task.done) {
                         startSession(task.goal, reply, snapshot)
@@ -207,7 +212,10 @@ class BuddyOverlayService : Service() {
                     }
                 }
 
-                is BrainReply.Failed -> view.showNotice(reply.message)
+                is BrainReply.Failed -> {
+                    view.endVoiceExchange()
+                    view.showNotice(reply.message)
+                }
             }
         }
     }
@@ -444,6 +452,8 @@ class BuddyOverlayService : Service() {
         view.stoppedListening()
         val ears = listener ?: return
         if (ears.isListening) {
+            // Waiting on the final transcript: the capsule turns into the aurora.
+            view.showThinkingCapsule()
             ears.stop()
         } else {
             // Nothing was captured — fall back to whatever ended up in the field.

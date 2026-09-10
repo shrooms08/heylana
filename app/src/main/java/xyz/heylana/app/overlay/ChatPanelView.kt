@@ -105,17 +105,12 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     /** Called when the user taps the question field, so the window can take focus. */
     var onInputTapped: (() -> Unit)? = null
 
-    /** Called with the new preference when the show-text chip is tapped. */
-    var onShowTextToggled: ((Boolean) -> Unit)? = null
-
     private val answer = TextView(context)
     private val note = TextView(context)
     private val input = EditText(context)
     private val ask = TextView(context)
     private val mute = MuteToggleView(context)
 
-    private val capsule = AuroraCapsuleView(context)
-    private val showText = TextView(context)
     private val inputRow = LinearLayout(context)
 
     private val sessionRow = LinearLayout(context)
@@ -164,18 +159,6 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
                 onMuteToggled?.invoke(muted)
             }
         }
-        // Only offered when the answer is being spoken, since typing already
-        // shows the text.
-        stylePill(showText, SHOW_TEXT, HeylanaTokens.textSecondary) {
-            voiceShowsText = !voiceShowsText
-            applyVoiceVisibility()
-            onShowTextToggled?.invoke(voiceShowsText)
-        }
-        showText.visibility = View.GONE
-        topRow.addView(
-            showText,
-            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
-        )
         topRow.addView(
             mute,
             LayoutParams(dp(26f), dp(26f)).apply { marginStart = dp(HeylanaTokens.SPACE_3_DP) }
@@ -210,16 +193,6 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             sessionRow,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(HeylanaTokens.SPACE_3_DP)
-            }
-        )
-
-        // ------------------------------------------------- the thinking capsule
-        capsule.visibility = View.GONE
-        addView(
-            capsule,
-            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                gravity = Gravity.CENTER_HORIZONTAL
-                topMargin = dp(HeylanaTokens.SPACE_2_DP)
             }
         )
 
@@ -382,24 +355,11 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
      */
     private fun applyVoiceVisibility() {
         inputRow.visibility = if (isVoiceMode) View.GONE else View.VISIBLE
-        showText.visibility = if (isVoiceMode) View.VISIBLE else View.GONE
-        showText.text = if (voiceShowsText) HIDE_TEXT else SHOW_TEXT
-        if (isVoiceMode && !voiceShowsText && capsule.visibility != View.VISIBLE) {
+        if (isVoiceMode && !voiceShowsText) {
             answer.visibility = View.GONE
-        } else if (isVoiceMode && voiceShowsText) {
+        } else if (isVoiceMode) {
             answer.visibility = if (answer.text.isNullOrBlank()) View.GONE else View.VISIBLE
         }
-    }
-
-    /** The aurora capsule, shown while a spoken question is being worked on. */
-    fun showThinkingCapsule() {
-        answer.visibility = View.GONE
-        capsule.visibility = View.VISIBLE
-        enable(false)
-    }
-
-    private fun hideCapsule() {
-        capsule.visibility = View.GONE
     }
 
     private fun submit() {
@@ -428,16 +388,14 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     }
 
     fun showThinking() {
-        if (isVoiceMode) {
-            showThinkingCapsule()
-            return
-        }
+        // A spoken question has its own capsule beside the disc; the box shows
+        // nothing at all until there is an answer to read.
+        if (isVoiceMode) return
         say(THINKING)
         enable(false)
     }
 
     fun showAnswer(text: String) {
-        hideCapsule()
         say(text)
         enable(true)
         input.setText("")
@@ -445,7 +403,6 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     /** A notice or error — keeps whatever the user typed so they can retry. */
     fun showNotice(text: String) {
-        hideCapsule()
         // A problem is always worth reading, whatever the user asked for.
         answer.text = text
         answer.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
@@ -521,8 +478,6 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         private const val THINKING = "thinking…"
         private const val LISTENING = "listening…"
         private const val MAX_ANSWER_LINES = 8
-        private const val SHOW_TEXT = "show text"
-        private const val HIDE_TEXT = "hide text"
         private const val MUTE_LABEL = "Mute Heylana's voice"
         private const val UNMUTE_LABEL = "Unmute Heylana's voice"
     }

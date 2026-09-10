@@ -193,7 +193,9 @@ class BuddyOverlayService : Service() {
                 view.stopLooking()
                 abandonListening()
                 endSession(clearBox = true)
-                conversation.clear()
+                // The memory deliberately survives this: closing the box is not
+                // the user saying "forget that". Stopping, changing app or ten
+                // minutes are the three things that are.
             }
             view.setMuted(settings.voiceMuted)
             view.voiceShowsText = settings.showTextForVoice

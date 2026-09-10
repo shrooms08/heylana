@@ -1,170 +1,132 @@
-# SMOKE TEST — the proxy, the ears and the voice
+# SMOKE TEST — the screech, the ears, and one capture for me
 
-The big one. Every key has moved off the phone and into a small server of your
-own, Heylana has proper ears that can hear "Kamino", and a voice of her own
-instead of the phone's.
+Three fixes. Two of them I could test properly; the third — whether Skylar still
+screeches — needs your ears and a file back from you.
 
-**You have to put the server up first.** That is step 1, and nothing else works
-until it is done.
+## Budget for this test: 3 chat, 3 tts, 3 stt
 
-## Budget for this test: 4 chat, 4 tts, 3 stt
-
-I sent nothing to anything. Everything I could check, I checked against a stub
-running on my machine that answers the same three routes with fixed replies.
+I sent nothing to anything. The playback fix is covered by tests over the awkward
+chunk lengths a socket really delivers, and the rest against a stub on my machine.
 
 | Step | chat | tts | stt |
 |------|------|-----|-----|
-| 1 put the server up | 0 | 0 | 0 |
-| 2 a typed question | 1 | 1 | 0 |
-| 3 hold-to-talk in the wallet | 1 | 1 | 1 |
-| 4 Archie | 1 | 1 | 1 |
-| 5 both fallbacks on | 1 | 1 | 1 |
-| 6 aeroplane mode | 0 | 0 | 0 |
+| 1 capture a stream | 1 | 1 | 0 |
+| 2 hold-to-talk, Kamino | 1 | 1 | 1 |
+| 3 hold again within a minute | 1 | 1 | 1 |
 
-Steps 4 and 5 each also play a **three-word sample** when you pick a voice —
-that is one more tiny tts call each, and it is included above.
+**One thing to know about the count:** the listening key is now borrowed the
+moment you *touch* the buddy, not when you hold it, so an isolated tap can also
+mint one. It is kept for ninety seconds, so anything you do inside a minute and a
+half is free. If the stt count comes out at four or five because you tapped
+around between steps, that is expected.
 
----
-
-## 1. Put the server up — 0 calls
-
-Open **worker/README.md** and follow it top to bottom. It is six steps: sign in,
-make the counter store, put in the three keys, put in the Deepgram project id,
-deploy, and copy the address it prints into `local.properties`.
-
-Then rebuild and reinstall the app.
-
-You should see, opening Heylana: **three rows, not four.** The API key row is
-gone — the key is in your server now, not on the phone. **Start buddy** works
-once the first three are ticked.
-
-If **Start buddy** works but every question comes back saying Heylana is not set
-up, the address did not make it into `local.properties`. Check for a typo, then
-rebuild.
+**Before you start:** install, run `./scripts/a11y.sh`, close Heylana from
+recents, reopen it, tap **Start buddy**. The second launcher icon (Heylana Glass)
+is gone — that is fix 3, and there is nothing to check for it beyond noticing its
+absence.
 
 ---
 
-## 2. A typed question — 1 chat, 1 tts
+## 1. Capture a spoken answer — 1 chat, 1 tts
 
-Open **Chrome** on any page. **Tap the buddy**, type **what is the capital of
-japan** and tap **ask**.
+**Settings → Save last tts stream → ON.** It is in the debug section, near Force
+phone ears.
 
-You should see **Tokyo** in the strip, and hear it **read out in Skylar's voice**
-— a real voice, not the phone's.
+Go back. Over **Chrome**, tap the buddy, type **tell me about seed vault** and
+tap **ask**.
 
-**To prove it went through your server and not straight to Anthropic**, from the
-Mac:
+**Listen carefully to the whole answer.** What I am asking is whether the screech
+is gone: a harsh buzzing tone under or instead of the voice, from the first
+syllable to the last.
+
+Then, from the Mac:
 
 ```
-$HOME/Library/Android/sdk/platform-tools/adb logcat -s HeylanaTokens HeylanaState
+$HOME/Library/Android/sdk/platform-tools/adb pull \
+  /sdcard/Android/data/xyz.heylana.app/files/tts_capture.pcm \
+  design/refs/tts_capture.pcm
 ```
 
-You should see `mode=quick`, `first_byte_ms=…`, and `voice=cartesia`. You should
-**not** see `api.anthropic.com` anywhere. In another terminal, `npx wrangler
-tail` from `worker/` shows the same request arriving at your server.
+**Hand me that file** and tell me what you heard. It is raw 16-bit mono at
+24000Hz — the exact bytes that came off the network, before the phone played
+them — so if it is clean in the file and dirty out of the speaker, that tells us
+which half is broken. It is gitignored, so it stays on your machine.
+
+While you are there, the log is worth a look:
+
+```
+$HOME/Library/Android/sdk/platform-tools/adb logcat -s HeylanaState HeylanaTokens
+```
+
+- `voice: pcm rate=24000 channels=1 bits=16 buffer_ms=… pre_roll_ms=300` — what
+  the phone built to play into.
+- `voice: played …ms underruns=0 leftover_bytes=0` — **underruns above zero
+  means the speaker ran dry and you would have heard gaps**. Tell me the number.
+
+**Turn Save last tts stream back off afterwards**, or every answer overwrites the
+file.
 
 ---
 
-## 3. Hold-to-talk in the wallet — 1 chat, 1 tts, 1 stt
+## 2. Hold-to-talk, and the Kamino test — 1 chat, 1 tts, 1 stt
 
 Open your **wallet**. **Press and hold the buddy** and say:
 
 **"what does the Kamino earn thing do"**
 
-While you are speaking: the words should **appear in the capsule as you say
-them**, and the ring around the disc should **breathe with your voice**.
+Three things to check, all in the log:
 
-The important part: the transcript should say **Kamino**, spelled properly. That
-is the whole point of the new ears — the phone's own recogniser writes it "come
-in oh". Heylana tells Deepgram to expect it, along with the names of the buttons
-actually on your screen.
-
-Then the answer is **spoken in Skylar's voice** and nothing is left on screen but
-the purple box, if it pointed at something.
-
-In the log: `ears=deepgram` and `voice=cartesia`.
+- **`ears=deepgram after=…ms keyterms=16`** — the good ears won, and how long
+  after you first touched the disc they were ready. If instead you see
+  `ears=android reason=… after=…ms`, **tell me the reason and the number**; that
+  is exactly what the reason codes are for. `token_timeout` and `socket_timeout`
+  mean different fixes.
+- **The transcript in the capsule spells Kamino**, not "come in oh". That is the
+  whole point of the keyterms.
+- The words appear **as you speak**, not in one lump at the end.
 
 ---
 
-## 4. Archie — 1 chat, 1 tts, 1 stt (+ a sample)
+## 3. Hold again, straight away — 1 chat, 1 tts, 1 stt
 
-**Settings → Voice → Archie.** You should hear **three words in Archie's voice**
-the moment you tap it.
+Within a minute of step 2, **hold the buddy again** and say **"where is the seed
+vault"**.
 
-Go back, **hold the buddy** and say **"where is the seed vault"**.
-
-The answer should come back in **Archie's voice**, not Skylar's.
-
----
-
-## 5. Both fallbacks on purpose — 1 chat, 1 tts, 1 stt
-
-**Settings → Force phone ears ON, Force phone voice ON.** Both are near the
-bottom, in the debug section.
-
-**Hold the buddy** and say **"how do I swap"**.
-
-It should **still work**, start to finish — the words still appear as you speak,
-the answer still arrives and is still read out. It will sound like your phone
-rather than like Heylana, and the transcript may spell names worse. That is the
-point: when Deepgram or Cartesia cannot be reached, the user gets an answer
-anyway and is never told why.
-
-In the log: `ears=android` and `voice=android`. Those two are **free** — no stt
-or tts call reaches your server. The chat call still does.
-
-**Turn both switches back off afterwards.**
+You should see `proxy: stt-token from cache` in the log, and `ears=deepgram
+after=…ms` with a **smaller number than step 2** — the key was already borrowed,
+so only the socket had to open.
 
 ---
 
-## 6. Aeroplane mode — 0 calls
+## What I could not check
 
-**Turn aeroplane mode on.** Tap the buddy, type anything, tap **ask**.
-
-You should see a **clear line saying Heylana could not be reached**, and the disc
-should go back to resting. No spinning forever, no crash.
-
-**Turn aeroplane mode off again.**
-
----
-
-## Two things to watch for, because I could not check them
-
-- **Whether Deepgram hears the names.** I can drive a hold with a cable but I
-  cannot speak into the phone, so every word of step 3 and 4 is unproven. If the
-  capsule stays empty while you talk, say so — and say whether the log said
-  `ears=deepgram` or `ears=android`.
-- **Whether Skylar and Archie sound right.** I have never heard either: my stub
-  plays a tone. If a voice is wrong, or the audio stutters or cuts off early,
-  say which voice and roughly where it broke.
+- **Whether it still screeches.** My stub plays a tone, not a voice, and I cannot
+  listen to the phone. The fix is real — an odd-length chunk was shifting every
+  sample after it by one byte, which is exactly what a screech sounds like — but
+  whether it was the only cause is your ears and that capture file.
+- **Whether Deepgram engages now.** Exercising the socket means connecting to
+  Deepgram, which I do not do. The URL it builds is covered by tests down to the
+  repeated `keyterm=` parameters; the timing is not.
 
 ---
 
 ## What to do if something goes wrong
 
-- **"Heylana is not set up yet"** — the address is missing from
-  `local.properties`; step 1 again.
-- **"That is all Heylana can do today"** — the day's cap. It resets at midnight
-  UTC, and `npx wrangler tail` shows which route ran out.
-- **A question works but nothing is ever spoken** — say whether the log said
-  `voice=cartesia` or `voice=android`, and whether the mute speaker icon on the
-  pane is on.
-- **The words never appear while you hold** — say what the log said after
-  `listen: opening`.
-- **It answers in the phone's voice when the switches are off** — that is the
-  1.5 second fallback firing, which means the server was slow. Say what
-  `first_byte_ms` said.
+- **Still screeching** — send the file and say whether the file itself sounds
+  clean on the Mac.
+- **Gaps or stutters rather than a screech** — quote the `underruns=` number.
+- **`ears=android` every time** — quote the reason and the `after=` number.
+- **The transcript is empty** — say whether the log showed `deepgram: socket
+  open` and what came after `listen: opening`.
+- **Nothing is spoken at all** — quote the `voice=` line.
 
 ---
 
 ## Pass criteria
 
-- Onboarding has three rows and no API key.
-- A typed question is answered and spoken, through your server, with no sign of
-  api.anthropic.com on the phone.
-- Holding and speaking fills the capsule live and spells Kamino properly.
-- Skylar and Archie are different voices, and picking one plays a sample.
-- With both debug switches on it still works, in the phone's own ears and voice,
-  and says so in the log.
-- Aeroplane mode says so plainly and returns to idle.
-- Nothing crashes, and the test costs 4 chat, 4 tts and 3 stt calls and no more.
+- A spoken answer plays cleanly from the first syllable to the last, with
+  `underruns=0` and `leftover_bytes=0`.
+- `ears=deepgram` on both holds, and the second is quicker than the first.
+- Kamino comes back spelled properly.
+- No second launcher icon, and nothing labelled or measured anywhere.
+- Nothing crashes, and the test costs 3 chat, 3 tts and about 3 stt.

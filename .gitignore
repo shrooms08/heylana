@@ -16,3 +16,6 @@ local.properties
 design/refs/
 design/*.html
 .idea/
+
+# a captured spoken answer, for looking at a stream that sounded wrong
+design/refs/tts_capture.pcm

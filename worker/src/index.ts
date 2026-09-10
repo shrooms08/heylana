@@ -53,8 +53,14 @@ const CARTESIA_VERSION = '2024-11-13'
 const CARTESIA_MODEL = 'sonic-2'
 const DEEPGRAM_KEYS_URL = 'https://api.deepgram.com/v1/projects'
 
-/** Raw 16-bit audio: the one format that can be played as it arrives. */
-const TTS_SAMPLE_RATE = 22050
+/**
+ * Raw 16-bit audio: the one format that can be played as it arrives.
+ *
+ * Cartesia's raw container is single-channel, and the phone builds its AudioTrack
+ * from the rate this header carries — the two must never drift apart, or every
+ * word comes out at the wrong pitch.
+ */
+const TTS_SAMPLE_RATE = 24000
 
 /** How long a borrowed pair of ears is good for. */
 const STT_KEY_TTL_SECONDS = 120

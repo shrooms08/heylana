@@ -104,12 +104,21 @@ test('max_tokens is clamped, whatever the app asks for', async () => {
 
 // ---------------------------------------------------------------- the voice
 
+test('the audio format the phone is told about is the one that was asked for', async () => {
+  reply = () => new Response(new Uint8Array([1]), { status: 200 })
+  const response = await worker.fetch(post('/tts', { text: 'hello' }), env())
+  const asked = sentBody(calls[0]).output_format
+  assert.equal(asked.container, 'raw')
+  assert.equal(asked.encoding, 'pcm_s16le')
+  assert.equal(String(asked.sample_rate), response.headers.get('x-sample-rate'))
+})
+
 test('a spoken answer goes to Cartesia in Skylar by default', async () => {
   reply = () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })
   const response = await worker.fetch(post('/tts', { text: 'The search bar is at the top.' }), env())
   assert.equal(calls[0].url, 'https://api.cartesia.ai/tts/bytes')
   assert.equal(sentBody(calls[0]).voice.id, 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4')
-  assert.equal(response.headers.get('x-sample-rate'), '22050')
+  assert.equal(response.headers.get('x-sample-rate'), '24000')
   assert.equal((await response.arrayBuffer()).byteLength, 3)
 })
 

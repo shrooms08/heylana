@@ -13,10 +13,10 @@ VOICE_SKYLAR = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_ARCHIE = "ef191366-f52f-447a-a398-ed8c0f2943a1"
 
 # Replace with the project id from the Deepgram console before deploying.
-DEEPGRAM_PROJECT_ID = "replace-me"
+DEEPGRAM_PROJECT_ID = "d65fab1f-f014-4150-9c80-3a192941040e"
 
 # Per-device daily counters. Replace id with the one `wrangler kv namespace
 # create CAPS` prints; see README.md.
 [[kv_namespaces]]
 binding = "CAPS"
-id = "replace-me"
+id = "ed3f3ca828524b4a99f10cb45cf14bcd"

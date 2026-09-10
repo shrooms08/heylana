@@ -29,7 +29,7 @@ ANSWER = {
     "task": None,
 }
 
-SAMPLE_RATE = 22050
+SAMPLE_RATE = 24000
 TONE_SECONDS = 1.2
 TONE_HZ = 220.0
 

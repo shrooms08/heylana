@@ -73,6 +73,16 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_FORCE_PHONE_EARS, value).apply()
         }
 
+    /**
+     * Debug switch: keeps the raw audio of the last spoken answer in a file, so
+     * a stream that sounds wrong on the phone can be listened to somewhere else.
+     */
+    var saveTtsStream: Boolean
+        get() = prefs.getBoolean(KEY_SAVE_TTS, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SAVE_TTS, value).apply()
+        }
+
     var forcePhoneVoice: Boolean
         get() = prefs.getBoolean(KEY_FORCE_PHONE_VOICE, false)
         set(value) {
@@ -156,6 +166,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_VOICE = "voice"
         private const val KEY_FORCE_PHONE_EARS = "force_phone_ears"
         private const val KEY_FORCE_PHONE_VOICE = "force_phone_voice"
+        private const val KEY_SAVE_TTS = "save_tts_stream"
 
         private const val KEY_WARM_UP = "warm_up_connection"
 

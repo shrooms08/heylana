@@ -10,6 +10,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.settings.HeylanaSettings
@@ -32,6 +33,7 @@ import xyz.heylana.app.settings.HeylanaSettings
  * so the rings around the disc match what is being heard.
  */
 class CartesiaVoice(
+    private val context: android.content.Context,
     private val settings: HeylanaSettings,
     private val scope: CoroutineScope,
     private val phone: Speaker,
@@ -42,6 +44,9 @@ class CartesiaVoice(
 
     private var stream: Job? = null
     private var track: AudioTrack? = null
+
+    /** Holds back the odd tail byte so no sample is ever written half-finished. */
+    private val frames = PcmFrames(BYTES_PER_FRAME)
 
     @Volatile
     private var cancelled = false
@@ -109,7 +114,17 @@ class CartesiaVoice(
     /** Writes the audio out as it arrives, and reports when it is really over. */
     private fun play(playing: Playing) {
         val rate = playing.sampleRate
-        val minimum = AudioTrack.getMinBufferSize(rate, CHANNEL, ENCODING).coerceAtLeast(MIN_BUFFER)
+        val minimum = AudioTrack.getMinBufferSize(rate, CHANNEL, ENCODING)
+        // Enough room for a pause in the network, and enough in it before the
+        // first sound so a pause does not leave a hole in the middle of a word.
+        val bufferBytes = maxOf(minimum, bytesFor(rate, BUFFER_MS))
+        val preRollBytes = bytesFor(rate, PRE_ROLL_MS)
+
+        HeylanaLog.state(
+            "voice: pcm rate=$rate channels=1 bits=16 " +
+                "buffer_ms=${millisFor(rate, bufferBytes)} pre_roll_ms=$PRE_ROLL_MS"
+        )
+
         val player = AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -125,10 +140,14 @@ class CartesiaVoice(
                     .build()
             )
             .setTransferMode(AudioTrack.MODE_STREAM)
-            .setBufferSizeInBytes(minimum * 2)
+            .setBufferSizeInBytes(bufferBytes)
             .build()
 
         track = player
+        frames.reset()
+        val capture = openCapture(rate)
+
+        var bytesWritten = 0L
         var framesWritten = 0L
         var speaking = false
 
@@ -138,16 +157,34 @@ class CartesiaVoice(
                 while (!cancelled) {
                     val read = input.read(chunk)
                     if (read <= 0) break
-                    if (!speaking) {
-                        // The first audio is on its way to the speaker: this is
-                        // the moment the buddy starts talking, not before.
+                    capture?.write(chunk, 0, read)
+
+                    // Whole samples only: a socket does not care where a sample
+                    // ends, and half of one shifts everything after it.
+                    val aligned = frames.take(chunk, read)
+                    if (aligned.isEmpty()) continue
+
+                    val written = player.write(aligned, 0, aligned.size, AudioTrack.WRITE_BLOCKING)
+                    if (written > 0) {
+                        bytesWritten += written
+                        framesWritten += written / BYTES_PER_FRAME
+                    }
+
+                    if (!speaking && bytesWritten >= preRollBytes) {
+                        // Three hundred milliseconds in hand before the first
+                        // sound, so the speaker never runs dry mid-sentence.
                         player.play()
                         speaking = true
                         onSpeaking(true)
                     }
-                    val written = player.write(chunk, 0, read, AudioTrack.WRITE_BLOCKING)
-                    if (written > 0) framesWritten += written / BYTES_PER_FRAME
                 }
+            }
+
+            // A short answer may never reach the pre-roll; play what there is.
+            if (!speaking && bytesWritten > 0 && !cancelled) {
+                player.play()
+                speaking = true
+                onSpeaking(true)
             }
 
             // Written is not the same as heard: wait for the speaker to catch up.
@@ -158,12 +195,41 @@ class CartesiaVoice(
             // A stream that dies mid-sentence is not worth a message on screen;
             // the answer is already on the pane.
         } finally {
+            capture?.let { file ->
+                runCatching { file.close() }
+                HeylanaLog.state("voice: saved ${bytesWritten}B to ${captureFile()?.absolutePath}")
+            }
             playing.close()
             runCatching { player.stop() }
+            // How often the speaker ran dry: anything above zero is audible.
+            HeylanaLog.state(
+                "voice: played ${millisFor(rate, bytesWritten.toInt())}ms " +
+                    "underruns=${runCatching { player.underrunCount }.getOrDefault(-1)} " +
+                    "leftover_bytes=${frames.pending}"
+            )
             player.release()
             if (track === player) track = null
             if (speaking) onSpeaking(false)
         }
+    }
+
+    /** Bytes of 16-bit mono audio worth [millis] at [rate]. */
+    private fun bytesFor(rate: Int, millis: Int): Int = rate * BYTES_PER_FRAME * millis / 1000
+
+    private fun millisFor(rate: Int, bytes: Int): Int =
+        if (rate == 0) 0 else (bytes.toLong() * 1000 / (rate * BYTES_PER_FRAME)).toInt()
+
+    /** Debug only: where the last answer's audio is kept, if the switch is on. */
+    private fun captureFile(): java.io.File? =
+        context.getExternalFilesDir(null)?.let { java.io.File(it, CAPTURE_NAME) }
+
+    private fun openCapture(rate: Int): java.io.OutputStream? {
+        if (!BuildConfig.DEBUG || !settings.saveTtsStream) return null
+        val file = captureFile() ?: return null
+        return runCatching {
+            HeylanaLog.state("voice: saving raw pcm s16le mono ${rate}Hz to ${file.name}")
+            java.io.BufferedOutputStream(java.io.FileOutputStream(file))
+        }.getOrNull()
     }
 
     private fun speakOnPhone(text: String): Boolean {
@@ -196,9 +262,16 @@ class CartesiaVoice(
         const val CHANNEL = AudioFormat.CHANNEL_OUT_MONO
         const val ENCODING = AudioFormat.ENCODING_PCM_16BIT
         const val BYTES_PER_FRAME = 2
-        const val DEFAULT_SAMPLE_RATE = 22_050
-        const val MIN_BUFFER = 8_192
+        const val DEFAULT_SAMPLE_RATE = 24_000
         const val CHUNK_BYTES = 4_096
         const val PLAYED_OUT_POLL_MS = 40L
+
+        /** Room for a pause in the network without a hole in the sentence. */
+        const val BUFFER_MS = 400
+
+        /** How much is in hand before the first sound comes out. */
+        const val PRE_ROLL_MS = 300
+
+        const val CAPTURE_NAME = "tts_capture.pcm"
     }
 }

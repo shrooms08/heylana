@@ -66,6 +66,7 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         val settings = HeylanaSettings.get(this)
         sample = CartesiaVoice(
+            context = this,
             settings = settings,
             scope = scope,
             phone = Speaker(this) { },
@@ -368,6 +369,20 @@ private fun DebugSection(settings: HeylanaSettings) {
 
     var phoneEars by remember { mutableStateOf(settings.forcePhoneEars) }
     var phoneVoice by remember { mutableStateOf(settings.forcePhoneVoice) }
+
+    var saveTts by remember { mutableStateOf(settings.saveTtsStream) }
+
+    SwitchCard(
+        title = "Save last tts stream",
+        detail = "Debug builds only. Keeps the raw audio of the last spoken answer as " +
+            "tts_capture.pcm, so a stream that sounds wrong can be listened to " +
+            "somewhere else. Logcat prints where it went.",
+        checked = saveTts,
+        onCheckedChange = {
+            saveTts = it
+            settings.saveTtsStream = it
+        }
+    )
 
     SwitchCard(
         title = "Force phone ears",

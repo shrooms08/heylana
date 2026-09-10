@@ -142,6 +142,7 @@ class BuddyOverlayService : Service() {
             }
         }
         mouth = CartesiaVoice(
+            context = this,
             settings = settings,
             scope = scope,
             phone = Speaker(this) { speaking -> onSpeaking(speaking) },

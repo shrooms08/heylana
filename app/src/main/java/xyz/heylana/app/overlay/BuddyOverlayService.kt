@@ -286,7 +286,7 @@ class BuddyOverlayService : Service() {
         // Text and chip first, so the card is its final size before it is moved
         // clear of whatever is about to be boxed.
         view.showAnswer(spoken)
-        view.showSession(current.stepNumber)
+        view.showSession(current.stepNumber, GuidanceSession.MAX_STEPS)
 
         if (node != null) {
             view.avoidOverlap(node.bounds)

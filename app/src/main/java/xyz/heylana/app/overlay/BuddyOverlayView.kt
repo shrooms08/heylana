@@ -311,8 +311,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     }
 
     /** Shows the step counter with next and done while a task is running. */
-    fun showSession(stepNumber: Int) {
-        panel.showSession(stepNumber)
+    fun showSession(stepNumber: Int, ofSteps: Int) {
+        panel.showSession(stepNumber, ofSteps)
         // A task hands the keyboard back to the app the user is about to operate.
         if (mode == Mode.COMPOSE) enterMode(Mode.HUD)
         applyPosition()

@@ -18,6 +18,10 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.SpringAnimation
+import androidx.dynamicanimation.animation.SpringForce
+import xyz.heylana.app.R
 import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.HeylanaTokens
 
@@ -83,6 +87,41 @@ private class MuteToggleView(context: Context) : View(context) {
 }
 
 /**
+ * The thin rail along the bottom of the task HUD: how far through the steps the
+ * user is, out of the cap.
+ */
+@SuppressLint("ViewConstructor")
+private class ProgressRailView(context: Context) : View(context) {
+
+    var progress: Float = 0f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
+            invalidate()
+        }
+
+    private val track = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = HeylanaTokens.withAlpha(HeylanaTokens.accent, 0.20f)
+    }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = HeylanaTokens.accent
+    }
+    private val bar = RectF()
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat()
+        val h = height.toFloat()
+        if (w <= 0f || h <= 0f) return
+        val r = h / 2f
+        bar.set(0f, 0f, w, h)
+        canvas.drawRoundRect(bar, r, r, track)
+        if (progress > 0f) {
+            bar.set(0f, 0f, w * progress, h)
+            canvas.drawRoundRect(bar, r, r, fill)
+        }
+    }
+}
+
+/**
  * The message box: one sheet of glass holding whatever Heylana last said, the
  * question field and the ask button. During a task it also carries the step chip
  * and the next and done buttons.
@@ -116,6 +155,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     private val inputRow = LinearLayout(context)
 
+    private val rail = ProgressRailView(context)
     private val sessionRow = LinearLayout(context)
     private val stepChip = TextView(context)
     private val next = TextView(context)
@@ -266,6 +306,14 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             }
         )
 
+        rail.visibility = View.GONE
+        addView(
+            rail,
+            LayoutParams(LayoutParams.MATCH_PARENT, dp(HeylanaTokens.RAIL_DP)).apply {
+                topMargin = dp(HeylanaTokens.SPACE_3_DP)
+            }
+        )
+
         note.apply {
             visibility = View.GONE
             setTextColor(HeylanaTokens.textSecondary)
@@ -376,6 +424,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     private fun applyShape() {
         inputRow.visibility = if (shape == Shape.BOX && !isVoiceMode) View.VISIBLE else View.GONE
         sessionRow.visibility = if (shape == Shape.HUD) View.VISIBLE else View.GONE
+        rail.visibility = if (shape == Shape.HUD) View.VISIBLE else View.GONE
         for (row in listOf(inputRow, sessionRow)) row.alpha = 1f
         // The strip is the answer and the mute glyph, and nothing else.
         answer.maxLines = if (shape == Shape.BOX) MAX_ANSWER_LINES else STRIP_LINES
@@ -512,14 +561,40 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         note.visibility = View.VISIBLE
     }
 
-    /** Shows the step counter and the next and done buttons for a running task. */
-    fun showSession(stepNumber: Int) {
-        stepChip.text = "step $stepNumber"
-        sessionRow.visibility = View.VISIBLE
+    /** Shows the step counter, the rail and the buttons for a running task. */
+    fun showSession(stepNumber: Int, ofSteps: Int) {
+        val firstStep = shape != Shape.HUD
+        stepChip.text = context.getString(R.string.step_label, stepNumber)
+        rail.progress = if (ofSteps > 0) stepNumber.toFloat() / ofSteps else 0f
+        morphTo(Shape.HUD) {
+            if (firstStep) growEdges()
+        }
     }
 
     fun hideSession() {
-        sessionRow.visibility = View.GONE
+        morphTo(Shape.STRIP)
+    }
+
+    /**
+     * The chip comes out of the left edge and the buttons out of the right, so
+     * the HUD grows its controls rather than having them appear on top of it.
+     */
+    private fun growEdges() {
+        growFromEdge(stepChip, pivot = 0f)
+        for (pill in listOf(next, done)) growFromEdge(pill, pivot = 1f)
+    }
+
+    private fun growFromEdge(view: View, pivot: Float) {
+        view.pivotX = view.width * pivot
+        view.pivotY = view.height / 2f
+        view.scaleX = 0f
+        SpringAnimation(view, DynamicAnimation.SCALE_X).apply {
+            spring = SpringForce(1f).apply {
+                stiffness = HeylanaTokens.SPRING_STIFFNESS
+                dampingRatio = HeylanaTokens.SPRING_DAMPING
+            }
+            start()
+        }
     }
 
     fun setMuted(muted: Boolean) {

@@ -109,6 +109,9 @@ object HeylanaTokens {
     const val GLASS_LENS_DP = 1f
     const val INPUT_BORDER_DP = 1f
 
+    /** The task HUD's progress rail. */
+    const val RAIL_DP = 2f
+
     /** The specular blob, as fractions of the pane. */
     const val SPECULAR_WIDTH = 0.60f
     const val SPECULAR_HEIGHT = 0.35f

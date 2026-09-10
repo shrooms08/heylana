@@ -153,6 +153,29 @@ until the step changes or the task ends, exactly as it always has. The watch
 behind it runs the whole time either way, so acting on a step's box is
 acknowledged however long the user took to find it.
 
+**Never detach the disc while it is being touched.** Removing a view that is
+holding a gesture makes the framework cancel that gesture, and the row the disc
+sits in used to be torn down and rebuilt on every layout change — including the
+one that opens the microphone. The result was an `ACTION_CANCEL` three
+milliseconds after the long press: no release ever came back, so a hold could
+never finish. `layoutBeside` and `reorderBeside` now move the box and the capsule
+around the disc and leave the disc itself alone.
+
+**Nothing settles the buddy back to idle mid-exchange.** Settling closes the box,
+and closing the box abandons the microphone, so a settle that lands at the wrong
+moment throws away what the user is saying. They land easily: opening the
+microphone stops the speaker, text-to-speech then reports "no longer speaking",
+and that report is what books the settle a second later. `overlay/Exchange` is
+the gate — it runs from the microphone opening (or a typed question being sent)
+until the answer lands, the user gives up, or nothing was heard — and both the
+booking and the running of a settle ask it first.
+
+**"Heard nothing" waits for the release.** The recogniser gives up on its own
+after a moment of quiet, which can easily happen before the user has started
+speaking, with their finger still down. `voice/NothingHeardGate` holds that
+result until they let go, which is the moment they are actually asking for an
+answer.
+
 **Re-parenting the buddy resets its animation.** Moving the disc between the
 docked, compose and HUD layouts detaches the view, which cancels any running
 cross-fade part way. The owner calls `refreshState()` after every re-parent
@@ -220,6 +243,23 @@ Force-stopping the app clears the setting too, so run it again after any
 `am force-stop` — and note that a running Heylana will not notice until the
 onboarding screen is resumed, so restart the app rather than just re-launching
 the intent.
+
+**Watch what the buddy is doing with `HeylanaState`.** Debug builds trace every
+gesture, mode change, recogniser callback and settle through `HeylanaLog`:
+
+```
+adb logcat -s HeylanaState
+```
+
+Names of things that happened and nothing else — no screen contents, no
+transcript, no answer. It logs at info rather than debug because the Seeker drops
+app debug lines from logcat entirely. A hold can be simulated without a finger:
+
+```
+adb shell input swipe <disc_x> <disc_y> <disc_x> <disc_y> 3000
+```
+
+with the disc's centre taken from `adb shell dumpsys window windows`.
 
 **The glass has a preview that costs nothing.** Debug builds carry a second
 launcher icon, Heylana Glass, which renders the real message box over a bright

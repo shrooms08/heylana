@@ -17,6 +17,7 @@ import android.widget.LinearLayout
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.ui.GlassBlur
 import xyz.heylana.app.ui.HeylanaTokens
 import kotlin.math.abs
@@ -182,6 +183,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     private val longPress = Runnable {
         if (!dragging && !holding) {
+            HeylanaLog.state("touch: long press")
             holding = true
             onHoldStart?.invoke()
         }
@@ -295,6 +297,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** True when the exchange in progress was asked by voice rather than typed. */
     val wasSpoken: Boolean get() = panel.isVoiceMode
+
+    /** True while the spoken-exchange capsule is still on screen. */
+    val isCapsuleShowing: Boolean get() = mode == Mode.CAPSULE
 
     /** Remembered preference: whether spoken answers also show their words. */
     var voiceShowsText: Boolean = false
@@ -425,6 +430,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      */
     private fun enterMode(next: Mode) {
         if (mode == next) return
+        HeylanaLog.state("mode: $mode -> $next")
         mode = next
         refreshMetrics()
 
@@ -517,24 +523,31 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         val roomLeft = spriteLeft
         val roomRight = usableWidth - (spriteLeft + discSize)
         panelOnLeft = roomLeft > roomRight
-        content.removeView(sprite)
-        content.removeView(panel)
-        content.removeView(capsule)
-        val discParams = LinearLayout.LayoutParams(discSize, discSize)
+
         val boxParams = LinearLayout.LayoutParams(
             panel.hudWidth, LinearLayout.LayoutParams.WRAP_CONTENT
         )
         val capsuleParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
         )
+
+        // The disc is never detached here. Detaching the view that is holding a
+        // gesture cancels the gesture, and opening the microphone comes through
+        // this method — rebuilding the whole row cancelled the very hold that
+        // had just opened it, so no release ever reached us again. Only the box
+        // and the capsule move; they are never the ones being touched.
+        content.removeView(panel)
+        content.removeView(capsule)
+        if (content.indexOfChild(sprite) < 0) {
+            content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
+        }
+        val discIndex = content.indexOfChild(sprite)
         if (panelOnLeft) {
-            content.addView(capsule, capsuleParams)
-            content.addView(panel, boxParams)
-            content.addView(sprite, discParams)
+            content.addView(capsule, discIndex, capsuleParams)
+            content.addView(panel, discIndex + 1, boxParams)
         } else {
-            content.addView(sprite, discParams)
-            content.addView(panel, boxParams)
-            content.addView(capsule, capsuleParams)
+            content.addView(panel, discIndex + 1, boxParams)
+            content.addView(capsule, discIndex + 2, capsuleParams)
         }
     }
 
@@ -751,6 +764,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun handleSpriteTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                HeylanaLog.state("touch: down")
                 onTouched?.invoke()
                 cancelFlight()
                 refreshMetrics()
@@ -800,6 +814,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             }
 
             MotionEvent.ACTION_UP -> {
+                HeylanaLog.state("touch: up holding=$holding dragging=$dragging")
                 removeCallbacks(longPress)
                 when {
                     holding -> {
@@ -815,6 +830,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             }
 
             MotionEvent.ACTION_CANCEL -> {
+                HeylanaLog.state("touch: cancel holding=$holding dragging=$dragging")
                 removeCallbacks(longPress)
                 if (holding) {
                     holding = false
@@ -892,19 +908,21 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** Puts the box on whichever side [panelOnLeft] currently says. */
     private fun reorderBeside() {
-        content.removeView(sprite)
+        // Same rule as [layoutBeside]: the disc keeps its place in the row, so
+        // whatever gesture it is holding survives the box moving sides.
         content.removeView(panel)
         content.removeView(capsule)
-        val discParams = LinearLayout.LayoutParams(discSize, discSize)
         val boxParams = LinearLayout.LayoutParams(
             panel.hudWidth, LinearLayout.LayoutParams.WRAP_CONTENT
         )
+        if (content.indexOfChild(sprite) < 0) {
+            content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
+        }
+        val discIndex = content.indexOfChild(sprite)
         if (panelOnLeft) {
-            content.addView(panel, boxParams)
-            content.addView(sprite, discParams)
+            content.addView(panel, discIndex, boxParams)
         } else {
-            content.addView(sprite, discParams)
-            content.addView(panel, boxParams)
+            content.addView(panel, discIndex + 1, boxParams)
         }
     }
 

@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import xyz.heylana.app.HeylanaLog
 
 /**
  * Listens while the user holds the buddy.
@@ -28,6 +29,9 @@ class Listener(
     private var recognizer: SpeechRecognizer? = null
     private var listening = false
 
+    /** Holds an early "heard nothing" back until the user actually lets go. */
+    private val nothingHeard = NothingHeardGate()
+
     /** Set when the user drags away mid-hold: results are then thrown away. */
     private var abandoned = false
 
@@ -44,19 +48,29 @@ class Listener(
         }
 
         abandoned = false
+        nothingHeard.started()
         val speech = recognizer ?: SpeechRecognizer.createSpeechRecognizer(context).also {
             recognizer = it
         }
         speech.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) = Unit
-            override fun onBeginningOfSpeech() = Unit
+            override fun onReadyForSpeech(params: Bundle?) =
+                HeylanaLog.state("recogniser: ready")
+
+            override fun onBeginningOfSpeech() =
+                HeylanaLog.state("recogniser: speech began")
+
             override fun onRmsChanged(rmsdB: Float) = Unit
             override fun onBufferReceived(buffer: ByteArray?) = Unit
-            override fun onEndOfSpeech() = Unit
+
+            override fun onEndOfSpeech() =
+                HeylanaLog.state("recogniser: speech ended")
+
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
             override fun onPartialResults(partialResults: Bundle?) {
                 if (abandoned) return
+                // How much was heard, never what.
+                HeylanaLog.state("recogniser: partial")
                 firstResult(partialResults)?.let(onPartial)
             }
 
@@ -64,15 +78,25 @@ class Listener(
                 listening = false
                 if (abandoned) return
                 val text = firstResult(results)
-                if (text.isNullOrBlank()) onNothingHeard() else onFinal(text)
+                HeylanaLog.state("recogniser: results empty=${text.isNullOrBlank()}")
+                if (!text.isNullOrBlank()) {
+                    onFinal(text)
+                } else if (nothingHeard.nothingHeard()) {
+                    onNothingHeard()
+                }
             }
 
             override fun onError(error: Int) {
                 listening = false
+                HeylanaLog.state("recogniser: error code=$error abandoned=$abandoned")
                 if (abandoned) return
                 when (error) {
+                    // Not a problem, and not necessarily now: the recogniser
+                    // gives up on its own if the user is quiet for a moment
+                    // before they start talking, and their finger is still down.
                     SpeechRecognizer.ERROR_NO_MATCH,
-                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> onNothingHeard()
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                        if (nothingHeard.nothingHeard()) onNothingHeard()
 
                     else -> onProblem(message(error))
                 }
@@ -89,17 +113,33 @@ class Listener(
         }
 
         listening = true
+        HeylanaLog.state("recogniser: started")
         speech.startListening(intent)
     }
 
-    /** The user let go: ask for the final transcript. */
-    fun stop() {
-        if (!listening) return
-        recognizer?.stopListening()
+    /**
+     * The user let go: ask for the final transcript.
+     *
+     * Returns true if words are still on their way. False means there is nothing
+     * left to wait for — either the recogniser had already given up while they
+     * were holding, in which case [onNothingHeard] fires now, or it was never
+     * running.
+     */
+    fun release(): Boolean {
+        HeylanaLog.state("recogniser: released, listening=$listening")
+        val heardNothing = nothingHeard.releasedNow()
+        if (listening) {
+            recognizer?.stopListening()
+            return true
+        }
+        if (heardNothing && !abandoned) onNothingHeard()
+        return false
     }
 
     /** The hold turned into a drag: stop and discard whatever was heard. */
     fun cancel() {
+        HeylanaLog.state("recogniser: cancel asked, listening=$listening")
+        nothingHeard.started()
         if (!listening) return
         abandoned = true
         listening = false

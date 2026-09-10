@@ -26,6 +26,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import xyz.heylana.app.BuildConfig
+import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.MainActivity
 import xyz.heylana.app.R
 import xyz.heylana.app.brain.AnthropicClient
@@ -74,6 +75,9 @@ class BuddyOverlayService : Service() {
 
     private val main = Handler(Looper.getMainLooper())
 
+    /** What the user has going on, and therefore what may not be torn down. */
+    private val exchange = Exchange()
+
     /**
      * Puts everything back to rest a beat after an exchange finishes. A typed
      * answer keeps its strip; a spoken one leaves nothing behind but the
@@ -81,8 +85,16 @@ class BuddyOverlayService : Service() {
      */
     private val settleToIdle = Runnable {
         val view = overlayView ?: return@Runnable
+        // Whatever booked this, the user has since started something else.
+        if (!exchange.maySettle) {
+            HeylanaLog.state("settle: skipped, ${exchange.phase}")
+            return@Runnable
+        }
+        HeylanaLog.state("settle: run")
         view.endVoiceExchange()
-        if (view.wasSpoken) view.closePanel()
+        // Never while the capsule is still on screen: closing the box abandons
+        // the microphone, and that is not what the end of an answer means.
+        if (view.wasSpoken && !view.isCapsuleShowing) view.closePanel()
         view.setTalking(false)
     }
     private val autoAdvanceCheck = Runnable { considerAutoAdvance() }
@@ -96,15 +108,24 @@ class BuddyOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         speaker = Speaker(this) { speaking ->
+            HeylanaLog.state("speak: speaking=$speaking")
             overlayView?.setTalking(speaking)
             main.removeCallbacks(settleToIdle)
-            if (!speaking) main.postDelayed(settleToIdle, SETTLE_MS)
+            if (!speaking && exchange.maySettle) {
+                HeylanaLog.state("settle: scheduled")
+                main.postDelayed(settleToIdle, SETTLE_MS)
+            }
         }
         listener = Listener(
             context = this,
             onPartial = { text -> overlayView?.showHeard(text) },
-            onFinal = { text -> ask(text) },
+            onFinal = { text ->
+                HeylanaLog.state("listen: heard something")
+                ask(text)
+            },
             onProblem = { message ->
+                HeylanaLog.state("listen: problem")
+                exchange.over()
                 overlayView?.stoppedListening()
                 // Nothing will be asked, so the capsule has to go, or it sits
                 // there saying "listening" for ever.
@@ -112,6 +133,8 @@ class BuddyOverlayService : Service() {
                 overlayView?.showNotice(message)
             },
             onNothingHeard = {
+                HeylanaLog.state("listen: nothing heard")
+                exchange.over()
                 // They held the buddy and said nothing. Nothing to answer and
                 // nothing to apologise for: melt the capsule and rest.
                 overlayView?.stoppedListening()
@@ -176,7 +199,9 @@ class BuddyOverlayService : Service() {
             view.onQuestion = { question -> ask(question) }
             // Touching the disc is the earliest warning that a request is
             // coming, so the connection is opened while they are still typing.
-            view.onTouched = { scope.launch { brain.warmUp() } }
+            // Dispatched straight to IO: naming `brain` builds the HTTP client
+            // the first time, and no part of that belongs in a touch handler.
+            view.onTouched = { scope.launch(Dispatchers.IO) { brain.warmUp() } }
             view.onHoldStart = { startListening() }
             view.onHoldEnd = { finishListening() }
             view.onHoldCancel = { abandonListening() }
@@ -187,6 +212,7 @@ class BuddyOverlayService : Service() {
             view.onNext = { advance(userAsked = true) }
             view.onDone = { stopSessionOnRequest() }
             view.onPanelClosed = {
+                HeylanaLog.state("panel: closed")
                 speaker?.stop()
                 stopTapWatch()
                 highlight?.hide()
@@ -210,8 +236,10 @@ class BuddyOverlayService : Service() {
      * topmost non-Heylana window — then asks the brain off the main thread.
      */
     private fun ask(question: String) {
+        HeylanaLog.state("ask: sending")
         val view = overlayView ?: return
         if (inFlight?.isActive == true) return
+        exchange.asking()
 
         // A new question drops whatever the last one left behind, including any
         // task that was running.
@@ -222,6 +250,7 @@ class BuddyOverlayService : Service() {
         endSession(clearBox = false)
 
         if (!HeylanaAccessibilityService.isConnected) {
+            exchange.over()
             view.showNotice(
                 "I can't read this screen yet. Open Heylana and switch on its accessibility " +
                     "service, then ask me again."
@@ -244,7 +273,10 @@ class BuddyOverlayService : Service() {
             logScreenSize(snapshot, screenText)
 
             val memory = conversation.asPromptText(snapshot.packageName)
-            when (val reply = brain.ask(question, screenText, memory)) {
+            val reply = brain.ask(question, screenText, memory)
+            // The answer is here: from now on settling back to idle is allowed.
+            exchange.over()
+            when (reply) {
                 is BrainReply.Say -> {
                     // The capsule goes as the answer lands, whichever way it
                     // was asked for.
@@ -308,6 +340,7 @@ class BuddyOverlayService : Service() {
     private fun readScreen(view: BuddyOverlayView): ScreenSnapshot? {
         val snapshot = HeylanaAccessibilityService.snapshotOrNull()
         if (snapshot == null || snapshot.isEmpty) {
+            exchange.over()
             view.showNotice(
                 "I couldn't see anything on this screen. Let it finish loading and ask again."
             )
@@ -558,6 +591,10 @@ class BuddyOverlayService : Service() {
             return
         }
 
+        HeylanaLog.state("listen: opening")
+        // Before anything else: stopping the speaker below reports "no longer
+        // speaking", and that report books a settle unless it knows better.
+        exchange.listening()
         speaker?.stop()
         stopTapWatch()
         highlight?.hide()
@@ -567,21 +604,29 @@ class BuddyOverlayService : Service() {
     }
 
     private fun finishListening() {
+        HeylanaLog.state("listen: released")
+        exchange.released()
         val view = overlayView ?: return
         view.stoppedListening()
         val ears = listener ?: return
-        if (ears.isListening) {
-            // Waiting on the final transcript: the capsule turns into the aurora.
-            view.showThinkingCapsule()
-            ears.stop()
-        } else {
-            // Nothing was captured — fall back to whatever ended up in the field.
-            val typed = view.spokenText()
-            if (typed.isNotEmpty()) ask(typed)
+        // Waiting on the final transcript: the capsule turns into the aurora.
+        if (ears.isListening) view.showThinkingCapsule()
+        if (ears.release()) return
+
+        // Nothing is coming — fall back to whatever ended up in the field, and
+        // if there is nothing there either, put everything back to rest.
+        val typed = view.spokenText()
+        if (typed.isNotEmpty()) {
+            ask(typed)
+        } else if (exchange.inProgress) {
+            exchange.over()
+            view.endVoiceExchange()
         }
     }
 
     private fun abandonListening() {
+        HeylanaLog.state("listen: abandoned")
+        exchange.over()
         listener?.cancel()
         overlayView?.stoppedListening()
     }

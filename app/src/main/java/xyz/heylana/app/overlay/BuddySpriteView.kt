@@ -13,6 +13,17 @@ import android.view.View
  */
 class BuddySpriteView(context: Context) : View(context) {
 
+    /** Which face to draw. */
+    enum class Expression { IDLE, THINKING }
+
+    var expression: Expression = Expression.IDLE
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
+
     private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.parseColor("#7C3AED")
     }
@@ -36,16 +47,27 @@ class BuddySpriteView(context: Context) : View(context) {
         intArrayOf(2, 3, 3, 3),
         intArrayOf(7, 3, 3, 3)
     )
-    private val pupils = listOf(
+    private val pupilsIdle = listOf(
         intArrayOf(3, 4, 2, 2),
         intArrayOf(8, 4, 2, 2)
     )
-    private val mouth = listOf(
+
+    /** Eyes looking up while Heylana is working something out. */
+    private val pupilsThinking = listOf(
+        intArrayOf(3, 3, 2, 2),
+        intArrayOf(8, 3, 2, 2)
+    )
+    private val mouthSmile = listOf(
         intArrayOf(2, 7, 1, 1),
         intArrayOf(3, 8, 1, 1),
         intArrayOf(4, 9, 4, 1),
         intArrayOf(8, 8, 1, 1),
         intArrayOf(9, 7, 1, 1)
+    )
+
+    /** A small flat "hmm" mouth. */
+    private val mouthThinking = listOf(
+        intArrayOf(4, 8, 4, 1)
     )
 
     override fun onDraw(canvas: Canvas) {
@@ -73,8 +95,9 @@ class BuddySpriteView(context: Context) : View(context) {
                 )
             }
         }
+        val thinking = expression == Expression.THINKING
         drawCells(eyeWhites, facePaint)
-        drawCells(pupils, pupilPaint)
-        drawCells(mouth, facePaint)
+        drawCells(if (thinking) pupilsThinking else pupilsIdle, pupilPaint)
+        drawCells(if (thinking) mouthThinking else mouthSmile, facePaint)
     }
 }

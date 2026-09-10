@@ -12,11 +12,22 @@ import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.widget.Toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import xyz.heylana.app.MainActivity
 import xyz.heylana.app.R
+import xyz.heylana.app.brain.AnthropicClient
+import xyz.heylana.app.brain.BrainReply
+import xyz.heylana.app.screen.HeylanaAccessibilityService
+import xyz.heylana.app.settings.HeylanaSettings
 
 /**
- * Foreground service that keeps the buddy sprite drawn on top of every other app.
+ * Foreground service that keeps the buddy sprite drawn on top of every other app,
+ * and runs the ask-about-this-screen round trip when the user sends a question.
  *
  * Declared as a `specialUse` foreground service: the app's whole purpose is an
  * always-available on-screen companion, which none of the predefined types cover.
@@ -24,6 +35,10 @@ import xyz.heylana.app.R
 class BuddyOverlayService : Service() {
 
     private var overlayView: BuddyOverlayView? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var inFlight: Job? = null
+
+    private val brain: AnthropicClient by lazy { AnthropicClient(HeylanaSettings.get(this)) }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -47,6 +62,7 @@ class BuddyOverlayService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        scope.cancel()
         overlayView?.removeFromWindow()
         overlayView = null
         super.onDestroy()
@@ -54,7 +70,42 @@ class BuddyOverlayService : Service() {
 
     private fun showOverlay() {
         if (overlayView != null) return
-        overlayView = BuddyOverlayView(this).also { it.addToWindow() }
+        overlayView = BuddyOverlayView(this).also { view ->
+            view.onQuestion = { question -> ask(question) }
+            view.addToWindow()
+        }
+    }
+
+    /**
+     * Reads the screen first — while the app the user is asking about is still the
+     * topmost non-Heylana window — then asks the brain off the main thread.
+     */
+    private fun ask(question: String) {
+        val view = overlayView ?: return
+        if (inFlight?.isActive == true) return
+
+        if (!HeylanaAccessibilityService.isConnected) {
+            view.showNotice(
+                "I can't read this screen yet. Open Heylana and switch on its accessibility " +
+                    "service, then ask me again."
+            )
+            return
+        }
+
+        val snapshot = HeylanaAccessibilityService.snapshotOrNull()
+        if (snapshot == null || snapshot.isEmpty) {
+            view.showNotice("I couldn't see anything on this screen. Let it finish loading and ask again.")
+            return
+        }
+        val screenText = snapshot.toPromptText()
+
+        view.showThinking()
+        inFlight = scope.launch {
+            when (val reply = brain.ask(question, screenText)) {
+                is BrainReply.Say -> view.showAnswer(reply.text)
+                is BrainReply.Failed -> view.showNotice(reply.message)
+            }
+        }
     }
 
     private fun startAsForeground() {

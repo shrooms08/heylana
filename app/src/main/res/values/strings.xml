@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Heylana</string>
+    <string name="accessibility_service_summary">Lets Heylana read the screen you are looking at</string>
+    <string name="accessibility_service_description">Heylana reads the app on your screen only when you ask it a question, so it can explain what you are looking at. It never taps or types for you, and it does not watch your screen in the background.</string>
 </resources>

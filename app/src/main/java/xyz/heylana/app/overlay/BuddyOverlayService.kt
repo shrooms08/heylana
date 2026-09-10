@@ -486,8 +486,10 @@ class BuddyOverlayService : Service() {
         )
 
         val notification = Notification.Builder(this, CHANNEL_ID)
-            .setContentTitle("Heylana is on your screen")
-            .setSmallIcon(R.drawable.ic_buddy_notification)
+            .setContentTitle("heylana")
+            .setContentText("heylana is on your screen")
+            .setSubText("tap the swirl to ask · only reads when you ask")
+            .setSmallIcon(R.drawable.ic_heylana_mark)
             .setContentIntent(openApp)
             .setOngoing(true)
             .addAction(
@@ -516,6 +518,8 @@ class BuddyOverlayService : Service() {
         ).apply {
             description = "Shows while the Heylana buddy is floating on your screen"
             setShowBadge(false)
+            setSound(null, null)
+            enableVibration(false)
         }
         manager.createNotificationChannel(channel)
     }

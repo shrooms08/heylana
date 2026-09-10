@@ -1,88 +1,171 @@
-# SMOKE TEST — no more self-promotion at the end of answers
+# SMOKE TEST — design part 1: the buddy disc and the glass box
 
-Heylana had started tacking a line onto its answers offering more help, or
-explaining what it is and that it knows about Solana. You already know what it is
-from onboarding. This stops that.
+The pixel face and the white card are gone. The buddy is now the brand mark in a
+disc of dark glass, and the message box is one sheet of glass that drops in under
+it. Nothing about what Heylana *does* changed.
 
-Nothing else changed: pointing, tasks, voice, mute and the notification all work
-exactly as before.
+## Budget for this test: 0 live API calls
 
-## Budget for this test: 3 live API calls
+Every step below is about how things look. **Do not tap ask with a real key in
+the field**, except where step 9 says so, and that step uses a deliberately wrong
+key, which costs nothing.
 
-Run by you, not by me. I did not send anything to the API — the prompt was
-checked with unit tests on the computer instead.
-
-| Call | What you type |
-|------|---------------|
-| 1 | what time is it in tokyo |
-| 2 | what is 15 percent of 80 |
-| 3 | what can you do |
-
-**Send each one once.** If an answer is wrong, write down exactly what it said
-and move on rather than retrying.
-
-Before you start, check **Heylana → Settings** shows **Key saved** with the last
-four characters of your own key. Then **Start buddy**.
+**Read this first:** during development I discovered your **real key is on this
+emulator**, not the fake one I expected. I spent **one live call** finding that
+out — sorry. Your key is untouched and still saved.
 
 ---
 
-**1. Call 1 — a question with nothing to do with this app.**
-Press Home, open **Chrome** on any page. Tap the buddy, type
-**what time is it in tokyo**, and send.
+**1. Start the buddy and look at it resting.**
+Open **Heylana**, tap **Start buddy**, then press Home and open any app — the
+**Clock** is fine.
 
-You should see: the time in Tokyo, and **nothing else**.
-
-It must **not** say any of these:
-
-- anything about **Solana**, **Seeker**, wallets, swaps or staking
-- anything about **what Heylana is** or what it can help with
-- a closing offer such as *"let me know if…"*, *"I can also…"*, *"feel free
-  to…"*, or *"I'm here to help with…"*
-
-One or two sentences that answer the question and stop. That is the whole test.
+You should see: a **dark glass circle** against the right edge of the screen with
+the **white swirl** inside it, knocked back to a soft grey. The disc has a faint
+light rim. There is **no purple glow**. It sits just off the edge — fully
+visible, not half cut off.
 
 ---
 
-**2. Call 2 — a sum.**
-Tap the buddy, type **what is 15 percent of 80**, and send.
+**2. Watch it breathe.**
+Keep watching the disc for about ten seconds without touching it.
 
-You should see: **12**, in one short sentence — something like "That's 12."
-
-It must **not** add an offer of more help, and must not explain that it can do
-other things too.
+You should see: the disc **swell very slightly and settle again**, over about
+three seconds each way. It is meant to be barely there — a slow breath, not a
+pulse. Nothing rotates.
 
 ---
 
-**3. Call 3 — the one time it may talk about itself.**
-Tap the buddy, type **what can you do**, and send.
+**3. Tap it to compose.**
+Tap the disc once.
 
-You should see: **two sentences** describing what Heylana does — reading the
-screen you are on and answering questions about it, pointing at things, walking
-you through a task.
+You should see, in one movement:
 
-Here it **is** allowed to describe itself, and it may mention Solana if that is
-part of the answer. What it must **not** do is run on past two sentences.
+- The buddy **flies to the top centre** of the screen and settles just below the
+  status bar, with a small overshoot at the end.
+- The mark goes **full white**, the disc lightens, and a **purple glow blooms
+  behind it**.
+- The app behind **dims**.
+- A **glass box drops in beneath the buddy**, nearly full width with a even gap
+  each side, with soft rounded corners.
+- The **keyboard opens by itself**.
+
+In the box: a **speaker icon** in the top-right corner, a wide field reading
+**ask about this screen** in grey, and a purple **ask** button beside it.
+
+---
+
+**4. Look closely at the glass.**
+Look at the edges of the box and the ask button.
+
+You should see: a **hairline light border** all the way round; the **top and left
+edges slightly brighter** than the middle and the **bottom and right slightly
+darker**, fading out rather than stopping sharply; and a **soft purple wash**
+inside the glass near its top-left corner, running diagonally. The **ask** button
+is the same glass with much more purple in it.
+
+---
+
+**5. Is the blur working?**
+Look at the app *behind* the box, in the gap between the buddy and the box, and
+around the edges.
+
+- **Blur on:** whatever is behind is **soft and smeared**, as if through frosted
+  glass. Text and icons behind are unreadable shapes.
+- **Blur off:** everything behind stays **sharp**, just darker, and the box reads
+  as a slightly milky grey panel instead.
+
+Both are correct — Heylana asks the phone for blur and takes whatever it gets.
+Android switches blur off on its own in battery saver and on weaker phones. If
+you want to check deliberately: **Settings → System → Developer options →
+Window blurs** toggles it. Turn it off, close and reopen the box, and the box
+should get **visibly more solid** rather than disappearing.
+
+---
+
+**6. Close it.**
+Tap anywhere on the dimmed area away from the box.
+
+You should see: the dim clear, the box fade out, and the buddy **fly back to
+exactly where it was docked**, going grey and losing its glow as it lands.
+
+Try the same with the **back gesture** instead — same result.
+
+---
+
+**7. Hold it to talk.**
+Press and hold the disc for about a second and keep holding.
+
+You should see: the mark go **full white with the purple glow**, and the box open
+**beside the buddy** reading **listening…** — with **no dim** and **no keyboard**
+this time. Slide your finger away and let go to cancel without sending.
+
+---
+
+**8. Drag and snap.**
+Press and drag the disc to the middle of the screen and let go.
+
+You should see: it follows your finger, then **snaps flat to the nearest side**
+and goes back to its resting grey. It should still sit just off the edge, fully
+visible.
+
+---
+
+**9. See an error inside the glass box (costs nothing, and leaves your key alone).**
+This checks that failures land in the box rather than crashing.
+
+Turn on **aeroplane mode**. Then tap the buddy, type **what is this**, and tap
+**ask**.
+
+You should see: the box show **thinking…** for a moment, then a short line inside
+the same glass box saying it **couldn't reach the API**. No crash, the box stays
+open, and what you typed is still in the field so you could try again.
+
+Turn aeroplane mode back off.
+
+There is no need to put a fake key in Settings to test this — that would cost you
+re-entering your real key, and this proves the same thing.
+
+---
+
+**10. Check the notification.**
+Swipe down from the top of the screen.
+
+You should see a notification with:
+
+- title **heylana**
+- text **heylana is on your screen**
+- a smaller line reading **tap the swirl to ask · only reads when you ask**
+- the **swirl** as its small icon
+- a **Stop** button when you expand it
+
+It should be silent and sit low in the list.
 
 ---
 
 ## What to do if something goes wrong
 
-Write down the exact words it said, and which of the three questions it was.
-
-- **A closing offer still appears** — quote the whole line.
-- **It mentions Solana or Heylana in call 1 or 2** — quote the sentence.
-- **Call 3 gives nothing, or refuses to describe itself** — that is the opposite
-  failure and worth reporting too.
-- **Answers got shorter but also worse** — say which and how; the persona line was
-  trimmed and that is the thing most likely to have overshot.
+- **The disc is cut off by the screen edge** — note which edge.
+- **No purple glow when you tap it** — note what state it was in.
+- **The buddy does not fly back to where it was docked** — note where it went.
+- **The box covers the buddy, or the buddy sits on the box** — note which.
+- **Tapping away does not close it** — note whether the keyboard was up.
+- **Text looks like the old default font** rather than the rounded Outfit — the
+  font failed to load; say so and it will fall back cleanly rather than break.
 
 ---
 
 ## Pass criteria
 
-- Calls 1 and 2 answer the question and stop, with no offer of further help and
-  no mention of Solana, Seeker or Heylana.
-- Call 3 describes Heylana in about two sentences.
-- Answers are still accurate and still spoken aloud.
-- Pointing, tasks, voice, mute and the notification all still behave as before.
-- The whole test costs 3 live calls and no more.
+- Resting: a dark glass disc with a dulled swirl, no glow, breathing slowly, just
+  off the edge and fully visible.
+- Tapping flies it to the top centre, dims the app, drops the glass box in and
+  opens the keyboard.
+- Any active state — composing, listening — brings the mark to full white with a
+  purple bloom.
+- The glass has a hairline border, a light-to-dark bevel and a purple wash near
+  its top-left.
+- Tapping away or going back clears everything and returns the buddy to its dock.
+- Drag and snap still work.
+- The notification reads as above and its Stop button still works.
+- Nothing crashes, and no API calls happen except the optional error check.

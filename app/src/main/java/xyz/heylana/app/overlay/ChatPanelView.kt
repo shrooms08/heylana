@@ -3,11 +3,9 @@ package xyz.heylana.app.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
-import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.text.method.ScrollingMovementMethod
 import android.util.TypedValue
@@ -17,13 +15,14 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
+import xyz.heylana.app.ui.GlassDrawable
+import xyz.heylana.app.ui.HeylanaTokens
 
 /**
- * A speaker glyph that doubles as the mute switch — drawn in code, no assets.
+ * The speaker glyph that doubles as the mute switch — drawn in code, no assets.
  */
 @SuppressLint("ViewConstructor")
 private class MuteToggleView(context: Context) : View(context) {
@@ -37,12 +36,12 @@ private class MuteToggleView(context: Context) : View(context) {
         }
 
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#4C1D95")
+        color = HeylanaTokens.textSecondary
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#4C1D95")
+        color = HeylanaTokens.textSecondary
         style = Paint.Style.FILL
     }
     private val cone = Path()
@@ -55,7 +54,6 @@ private class MuteToggleView(context: Context) : View(context) {
         val unit = minOf(w, h) / 24f
         stroke.strokeWidth = unit * 1.8f
 
-        // Speaker body: a small box opening into a cone to the right.
         val cx = w / 2f - unit * 3f
         val cy = h / 2f
         cone.reset()
@@ -85,13 +83,14 @@ private class MuteToggleView(context: Context) : View(context) {
 }
 
 /**
- * The little chat card that opens beside the buddy: one line in, one answer out,
- * plus the switch that silences Heylana's voice.
+ * The message box: one sheet of glass holding whatever Heylana last said, the
+ * question field and the ask button. During a task it also carries the step chip
+ * and the next and done buttons.
  */
 @SuppressLint("ViewConstructor")
 class ChatPanelView(context: Context) : LinearLayout(context) {
 
-    /** Called with the trimmed question when the user hits Send. */
+    /** Called with the trimmed question when the user asks. */
     var onSend: ((String) -> Unit)? = null
 
     /** Called with the new muted state when the speaker glyph is tapped. */
@@ -109,31 +108,39 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     private val answer = TextView(context)
     private val note = TextView(context)
     private val input = EditText(context)
-    private val send = Button(context)
+    private val ask = TextView(context)
     private val mute = MuteToggleView(context)
 
     private val sessionRow = LinearLayout(context)
     private val stepChip = TextView(context)
-    private val next = Button(context)
-    private val done = Button(context)
+    private val next = TextView(context)
+    private val done = TextView(context)
 
-    val panelWidth = dp(248)
+    /** The width the box takes when it rides beside the buddy as a task HUD. */
+    val hudWidth = dp(264f)
+
+    private var blurBehind = false
 
     init {
         orientation = VERTICAL
-        setPadding(dp(12), dp(12), dp(12), dp(12))
-        background = card(Color.WHITE, Color.parseColor("#4C1D95"), dp(14).toFloat(), dp(2))
-        elevation = dp(6).toFloat()
+        val pad = dp(HeylanaTokens.SPACE_4_DP)
+        setPadding(pad, pad, pad, pad)
 
-        val topRow = LinearLayout(context).apply { orientation = HORIZONTAL }
+        // ---------------------------------------------------- answer + mute
+        // Packed to the end so the speaker stays in the corner even with no answer.
+        val topRow = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.END
+        }
 
         answer.apply {
-            text = IDLE_HINT
-            setTextColor(Color.parseColor("#2E1065"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            visibility = View.GONE
+            setTextColor(HeylanaTokens.textPrimary)
+            typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_LIGHT)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.BODY_SP)
             maxLines = MAX_ANSWER_LINES
             movementMethod = ScrollingMovementMethod()
-            setLineSpacing(dp(2).toFloat(), 1f)
+            setLineSpacing(HeylanaTokens.dp(context, HeylanaTokens.SPACE_1_DP), 1f)
         }
         topRow.addView(answer, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
@@ -147,107 +154,60 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         }
         topRow.addView(
             mute,
-            LayoutParams(dp(26), dp(26)).apply { marginStart = dp(8) }
+            LayoutParams(dp(26f), dp(26f)).apply { marginStart = dp(HeylanaTokens.SPACE_3_DP) }
         )
-
         addView(topRow, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
+        // ------------------------------------------------------- task strip
         sessionRow.apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
         }
-
-        stepChip.apply {
-            setTextColor(Color.parseColor("#4C1D95"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            background = card(
-                Color.parseColor("#EDE7FB"),
-                Color.parseColor("#C4B5F0"),
-                dp(9).toFloat(),
-                dp(1)
-            )
-            setPadding(dp(8), dp(3), dp(8), dp(3))
-        }
-        sessionRow.addView(
-            stepChip,
-            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        styleLabel(stepChip, HeylanaTokens.textSecondary)
+        stepChip.setPadding(
+            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_1_DP),
+            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_1_DP)
         )
+        sessionRow.addView(stepChip, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
         sessionRow.addView(View(context), LayoutParams(0, 1, 1f))
 
-        next.apply {
-            text = "Next"
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            background = card(
-                Color.parseColor("#7C3AED"),
-                Color.parseColor("#4C1D95"),
-                dp(9).toFloat(),
-                dp(1)
-            )
-            minWidth = 0
-            minimumWidth = 0
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            stateListAnimator = null
-            setOnClickListener { onNext?.invoke() }
-        }
-        sessionRow.addView(
-            next,
-            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
-        )
+        stylePill(next, "next", HeylanaTokens.textPrimary) { onNext?.invoke() }
+        sessionRow.addView(next, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
 
-        done.apply {
-            text = "Done"
-            isAllCaps = false
-            setTextColor(Color.parseColor("#4C1D95"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            background = card(
-                Color.WHITE,
-                Color.parseColor("#4C1D95"),
-                dp(9).toFloat(),
-                dp(1)
-            )
-            minWidth = 0
-            minimumWidth = 0
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            stateListAnimator = null
-            setOnClickListener { onDone?.invoke() }
-        }
+        stylePill(done, "done", HeylanaTokens.textSecondary) { onDone?.invoke() }
         sessionRow.addView(
             done,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(6)
+                marginStart = dp(HeylanaTokens.SPACE_2_DP)
             }
         )
-
         addView(
             sessionRow,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(10)
+                topMargin = dp(HeylanaTokens.SPACE_3_DP)
             }
         )
 
+        // ------------------------------------------------------ field + ask
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
 
         input.apply {
-            hint = "Ask about this screen"
-            setHintTextColor(Color.parseColor("#8B7FA8"))
-            setTextColor(Color.parseColor("#2E1065"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+            hint = PLACEHOLDER
+            setHintTextColor(HeylanaTokens.textSecondary)
+            setTextColor(HeylanaTokens.textPrimary)
+            typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_LIGHT)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.BODY_SP)
             inputType = InputType.TYPE_CLASS_TEXT
             isSingleLine = true
             imeOptions = EditorInfo.IME_ACTION_SEND
-            background = card(
-                Color.parseColor("#F3F0FA"),
-                Color.parseColor("#D6CCEF"),
-                dp(10).toFloat(),
-                dp(1)
+            setPadding(
+                dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_3_DP),
+                dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_3_DP)
             )
-            setPadding(dp(10), dp(8), dp(10), dp(8))
             setOnEditorActionListener { _, actionId, _ ->
                 if (actionId == EditorInfo.IME_ACTION_SEND) {
                     submit()
@@ -266,55 +226,78 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         }
         row.addView(input, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
-        send.apply {
-            text = "Send"
-            isAllCaps = false
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            background = card(
-                Color.parseColor("#7C3AED"),
-                Color.parseColor("#4C1D95"),
-                dp(10).toFloat(),
-                dp(1)
-            )
-            minWidth = dp(64)
-            minimumWidth = dp(64)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            stateListAnimator = null
-            setOnClickListener { submit() }
-        }
+        stylePill(ask, "ask", HeylanaTokens.textPrimary) { submit() }
+        ask.setPadding(
+            dp(HeylanaTokens.SPACE_4_DP), dp(HeylanaTokens.SPACE_3_DP),
+            dp(HeylanaTokens.SPACE_4_DP), dp(HeylanaTokens.SPACE_3_DP)
+        )
         row.addView(
-            send,
+            ask,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(8)
+                marginStart = dp(HeylanaTokens.SPACE_3_DP)
             }
         )
-
         addView(
             row,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(10)
+                topMargin = dp(HeylanaTokens.SPACE_3_DP)
             }
         )
 
         note.apply {
             visibility = View.GONE
-            setTextColor(Color.parseColor("#8B7FA8"))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            setTextColor(HeylanaTokens.textSecondary)
+            typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_LIGHT)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.LABEL_SP)
         }
         addView(
             note,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(6)
+                topMargin = dp(HeylanaTokens.SPACE_2_DP)
             }
         )
+
+        applyGlass(blurBehind = false)
     }
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        super.onMeasure(
-            MeasureSpec.makeMeasureSpec(panelWidth, MeasureSpec.EXACTLY),
-            heightMeasureSpec
+    /**
+     * Rebuilds every glass surface for whether the window really got its blur.
+     * Without blur the fill has to be heavier, or the box reads as a grey smear.
+     */
+    fun applyGlass(blurBehind: Boolean) {
+        this.blurBehind = blurBehind
+        background = GlassDrawable(context, HeylanaTokens.RADIUS_CARD_DP, blurBehind)
+        input.background = GlassDrawable(context, HeylanaTokens.RADIUS_MD_DP, blurBehind)
+        stepChip.background = GlassDrawable(context, HeylanaTokens.RADIUS_FULL_DP, blurBehind)
+        ask.background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, HeylanaTokens.bandPrimary
         )
+        next.background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, HeylanaTokens.bandPrimary
+        )
+        done.background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, HeylanaTokens.purpleBand
+        )
+        invalidate()
+    }
+
+    private fun styleLabel(view: TextView, colour: Int) {
+        view.setTextColor(colour)
+        view.typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_MEDIUM)
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.LABEL_SP)
+        view.letterSpacing = HeylanaTokens.LABEL_TRACKING_EM
+    }
+
+    private fun stylePill(view: TextView, text: String, colour: Int, onTap: () -> Unit) {
+        view.text = text
+        styleLabel(view, colour)
+        view.gravity = Gravity.CENTER
+        view.setPadding(
+            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_2_DP),
+            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_2_DP)
+        )
+        view.isClickable = true
+        view.setOnClickListener { onTap() }
     }
 
     private fun submit() {
@@ -323,47 +306,42 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         onSend?.invoke(question)
     }
 
+    private fun enable(enabled: Boolean) {
+        ask.isEnabled = enabled
+        ask.alpha = if (enabled) 1f else 0.5f
+        next.isEnabled = enabled
+        next.alpha = if (enabled) 1f else 0.5f
+        input.isEnabled = enabled
+    }
+
+    /** Shows the answer area only when there is something in it to read. */
+    private fun say(text: String) {
+        answer.text = text
+        answer.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
+        answer.scrollTo(0, 0)
+    }
+
     fun showThinking() {
-        answer.text = "thinking…"
-        send.isEnabled = false
-        input.isEnabled = false
-        next.isEnabled = false
+        say(THINKING)
+        enable(false)
     }
 
     fun showAnswer(text: String) {
-        answer.text = text
-        answer.scrollTo(0, 0)
-        send.isEnabled = true
-        input.isEnabled = true
-        next.isEnabled = true
+        say(text)
+        enable(true)
         input.setText("")
     }
 
     /** A notice or error — keeps whatever the user typed so they can retry. */
     fun showNotice(text: String) {
-        answer.text = text
-        answer.scrollTo(0, 0)
-        send.isEnabled = true
-        input.isEnabled = true
-        next.isEnabled = true
-    }
-
-    /** Shows the step counter and the Next / Done buttons for a running task. */
-    fun showSession(stepNumber: Int) {
-        stepChip.text = "step $stepNumber"
-        sessionRow.visibility = View.VISIBLE
-    }
-
-    fun hideSession() {
-        sessionRow.visibility = View.GONE
+        say(text)
+        enable(true)
     }
 
     /** Microphone open: the field fills in live as words are recognised. */
     fun showListening() {
-        answer.text = "listening…"
-        answer.scrollTo(0, 0)
-        input.isEnabled = true
-        send.isEnabled = true
+        say(LISTENING)
+        enable(true)
         input.setText("")
     }
 
@@ -378,6 +356,16 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     fun showNote(text: String) {
         note.text = text
         note.visibility = View.VISIBLE
+    }
+
+    /** Shows the step counter and the next and done buttons for a running task. */
+    fun showSession(stepNumber: Int) {
+        stepChip.text = "step $stepNumber"
+        sessionRow.visibility = View.VISIBLE
+    }
+
+    fun hideSession() {
+        sessionRow.visibility = View.GONE
     }
 
     fun setMuted(muted: Boolean) {
@@ -395,7 +383,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         }
     }
 
-    /** Opens the panel for dictation without shoving the keyboard in the way. */
+    /** Opens the box for dictation without shoving the keyboard in the way. */
     fun hideKeyboard() {
         val controller = input.windowInsetsController
         if (controller != null) {
@@ -411,20 +399,12 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         input.clearFocus()
     }
 
-    private fun card(fill: Int, border: Int, radius: Float, strokeWidth: Int): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            setColor(fill)
-            cornerRadius = radius
-            setStroke(strokeWidth, border)
-        }
-
-    private fun dp(value: Int): Int = TypedValue.applyDimension(
-        TypedValue.COMPLEX_UNIT_DIP, value.toFloat(), resources.displayMetrics
-    ).toInt()
+    private fun dp(value: Float): Int = HeylanaTokens.dpInt(context, value)
 
     companion object {
-        const val IDLE_HINT = "Ask me about this screen."
+        private const val PLACEHOLDER = "ask about this screen"
+        private const val THINKING = "thinking…"
+        private const val LISTENING = "listening…"
         private const val MAX_ANSWER_LINES = 8
         private const val MUTE_LABEL = "Mute Heylana's voice"
         private const val UNMUTE_LABEL = "Unmute Heylana's voice"

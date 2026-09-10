@@ -1,171 +1,166 @@
-# SMOKE TEST — design part 1: the buddy disc and the glass box
+# SMOKE TEST — design v2 polish
 
-The pixel face and the white card are gone. The buddy is now the brand mark in a
-disc of dark glass, and the message box is one sheet of glass that drops in under
-it. Nothing about what Heylana *does* changed.
+Four fixes from the last smoke test: the buddy's flight is smooth, the glass is
+a lit sheet rather than a dark slab, a spoken question is answered by voice
+rather than with a wall of text, and questions that are not about the screen get
+answered instead of deflected.
 
-## Budget for this test: 0 live API calls
+## Budget for this test: 3 live API calls
 
-Every step below is about how things look. **Do not tap ask with a real key in
-the field**, except where step 9 says so, and that step uses a deliberately wrong
-key, which costs nothing.
+Run by you. I sent nothing to the API.
 
-**Read this first:** during development I discovered your **real key is on this
-emulator**, not the fake one I expected. I spent **one live call** finding that
-out — sorry. Your key is untouched and still saved.
+| Step | Calls |
+|------|-------|
+| 1 flight | 0 |
+| 2 glass | 0 |
+| 3 typed question | 1 |
+| 4 voice question | 1 |
+| 5 show text | 1 |
+| 6 helper script | 0 |
 
----
-
-**1. Start the buddy and look at it resting.**
-Open **Heylana**, tap **Start buddy**, then press Home and open any app — the
-**Clock** is fine.
-
-You should see: a **dark glass circle** against the right edge of the screen with
-the **white swirl** inside it, knocked back to a soft grey. The disc has a faint
-light rim. There is **no purple glow**. It sits just off the edge — fully
-visible, not half cut off.
+**Before you start:** install the build, then run `./scripts/a11y.sh` in the
+Local terminal, then open Heylana and tap **Start buddy**. Without the script
+that button stays greyed out — that is step 6, and it is worth doing first so
+the rest works.
 
 ---
 
-**2. Watch it breathe.**
-Keep watching the disc for about ten seconds without touching it.
+## 1. The flight — 0 calls
 
-You should see: the disc **swell very slightly and settle again**, over about
-three seconds each way. It is meant to be barely there — a slow breath, not a
-pulse. Nothing rotates.
+**Tap the buddy.**
 
----
+You should see it **fly to the top centre in one smooth movement**, overshoot
+very slightly and settle. No stutter, no stepping, no jump at the end. The
+purple bloom travels with it. The dim and the glass box arrive **after** it
+lands, not during.
 
-**3. Tap it to compose.**
-Tap the disc once.
+**Tap the dimmed area away from the box.** The box goes first, then the buddy
+flies back to exactly where it was docked — same smoothness.
 
-You should see, in one movement:
+**Drag the buddy to the middle of the screen and let go.** It should spring to
+the nearest edge with the same motion, not slide stiffly.
 
-- The buddy **flies to the top centre** of the screen and settles just below the
-  status bar, with a small overshoot at the end.
-- The mark goes **full white**, the disc lightens, and a **purple glow blooms
-  behind it**.
-- The app behind **dims**.
-- A **glass box drops in beneath the buddy**, nearly full width with a even gap
-  each side, with soft rounded corners.
-- The **keyboard opens by itself**.
-
-In the box: a **speaker icon** in the top-right corner, a wide field reading
-**ask about this screen** in grey, and a purple **ask** button beside it.
+If any of these three stutters, say which one.
 
 ---
 
-**4. Look closely at the glass.**
-Look at the edges of the box and the ask button.
+## 2. The glass — 0 calls
 
-You should see: a **hairline light border** all the way round; the **top and left
-edges slightly brighter** than the middle and the **bottom and right slightly
-darker**, fading out rather than stopping sharply; and a **soft purple wash**
-inside the glass near its top-left corner, running diagonally. The **ask** button
-is the same glass with much more purple in it.
+**Open the second Heylana icon in the app drawer, "Heylana Glass".** This is a
+debug-only screen that shows the real message box over a bright backdrop and
+over black, with the same dim the overlay uses.
 
----
+You should see, on **both** panels:
 
-**5. Is the blur working?**
-Look at the app *behind* the box, in the gap between the buddy and the box, and
-around the edges.
+- the panel clearly **lighter than the dimmed backdrop**, not a dark slab
+- a **bright top edge** — a hairline of light just inside it, fading out towards
+  the corners
+- a border that is **brighter at the top-left** and almost gone at the
+  bottom-right
+- a **soft purple wash** inside the glass near the top-left
+- the **question field lighter than the panel** around it, not a darker hole
 
-- **Blur on:** whatever is behind is **soft and smeared**, as if through frosted
-  glass. Text and icons behind are unreadable shapes.
-- **Blur off:** everything behind stays **sharp**, just darker, and the box reads
-  as a slightly milky grey panel instead.
+**Then check it live:** press Home, open **Chrome** on a bright page, and tap the
+buddy. The panel should look like the preview, and the page behind it should be
+**soft and smeared** where the blur is working.
 
-Both are correct — Heylana asks the phone for blur and takes whatever it gets.
-Android switches blur off on its own in battery saver and on weaker phones. If
-you want to check deliberately: **Settings → System → Developer options →
-Window blurs** toggles it. Turn it off, close and reopen the box, and the box
-should get **visibly more solid** rather than disappearing.
+**Known gap:** there is no drop shadow under the panel. Every other layer of the
+recipe is there; the shadow is not, and I have said why in the report.
 
 ---
 
-**6. Close it.**
-Tap anywhere on the dimmed area away from the box.
+## 3. A typed question — 1 call
 
-You should see: the dim clear, the box fade out, and the buddy **fly back to
-exactly where it was docked**, going grey and losing its glow as it lands.
-
-Try the same with the **back gesture** instead — same result.
-
----
-
-**7. Hold it to talk.**
-Press and hold the disc for about a second and keep holding.
-
-You should see: the mark go **full white with the purple glow**, and the box open
-**beside the buddy** reading **listening…** — with **no dim** and **no keyboard**
-this time. Slide your finger away and let go to cancel without sending.
-
----
-
-**8. Drag and snap.**
-Press and drag the disc to the middle of the screen and let go.
-
-You should see: it follows your finger, then **snaps flat to the nearest side**
-and goes back to its resting grey. It should still sit just off the edge, fully
-visible.
-
----
-
-**9. See an error inside the glass box (costs nothing, and leaves your key alone).**
-This checks that failures land in the box rather than crashing.
-
-Turn on **aeroplane mode**. Then tap the buddy, type **what is this**, and tap
+Over **Chrome**, tap the buddy, type **what is the capital of japan**, tap
 **ask**.
 
-You should see: the box show **thinking…** for a moment, then a short line inside
-the same glass box saying it **couldn't reach the API**. No crash, the box stays
-open, and what you typed is still in the field so you could try again.
-
-Turn aeroplane mode back off.
-
-There is no need to put a fake key in Settings to test this — that would cost you
-re-entering your real key, and this proves the same thing.
+You should see: **Tokyo**, in a sentence or two. It must **not** refuse, and it
+must not say it can only talk about what is on screen. This is the fix for
+questions that have nothing to do with the page.
 
 ---
 
-**10. Check the notification.**
-Swipe down from the top of the screen.
+## 4. A spoken question — 1 call
 
-You should see a notification with:
+Still over Chrome. **Press and hold the buddy** and say **what is on this page**,
+then let go.
 
-- title **heylana**
-- text **heylana is on your screen**
-- a smaller line reading **tap the swirl to ask · only reads when you ask**
-- the **swirl** as its small icon
-- a **Stop** button when you expand it
+You should see:
 
-It should be silent and sit low in the list.
+- the app **dims and blurs**, exactly as when you type — not a small box beside
+  the buddy
+- **no keyboard**
+- an **aurora capsule** under the buddy while it thinks: a glass pill with
+  purple, violet, cyan and warm orange **drifting through it**, not a static
+  gradient
+- then the answer **spoken aloud with no text** in the box
+- the buddy **shedding rings** outward while it speaks
+
+If the text appears anyway, that is a failure — say so.
+
+---
+
+## 5. Show text — 1 call
+
+In the box there is a **show text** chip next to the speaker icon. **Tap it.**
+
+Then **hold the buddy and ask anything by voice again.**
+
+You should see: the same dim, blur and capsule, and this time **the words of the
+answer appear** as well as being spoken. The chip now reads **hide text**.
+
+Close the box, stop the buddy and start it again, then open the box once more —
+**no call needed, just check the chip still reads hide text.** The choice is
+remembered.
+
+---
+
+## 6. The helper script — 0 calls
+
+This is the workflow fix, and you have already used it.
+
+**Run the app from Android Studio.** Open Heylana: the **Screen reading** row
+will be unticked and **Start buddy** greyed out, because installing switches the
+accessibility service off.
+
+**In the Local terminal run:**
+
+```
+./scripts/a11y.sh
+```
+
+Then **reopen Heylana** — close it from recents first, or it will not notice.
+
+You should see: **Screen reading ticked** and **Start buddy** blue, without
+opening Android Settings at all.
 
 ---
 
 ## What to do if something goes wrong
 
-- **The disc is cut off by the screen edge** — note which edge.
-- **No purple glow when you tap it** — note what state it was in.
-- **The buddy does not fly back to where it was docked** — note where it went.
-- **The box covers the buddy, or the buddy sits on the box** — note which.
-- **Tapping away does not close it** — note whether the keyboard was up.
-- **Text looks like the old default font** rather than the rounded Outfit — the
-  font failed to load; say so and it will fall back cleanly rather than break.
+- **The flight stutters** — say which of the three (out, back, snap).
+- **The buddy jumps or flickers at the end of a flight** — that is the handoff
+  between windows; say where it jumped to.
+- **The panel still reads as a dark slab** — say whether the preview screen
+  looked wrong too, or only the live one.
+- **The blur is not working** — normal on battery saver and weaker phones;
+  Settings, System, Developer options, Window blurs.
+- **A voice answer shows its text without you asking** — quote what it said.
+- **A voice answer opens beside the buddy instead of dimming the screen** — that
+  is the part of this phase I could not verify on the emulator; say so.
+- **Start buddy stays grey after running the script** — check you closed and
+  reopened Heylana rather than just switching back to it.
 
 ---
 
 ## Pass criteria
 
-- Resting: a dark glass disc with a dulled swirl, no glow, breathing slowly, just
-  off the edge and fully visible.
-- Tapping flies it to the top centre, dims the app, drops the glass box in and
-  opens the keyboard.
-- Any active state — composing, listening — brings the mark to full white with a
-  purple bloom.
-- The glass has a hairline border, a light-to-dark bevel and a purple wash near
-  its top-left.
-- Tapping away or going back clears everything and returns the buddy to its dock.
-- Drag and snap still work.
-- The notification reads as above and its Stop button still works.
-- Nothing crashes, and no API calls happen except the optional error check.
+- All three flights are smooth, with a small overshoot and no jump at the end.
+- The panel reads as a lit sheet on both a bright backdrop and black, with a
+  bright top edge and a field lighter than the panel.
+- A question with nothing to do with the screen is answered, not refused.
+- A spoken question dims and blurs like a typed one, shows a drifting aurora
+  capsule, and is answered aloud with no text.
+- The show-text chip turns the words on and is remembered.
+- `./scripts/a11y.sh` gets Start buddy working without opening Settings.
+- Nothing crashes, and the test costs 3 live calls and no more.

@@ -176,6 +176,25 @@ Cost discipline in the code itself: send the smallest screen listing that still
 works, keep the system prompt tight, cap `max_tokens`, and route cheap work to the
 cheap model.
 
+## Debug workflow
+
+**After every Run from Android Studio, run `./scripts/a11y.sh`.** Installing the
+app switches its accessibility service off, which greys out Start buddy on the
+onboarding screen and leaves the buddy unable to read anything. The script sets
+`enabled_accessibility_services` to Heylana's fully qualified component and
+turns `accessibility_enabled` on, which is the same thing as walking through
+Settings by hand and considerably faster.
+
+Force-stopping the app clears the setting too, so run it again after any
+`am force-stop` — and note that a running Heylana will not notice until the
+onboarding screen is resumed, so restart the app rather than just re-launching
+the intent.
+
+**The glass has a preview that costs nothing.** Debug builds carry a second
+launcher icon, Heylana Glass, which renders the real message box over a bright
+backdrop and over black with the same dim the overlay uses. Check the glass
+there rather than by starting the buddy and asking it something.
+
 ## Working rules
 
 1. **Every phase is built on its own branch.** Phase 0 lives on `phase0-overlay`,

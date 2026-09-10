@@ -49,6 +49,15 @@ class HeylanaPromptTest {
     }
 
     @Test
+    fun `questions that are not about the screen are still answered`() {
+        assertTrue(
+            HeylanaPrompt.SYSTEM.contains(
+                "If the question isn't about the screen, answer it from general knowledge."
+            )
+        )
+    }
+
+    @Test
     fun `self-description is allowed only when asked for`() {
         assertTrue(
             HeylanaPrompt.SYSTEM.contains("Only if asked what you can do, describe it in two sentences")
@@ -100,6 +109,6 @@ class HeylanaPromptTest {
 
     private companion object {
         /** Every request pays for this string, so it is capped deliberately. */
-        const val BUDGET = 1400
+        const val BUDGET = 1450
     }
 }

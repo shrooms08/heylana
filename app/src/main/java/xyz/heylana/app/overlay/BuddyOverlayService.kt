@@ -33,7 +33,11 @@ import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.screen.HeylanaAccessibilityService
+import xyz.heylana.app.screen.ScreenNode
+import xyz.heylana.app.screen.ScreenSignal
 import xyz.heylana.app.screen.ScreenSnapshot
+import xyz.heylana.app.screen.TapWatch
+import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.voice.Listener
 import xyz.heylana.app.voice.MicPermissionActivity
@@ -82,6 +86,10 @@ class BuddyOverlayService : Service() {
         view.setTalking(false)
     }
     private val autoAdvanceCheck = Runnable { considerAutoAdvance() }
+
+    /** Runs only while a box is up and Heylana is waiting for the user to act. */
+    private var tapWatch: TapWatch? = null
+    private val tapWatchExpired = Runnable { endTapWatch(acknowledged = false) }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -134,6 +142,7 @@ class BuddyOverlayService : Service() {
     override fun onDestroy() {
         isRunning = false
         endSession(clearBox = false)
+        stopTapWatch()
         main.removeCallbacksAndMessages(null)
         scope.cancel()
         listener?.shutdown()
@@ -170,6 +179,7 @@ class BuddyOverlayService : Service() {
             view.onDone = { stopSessionOnRequest() }
             view.onPanelClosed = {
                 speaker?.stop()
+                stopTapWatch()
                 highlight?.hide()
                 view.stopLooking()
                 abandonListening()
@@ -195,6 +205,7 @@ class BuddyOverlayService : Service() {
         // A new question drops whatever the last one left behind, including any
         // task that was running.
         speaker?.stop()
+        stopTapWatch()
         highlight?.hide()
         view.stopLooking()
         endSession(clearBox = false)
@@ -255,6 +266,7 @@ class BuddyOverlayService : Service() {
             view.avoidOverlap(node.bounds)
             highlight?.point(node.bounds, view.spriteCenterOnScreen())
             view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
+            watchForTap(node)
         }
         // Muted, or no voice on this device: nothing will report speech ending,
         // so the way back to idle has to be booked here instead.
@@ -289,6 +301,52 @@ class BuddyOverlayService : Service() {
             return null
         }
         return snapshot
+    }
+
+    // ----------------------------------------------------- tap acknowledgement
+
+    /**
+     * While a box is on screen, watch for the user acting on what it points at:
+     * a tap on that element, or the screen moving. Either one flashes the box
+     * green and clears it, and Heylana says nothing about it. Nothing happens
+     * for fifteen seconds and the box clears quietly instead.
+     *
+     * Events are on for that window only — see the privacy rule in
+     * [HeylanaAccessibilityService].
+     */
+    private fun watchForTap(node: ScreenNode) {
+        stopTapWatch()
+        tapWatch = TapWatch(node.key, android.os.SystemClock.uptimeMillis())
+        HeylanaAccessibilityService.watchTaps { signal -> main.post { onTapSignal(signal) } }
+        main.postDelayed(tapWatchExpired, TapWatch.WINDOW_MS)
+    }
+
+    private fun onTapSignal(signal: ScreenSignal) {
+        val watch = tapWatch ?: return
+        when (watch.consider(android.os.SystemClock.uptimeMillis(), signal)) {
+            Verdict.ACKNOWLEDGE -> endTapWatch(acknowledged = true)
+            Verdict.EXPIRE -> endTapWatch(acknowledged = false)
+            Verdict.IGNORE -> Unit
+        }
+    }
+
+    private fun endTapWatch(acknowledged: Boolean) {
+        if (tapWatch == null) return
+        stopTapWatch()
+        if (acknowledged) {
+            highlight?.acknowledge()
+        } else {
+            highlight?.hide()
+            overlayView?.stopLooking()
+        }
+    }
+
+    /** Stops watching without touching the box — the caller owns what it does. */
+    private fun stopTapWatch() {
+        main.removeCallbacks(tapWatchExpired)
+        if (tapWatch == null) return
+        tapWatch = null
+        HeylanaAccessibilityService.watchTaps(null)
     }
 
     // -------------------------------------------------------------- guidance
@@ -327,6 +385,7 @@ class BuddyOverlayService : Service() {
             // Stays up until the step changes: the user needs it while they look.
             highlight?.point(node.bounds, view.spriteCenterOnScreen(), persistent = true)
             view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
+            watchForTap(node)
         } else {
             // No box for this step, but the task is still running.
             highlight?.hide()
@@ -440,6 +499,7 @@ class BuddyOverlayService : Service() {
         HeylanaAccessibilityService.watchScreenChanges(null)
         overlayView?.hideSession()
         if (clearBox) {
+            stopTapWatch()
             highlight?.hide()
             overlayView?.stopLooking()
         }
@@ -477,6 +537,7 @@ class BuddyOverlayService : Service() {
         }
 
         speaker?.stop()
+        stopTapWatch()
         highlight?.hide()
         view.stopLooking()
         view.startedListening()
@@ -538,7 +599,7 @@ class BuddyOverlayService : Service() {
         val notification = Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("heylana")
             .setContentText("heylana is on your screen")
-            .setSubText("tap the swirl to ask · only reads when you ask")
+            .setSubText(PRIVACY_LINE)
             .setSmallIcon(R.drawable.ic_heylana_mark)
             .setContentIntent(openApp)
             .setOngoing(true)
@@ -583,6 +644,10 @@ class BuddyOverlayService : Service() {
 
         /** Lets a screen settle after a tap before deciding the step is finished. */
         private const val AUTO_ADVANCE_DEBOUNCE_MS = 900L
+
+        /** The same sentence as the onboarding screen, in the operator's words. */
+        const val PRIVACY_LINE = "reads the screen only when you ask, and watches for " +
+            "your tap only while it is pointing at something"
 
         private const val STOPPED_LINE = "Okay, stopping here."
 

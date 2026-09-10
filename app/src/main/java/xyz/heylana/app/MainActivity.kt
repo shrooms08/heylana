@@ -176,7 +176,9 @@ private fun SetupScreen(
         Text(
             text = "Four things to switch on, then your buddy can answer questions " +
                 "about whatever app is on your screen. The microphone is optional — " +
-                "it only lets you talk to the buddy instead of typing.",
+                "it only lets you talk to the buddy instead of typing.\n\n" +
+                "Heylana reads the screen only when you ask, and watches for your tap " +
+                "only while it is pointing at something.",
             style = MaterialTheme.typography.bodyMedium
         )
 

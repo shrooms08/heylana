@@ -91,7 +91,15 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
     private var fadeAnimator: ValueAnimator? = null
     private var attached = false
 
+    /** True for the moment between the user acting and the box clearing. */
+    private var acknowledged = false
+
     private val autoHide = Runnable { fadeOut() }
+    private val clearAfterAck = Runnable {
+        if (!hasTarget) return@Runnable
+        hide()
+        onFadedOut?.invoke()
+    }
     private val locationOnScreen = IntArray(2)
 
     init {
@@ -153,6 +161,7 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
         targetOnScreen.set(bounds)
         buddyOnScreen = buddyCenter
         hasTarget = true
+        acknowledged = false
         fade = 1f
         visibility = View.VISIBLE
 
@@ -172,10 +181,23 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
         invalidate()
     }
 
+    /**
+     * The user did the thing: the box goes green for a moment, says nothing, and
+     * clears itself. [onFadedOut] runs after it, as it does for any other exit.
+     */
+    fun acknowledge() {
+        if (!hasTarget) return
+        cancelEverything()
+        acknowledged = true
+        invalidate()
+        postDelayed(clearAfterAck, ACK_MS)
+    }
+
     /** Clears the pointer straight away — a new question, or the panel closing. */
     fun hide() {
         if (!hasTarget) return
         cancelEverything()
+        acknowledged = false
         hasTarget = false
         // Something may still be flying across the layer, so it only goes away
         // when it is carrying nothing at all.
@@ -204,6 +226,7 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
 
     private fun cancelEverything() {
         removeCallbacks(autoHide)
+        removeCallbacks(clearAfterAck)
         pulseAnimator?.cancel()
         pulseAnimator = null
         fadeAnimator?.cancel()
@@ -230,6 +253,11 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
         if (box.width() <= 0f || box.height() <= 0f) return
 
         val alpha = ((MIN_ALPHA + (1f - MIN_ALPHA) * pulse) * fade * 255f).toInt().coerceIn(0, 255)
+
+        val colour = if (acknowledged) HeylanaTokens.ack else PURPLE
+        boxPaint.color = colour
+        arrowPaint.color = colour
+        headPaint.color = colour
 
         boxPaint.strokeWidth = strokeWidth
         boxPaint.alpha = alpha
@@ -311,6 +339,9 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
         const val PULSE_HALF_CYCLE_MS = 500L
         const val VISIBLE_MS = 8_000L
         const val FADE_MS = 300L
+
+        /** How long the box stays green before it clears. */
+        const val ACK_MS = 300L
         const val HALF_PI = (Math.PI / 2).toFloat()
         const val HEAD_SPREAD = 0.5f
     }

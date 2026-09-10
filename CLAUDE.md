@@ -99,12 +99,22 @@ when the panel closes, when the buddy stops, on any API error, or at 8 steps. If
 steps in a row point at the same element the session is treated as stuck: it says so
 and stops advancing itself until the user acts.
 
-**Events only during a session.** This is a privacy rule, not an optimisation.
-Outside an active guidance session the accessibility service subscribes to
-*nothing* — its `eventTypes` is set to zero, so the system delivers no events at
-all — and its handler additionally returns immediately when no watcher is
-registered. Screen-change events are switched on when a task starts and off the
-moment it ends. Do not widen this to "always listening" for convenience.
+**Events only while something is waiting for them.** This is a privacy rule, not
+an optimisation. The accessibility service subscribes to *nothing* by default —
+its `eventTypes` is set to zero, so the system delivers no events at all — and
+its handler additionally returns immediately when no watcher is registered.
+There are exactly two things that may switch events on, and both switch them
+straight back off:
+
+- a **guidance session**, so it can notice a step has been completed;
+- a **tap watch**, for the fifteen seconds after Heylana points at something, so
+  it can notice the user acting on it and take the box away.
+
+Events from Heylana's own package are dropped before anything else looks at them.
+Do not widen this to "always listening" for convenience, and keep the promise in
+the notification and the onboarding screen matching the code: *reads the screen
+only when you ask, and watches for your tap only while it is pointing at
+something*.
 
 **The panel gets out of the way.** During a task the panel is a heads-up display:
 the window is deliberately *not* focusable, so the app underneath keeps the
@@ -121,6 +131,14 @@ itself rather than being assumed away. For a one-shot answer the box clears afte
 seconds; during a task it stays up until the step changes, because the user needs
 it while they hunt for the thing. Either way it clears at once when the next
 question is sent or the panel closes.
+
+**The box answers the tap it asked for.** While it is up, a tap on the element it
+points at — or the screen moving — flashes it green for 300ms and clears it,
+without a word being said. Fifteen seconds with neither and it clears quietly.
+The rule itself lives in `screen/TapWatch`, away from Android, so it is testable:
+a click only counts when it matches the element's key, and screen movement only
+counts after a short grace period, because an app is rarely still at the moment a
+box appears.
 
 **Re-parenting the buddy resets its animation.** Moving the disc between the
 docked, compose and HUD layouts detaches the view, which cancels any running

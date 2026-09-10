@@ -92,6 +92,9 @@ object HeylanaTokens {
      * The dim over the app behind the message box. Enough to hold the pane away
      * from a bright page without reading as a modal.
      */
+    /** The pointer turns this colour for a moment when the user does the thing. */
+    val ack = Color.parseColor("#37D9A6")
+
     val scrim = withAlpha(Color.BLACK, 0.35f)
 
     /** How far the mark is knocked back when the buddy is resting. */

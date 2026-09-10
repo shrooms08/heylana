@@ -31,15 +31,31 @@ data class ScreenNode(
      * anonymous ones fall back to where they sit.
      */
     val key: String
-        get() = buildString {
+        get() = keyOf(className, viewId, text, contentDescription, bounds.left, bounds.top)
+
+    companion object {
+        /**
+         * The same identity, built from loose parts. The tap watch needs it for a
+         * node that arrived on an accessibility event rather than in a snapshot,
+         * and the two must agree or a tap on the highlighted element is missed.
+         */
+        fun keyOf(
+            className: String,
+            viewId: String?,
+            text: String?,
+            description: String?,
+            left: Int,
+            top: Int
+        ): String = buildString {
             append(className).append('|')
             append(viewId.orEmpty()).append('|')
             append(text.orEmpty()).append('|')
-            append(contentDescription.orEmpty())
-            if (viewId == null && text == null && contentDescription == null) {
-                append('|').append(bounds.left).append(',').append(bounds.top)
+            append(description.orEmpty())
+            if (viewId == null && text == null && description == null) {
+                append('|').append(left).append(',').append(top)
             }
         }
+    }
 
     /** What to call this element when recounting a step to the model. */
     val label: String

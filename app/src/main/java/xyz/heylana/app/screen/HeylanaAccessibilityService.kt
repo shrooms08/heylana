@@ -13,13 +13,18 @@ import android.view.accessibility.AccessibilityWindowInfo
 /**
  * Reads the current screen — and only when asked.
  *
- * Privacy rule, and it is a rule and not an optimisation: **outside an active
- * guidance session this service processes no accessibility events at all.** The
+ * Privacy rule, and it is a rule and not an optimisation: **outside the two
+ * moments below this service processes no accessibility events at all.** The
  * subscription itself is torn down — [AccessibilityServiceInfo.eventTypes] is set
  * to zero — so the system delivers nothing, and [onAccessibilityEvent] additionally
- * returns immediately when no watcher is registered. Events are switched on only
- * while Heylana is walking the user through a task, so it can notice that a step
- * has been completed, and switched straight back off when the task ends.
+ * returns immediately when no watcher is registered.
+ *
+ * Events are switched on for exactly two things, and switched straight back off:
+ *
+ *  - while Heylana is walking the user through a task, so it can notice a step
+ *    has been completed ([watchScreenChanges]);
+ *  - for a few seconds after it points at something, so it can notice the user
+ *    tapping it and get the box out of the way ([watchTaps]).
  *
  * [snapshot] walks the live UI tree at the moment it is asked to, and the result
  * is never logged and never persisted.
@@ -31,31 +36,71 @@ class HeylanaAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         connected = this
-        // Start deaf. Nothing is delivered until a guidance session asks for it.
-        applyEventTypes(enabled = false)
+        // Start deaf. Nothing is delivered until something asks for it.
+        applyEventTypes()
     }
 
     /**
-     * Only reached while a session has registered a watcher; even then it does
-     * nothing but tell that watcher the screen moved.
+     * Only reached while a session or a tap watch is registered, and even then it
+     * does nothing but say what the screen did. No event is stored or logged.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        val listener = watcher ?: return
+        val screen = watcher
+        val taps = tapWatcher
+        if (screen == null && taps == null) return
         if (event == null) return
+        // Our own windows moving is not the user doing anything.
+        if (event.packageName?.toString() == packageName) return
+
         when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED ->
+                taps?.invoke(ScreenSignal.Clicked(clickedKey(event)))
+
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> listener.invoke()
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                screen?.invoke()
+                taps?.invoke(ScreenSignal.Changed)
+            }
         }
     }
 
-    private fun applyEventTypes(enabled: Boolean) {
-        val info = serviceInfo ?: return
-        info.eventTypes = if (enabled) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        } else {
-            0
+    /**
+     * The clicked element in the same terms a snapshot uses, so it can be
+     * compared with whatever is being pointed at. Null if the event carried no
+     * usable source, which simply means "cannot tell".
+     */
+    private fun clickedKey(event: AccessibilityEvent): String? {
+        val source = event.source ?: return null
+        return try {
+            val bounds = Rect().also { source.getBoundsInScreen(it) }
+            ScreenNode.keyOf(
+                className = simplifyClassName(source.className?.toString()),
+                viewId = source.viewIdResourceName?.substringAfterLast('/')
+                    ?.takeIf { it.isNotBlank() },
+                text = source.text?.toString()?.clean(),
+                description = source.contentDescription?.toString()?.clean(),
+                left = bounds.left,
+                top = bounds.top
+            )
+        } finally {
+            source.recycle()
         }
+    }
+
+    /** The union of what the things currently watching actually need. */
+    private fun applyEventTypes() {
+        val info = serviceInfo ?: return
+        var types = 0
+        if (watcher != null) {
+            types = types or AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        }
+        if (tapWatcher != null) {
+            types = types or AccessibilityEvent.TYPE_VIEW_CLICKED or
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        }
+        info.eventTypes = types
         serviceInfo = info
     }
 
@@ -65,6 +110,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
         if (connected === this) {
             connected = null
             watcher = null
+            tapWatcher = null
         }
         return super.onUnbind(intent)
     }
@@ -73,6 +119,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
         if (connected === this) {
             connected = null
             watcher = null
+            tapWatcher = null
         }
         super.onDestroy()
     }
@@ -234,8 +281,23 @@ class HeylanaAccessibilityService : AccessibilityService() {
          */
         fun watchScreenChanges(onChanged: (() -> Unit)?) {
             watcher = onChanged
-            connected?.applyEventTypes(enabled = onChanged != null)
+            connected?.applyEventTypes()
         }
+
+        /**
+         * Set for the few seconds after Heylana points at something, so it can
+         * see the user act on it. Pass null the moment that is over.
+         */
+        @Volatile
+        private var tapWatcher: ((ScreenSignal) -> Unit)? = null
+
+        fun watchTaps(onSignal: ((ScreenSignal) -> Unit)?) {
+            tapWatcher = onSignal
+            connected?.applyEventTypes()
+        }
+
+        /** True while anything at all is being listened for. */
+        val isWatching: Boolean get() = watcher != null || tapWatcher != null
 
         /** True if the user has switched Heylana on in Accessibility settings. */
         fun isEnabled(context: Context): Boolean {

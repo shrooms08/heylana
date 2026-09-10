@@ -135,17 +135,23 @@ is not touchable and not focusable, so every touch falls straight through to the
 app underneath. It converts accessibility bounds (which are display coordinates)
 through its own `getLocationOnScreen`, so any status bar or cutout offset corrects
 itself rather than being assumed away. For a one-shot answer the box clears after 8
-seconds; during a task it stays up until the step changes or the tap watch below
-ends it, because the user needs it while they hunt for the thing. Either way it clears at once when the next
+seconds; during a task it stays up until the step changes or the task ends,
+because the user needs it while they hunt for the thing. Either way it clears at once when the next
 question is sent or the panel closes.
 
 **The box answers the tap it asked for.** While it is up, a tap on the element it
 points at — or the screen moving — flashes it green for 300ms and clears it,
-without a word being said. Fifteen seconds with neither and it clears quietly.
-The rule itself lives in `screen/TapWatch`, away from Android, so it is testable:
-a click only counts when it matches the element's key, and screen movement only
-counts after a short grace period, because an app is rarely still at the moment a
-box appears.
+without a word being said. The rule itself lives in `screen/TapWatch`, away from
+Android, so it is testable: a click only counts when it matches the element's
+key, and screen movement only counts after a short grace period, because an app
+is rarely still at the moment a box appears.
+
+**Only an answer's box is on a clock.** Fifteen seconds with neither a tap nor a
+change and a one-shot answer's box clears quietly, because nothing is waiting on
+it. A step's box is not on that clock at all: it belongs to the step and stays
+until the step changes or the task ends, exactly as it always has. The watch
+behind it runs the whole time either way, so acting on a step's box is
+acknowledged however long the user took to find it.
 
 **Re-parenting the buddy resets its animation.** Moving the disc between the
 docked, compose and HUD layouts detaches the view, which cancels any running

@@ -321,17 +321,26 @@ class BuddyOverlayService : Service() {
     /**
      * While a box is on screen, watch for the user acting on what it points at:
      * a tap on that element, or the screen moving. Either one flashes the box
-     * green and clears it, and Heylana says nothing about it. Nothing happens
-     * for fifteen seconds and the box clears quietly instead.
+     * green and clears it, and Heylana says nothing about it.
+     *
+     * An answer's box gives up after fifteen seconds and clears quietly. A step's
+     * box does not: it belongs to the step and stays until the step changes or
+     * the task ends, while the watch behind it keeps running so acting on it is
+     * still acknowledged.
      *
      * Events are on for that window only — see the privacy rule in
      * [HeylanaAccessibilityService].
      */
     private fun watchForTap(node: ScreenNode) {
         stopTapWatch()
-        tapWatch = TapWatch(node.key, android.os.SystemClock.uptimeMillis())
+        val inSession = session != null
+        tapWatch = TapWatch(
+            elementKey = node.key,
+            armedAt = android.os.SystemClock.uptimeMillis(),
+            persistent = inSession
+        )
         HeylanaAccessibilityService.watchTaps { signal -> main.post { onTapSignal(signal) } }
-        main.postDelayed(tapWatchExpired, TapWatch.WINDOW_MS)
+        if (!inSession) main.postDelayed(tapWatchExpired, TapWatch.WINDOW_MS)
     }
 
     private fun onTapSignal(signal: ScreenSignal) {

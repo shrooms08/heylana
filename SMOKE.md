@@ -82,7 +82,9 @@ did the thing and got out of the way.
 
 Try the other half too, on a later question: point at something and **do
 nothing**. After about fifteen seconds the box should **clear quietly** — no
-green, no message.
+green, no message. That fifteen seconds is only for an answer's box: during a
+task the box stays until the step changes, however long you take to find the
+thing, and still flashes green when you tap it.
 
 While a box is up, Heylana is watching for that one tap. When there is no box, it
 is watching nothing at all: the notification and the first screen of the app both

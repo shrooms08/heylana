@@ -1,0 +1,22 @@
+# Heylana's proxy. Every key lives in this Worker; the phone holds none.
+#
+# Secrets are NOT here and must never be: put them with `wrangler secret put`
+# (see README.md). This file is committed, so anything written in it is public.
+
+name = "heylana-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-09-10"
+
+[vars]
+# Cartesia voice ids. Not secret: they name a voice, they do not buy anything.
+VOICE_SKYLAR = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
+VOICE_ARCHIE = "ef191366-f52f-447a-a398-ed8c0f2943a1"
+
+# Replace with the project id from the Deepgram console before deploying.
+DEEPGRAM_PROJECT_ID = "replace-me"
+
+# Per-device daily counters. Replace id with the one `wrangler kv namespace
+# create CAPS` prints; see README.md.
+[[kv_namespaces]]
+binding = "CAPS"
+id = "replace-me"

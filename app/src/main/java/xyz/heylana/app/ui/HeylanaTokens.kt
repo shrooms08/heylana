@@ -27,15 +27,22 @@ object HeylanaTokens {
     val glow = withAlpha(Color.parseColor("#B98BFF"), 0.55f)
 
     /**
-     * The glass fill is a vertical gradient, brighter at the top where light
-     * would catch it. These are the two ends of it.
+     * Smoked glass. Light text on a white-tinted pane disappears over a bright
+     * page, so every sheet starts with a dark base and the white fill goes on
+     * top of that.
+     *
+     * 48 percent, not the 40 the design called for: at 40 the body text measures
+     * 3.93:1 over a white page, under the 4.5:1 the same design asks for. The
+     * debug preview measures this on every run.
      */
-    val glassFillTop = withAlpha(Color.WHITE, 0.16f)
-    val glassFillBottom = withAlpha(Color.WHITE, 0.06f)
+    val glassBase = withAlpha(Color.BLACK, 0.48f)
 
-    /** The same gradient lifted, for when the platform will not blur behind. */
-    val glassFillTopNoBlur = withAlpha(Color.WHITE, 0.24f)
-    val glassFillBottomNoBlur = withAlpha(Color.WHITE, 0.12f)
+    /**
+     * The white fill above the base is a vertical gradient, brighter at the top
+     * where light would catch it.
+     */
+    val glassFillTop = withAlpha(Color.WHITE, 0.14f)
+    val glassFillBottom = withAlpha(Color.WHITE, 0.04f)
 
     /** The border runs bright at the top-left down to almost nothing bottom-right. */
     val glassBorderBright = withAlpha(Color.WHITE, 0.45f)
@@ -44,7 +51,8 @@ object HeylanaTokens {
     /** A hairline of light just inside the top edge, fading out at the corners. */
     val glassTopHighlight = withAlpha(Color.WHITE, 0.30f)
 
-    /** The question field: lighter than the panel it sits on, never darker. */
+    /** The question field: its own smoked base, then a lighter fill on top. */
+    val inputBase = withAlpha(Color.BLACK, 0.30f)
     val inputFill = withAlpha(Color.WHITE, 0.08f)
     val inputBorder = withAlpha(Color.WHITE, 0.14f)
 
@@ -68,11 +76,10 @@ object HeylanaTokens {
     )
 
     /**
-     * The dim over the app behind the message box. Light, because the blur and
-     * the glass do most of the separating; more than this and it reads as a
-     * modal rather than a layer.
+     * The dim over the app behind the message box. Enough to hold the pane away
+     * from a bright page without reading as a modal.
      */
-    val scrim = withAlpha(Color.BLACK, 0.25f)
+    val scrim = withAlpha(Color.BLACK, 0.35f)
 
     /** How far the mark is knocked back when the buddy is resting. */
     const val MARK_DULLED = 0.55f

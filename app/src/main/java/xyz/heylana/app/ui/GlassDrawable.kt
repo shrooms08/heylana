@@ -20,9 +20,8 @@ import kotlin.math.sin
  * reply strip, the task HUD, their buttons and the buddy's disc.
  *
  * Bottom to top:
- *  1. a vertical fill, brighter at the top where light would catch it — lifted
- *     when the platform will not blur behind the window and the fill has to do
- *     the separating on its own,
+ *  1. a smoked base, then a vertical white fill brighter at the top where light
+ *     would catch it,
  *  2. a soft purple refraction band at 122 degrees near the top-left,
  *  3. a border that runs bright at the top-left and almost vanishes bottom-right,
  *  4. a hairline of light just inside the top edge, fading out at the corners.
@@ -60,6 +59,9 @@ class GlassDrawable(
     private val borderWidth = HeylanaTokens.dp(context, HeylanaTokens.GLASS_BORDER_DP)
     private val inputBorderWidth = HeylanaTokens.dp(context, HeylanaTokens.INPUT_BORDER_DP)
     private val highlightWidth = HeylanaTokens.dp(context, HeylanaTokens.GLASS_HIGHLIGHT_DP)
+    private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = if (kind == Kind.INPUT) HeylanaTokens.inputBase else HeylanaTokens.glassBase
+    }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
@@ -88,8 +90,7 @@ class GlassDrawable(
             Kind.INPUT -> null
             else -> LinearGradient(
                 body.left, body.top, body.left, body.bottom,
-                if (blurBehind) HeylanaTokens.glassFillTop else HeylanaTokens.glassFillTopNoBlur,
-                if (blurBehind) HeylanaTokens.glassFillBottom else HeylanaTokens.glassFillBottomNoBlur,
+                HeylanaTokens.glassFillTop, HeylanaTokens.glassFillBottom,
                 Shader.TileMode.CLAMP
             )
         }
@@ -147,6 +148,8 @@ class GlassDrawable(
         if (!built) build()
         val r = effectiveRadius(bounds.width().toFloat(), bounds.height().toFloat())
 
+        // Smoked base first: the white fill on its own vanishes over a bright page.
+        canvas.drawRoundRect(body, r, r, basePaint)
         canvas.drawRoundRect(body, r, r, fillPaint)
 
         if (kind != Kind.INPUT) {

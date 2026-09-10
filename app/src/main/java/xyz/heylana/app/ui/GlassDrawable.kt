@@ -4,11 +4,13 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.ColorFilter
+import android.graphics.ComposeShader
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.PorterDuff
 import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
@@ -137,10 +139,12 @@ class GlassDrawable(
     private fun build() {
         val b = bounds
         if (b.isEmpty) return
-        val r = effectiveRadius(b.width().toFloat(), b.height().toFloat())
 
         body.set(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat())
         if (withShadow) body.inset(shadowInset, shadowInset)
+        // Only now that body is the new bounds, since a full-round radius is
+        // measured from it. Reading it first clipped the disc to a square.
+        val r = effectiveRadius(body.width(), body.height())
         shape.reset()
         shape.addRoundRect(body, r, r, Path.Direction.CW)
 
@@ -285,8 +289,20 @@ class GlassDrawable(
         if (kind != Kind.INPUT) {
             // The heavier top: the same rounded path, clipped to the upper band,
             // so the thickness tapers into the sides rather than stopping dead.
-            val save = canvas.save()
-            canvas.clipRect(body.left, body.top, body.right, body.top + r)
+            rimPaint.shader = ComposeShader(
+                LinearGradient(
+                    body.left, body.top, body.right, body.bottom,
+                    HeylanaTokens.glassRimBright, HeylanaTokens.glassRimDim,
+                    Shader.TileMode.CLAMP
+                ),
+                LinearGradient(
+                    0f, body.top, 0f, body.top + r,
+                    intArrayOf(Color.WHITE, Color.TRANSPARENT),
+                    floatArrayOf(HeylanaTokens.RIM_TOP_HOLD, 1f),
+                    Shader.TileMode.CLAMP
+                ),
+                PorterDuff.Mode.DST_IN
+            )
             rimPaint.strokeWidth = rimTop
             val topInset = rimTop / 2f
             canvas.drawRoundRect(
@@ -294,7 +310,6 @@ class GlassDrawable(
                 body.right - topInset, body.bottom - topInset,
                 (r - topInset).coerceAtLeast(0f), (r - topInset).coerceAtLeast(0f), rimPaint
             )
-            canvas.restoreToCount(save)
         }
 
         val lensInset = rimEdge + lensWidth

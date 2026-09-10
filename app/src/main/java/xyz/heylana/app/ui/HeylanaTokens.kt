@@ -104,6 +104,8 @@ object HeylanaTokens {
     const val BLUR_DP = 40f
 
     /** Rim thickness: heavier along the top, tapering everywhere else. */
+    /** How far down the top rim stays at full strength before it fades out. */
+    const val RIM_TOP_HOLD = 0.35f
     const val GLASS_RIM_TOP_DP = 2f
     const val GLASS_RIM_DP = 1f
     const val GLASS_LENS_DP = 1f

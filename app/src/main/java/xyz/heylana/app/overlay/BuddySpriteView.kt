@@ -11,6 +11,7 @@ import android.graphics.drawable.Drawable
 import android.view.View
 import android.view.animation.AccelerateDecelerateInterpolator
 import xyz.heylana.app.R
+import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.HeylanaTokens
 
 /**
@@ -72,12 +73,14 @@ class BuddySpriteView(context: Context) : View(context) {
     private val mark: Drawable? = context.getDrawable(R.drawable.ic_heylana_mark)
 
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val discPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val discBorderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = HeylanaTokens.dp(context, 1f)
-        color = HeylanaTokens.discBorder
-    }
+    /** The disc is the same sheet of glass as everything else, just round. */
+    private val discGlass = GlassDrawable(
+        context, HeylanaTokens.RADIUS_FULL_DP, blurBehind = false,
+        kind = GlassDrawable.Kind.PILL, withSheen = true
+    )
+
+    /** Lifts the glass a touch once Heylana is awake. */
+    private val discLift = Paint(Paint.ANTI_ALIAS_FLAG)
 
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -180,8 +183,27 @@ class BuddySpriteView(context: Context) : View(context) {
         }
     }
 
+    /** The sheen runs once as the disc wakes, and not again until it sleeps. */
+    private fun sweepSheen() {
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = HeylanaTokens.SHEEN_SWEEP_MS
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener {
+                discGlass.sheenProgress = it.animatedValue as Float
+                invalidate()
+            }
+            start()
+        }
+        postDelayed(
+            { discGlass.sheenProgress = HeylanaTokens.SHEEN_REST },
+            HeylanaTokens.SHEEN_SWEEP_MS
+        )
+    }
+
     private fun syncActive() {
         val target = if (isActive) 1f else 0f
+        // Waking up catches the light.
+        if (target == 1f && activeAmount < 0.5f) sweepSheen()
         if (activeAmount == target && activeAnimator == null) return
         activeAnimator?.cancel()
         activeAnimator = ValueAnimator.ofFloat(activeAmount, target).apply {
@@ -242,14 +264,15 @@ class BuddySpriteView(context: Context) : View(context) {
         val save = canvas.save()
         canvas.scale(scale, scale, cx, cy)
 
-        // Glass: a touch brighter once Heylana is awake.
-        val fill = HeylanaTokens.withAlpha(
-            Color.WHITE,
-            0.06f + 0.06f * activeAmount
+        discGlass.setBounds(
+            (cx - discRadius).toInt(), (cy - discRadius).toInt(),
+            (cx + discRadius).toInt(), (cy + discRadius).toInt()
         )
-        discPaint.color = fill
-        canvas.drawCircle(cx, cy, discRadius, discPaint)
-        canvas.drawCircle(cx, cy, discRadius - discBorderPaint.strokeWidth / 2f, discBorderPaint)
+        discGlass.draw(canvas)
+        if (activeAmount > 0.01f) {
+            discLift.color = HeylanaTokens.withAlpha(Color.WHITE, 0.06f * activeAmount)
+            canvas.drawCircle(cx, cy, discRadius, discLift)
+        }
 
         mark?.let { drawable ->
             val markSize = discRadius * 2f * HeylanaTokens.MARK_FRACTION

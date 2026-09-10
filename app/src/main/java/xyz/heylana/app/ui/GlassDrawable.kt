@@ -50,7 +50,12 @@ class GlassDrawable(
      * not clipped. The view must carry [shadowInsetPx] of padding on every side
      * and be rendered in software, since a blur mask needs it.
      */
-    private val withShadow: Boolean = false
+    private val withShadow: Boolean = false,
+    /**
+     * Whether this surface sweeps a sheen. Off for small buttons, where the band
+     * is narrower than its own rotation pivot and leaves a hard corner.
+     */
+    private val withSheen: Boolean = kind == Kind.PANEL
 ) : Drawable() {
 
     enum class Kind {
@@ -200,9 +205,7 @@ class GlassDrawable(
             )
             canvas.restoreToCount(squash)
 
-            // Only full sheets sweep. On a button the band is smaller than its
-            // own rotation pivot and leaves a hard corner rather than a shine.
-            if (kind == Kind.PANEL) drawSheen(canvas)
+            if (withSheen) drawSheen(canvas)
             canvas.restoreToCount(save)
         }
 

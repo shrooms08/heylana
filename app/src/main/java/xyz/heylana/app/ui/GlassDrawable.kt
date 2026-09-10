@@ -69,7 +69,21 @@ class GlassDrawable(
         PILL
     }
 
-    private val radius = HeylanaTokens.dp(context, cornerRadiusDp)
+    private val density = context
+
+    /**
+     * Overrides the corner radius while a surface is morphing from one shape
+     * into another, so the box and the strip are one shape rather than two.
+     */
+    var radiusOverrideDp: Float? = null
+        set(value) {
+            field = value
+            built = false
+            invalidateSelf()
+        }
+
+    private val radius: Float
+        get() = HeylanaTokens.dp(density, radiusOverrideDp ?: cornerRadiusDp)
     private val rimTop = HeylanaTokens.dp(context, HeylanaTokens.GLASS_RIM_TOP_DP)
     private val rimEdge = HeylanaTokens.dp(context, HeylanaTokens.GLASS_RIM_DP)
     private val lensWidth = HeylanaTokens.dp(context, HeylanaTokens.GLASS_LENS_DP)
@@ -165,7 +179,7 @@ class GlassDrawable(
     }
 
     private fun effectiveRadius(w: Float, h: Float): Float =
-        if (cornerRadiusDp >= HeylanaTokens.RADIUS_FULL_DP) {
+        if ((radiusOverrideDp ?: cornerRadiusDp) >= HeylanaTokens.RADIUS_FULL_DP) {
             minOf(body.width(), body.height()) / 2f
         } else {
             radius

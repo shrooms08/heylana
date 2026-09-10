@@ -188,6 +188,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         panel.onNext = { onNext?.invoke() }
         panel.onDone = { onDone?.invoke() }
         panel.onInputTapped = { takeFocusForTyping() }
+        panel.onStripTapped = {
+            panel.morphTo(ChatPanelView.Shape.BOX) {
+                applyPosition()
+                takeFocusForTyping()
+                panel.focusInput()
+            }
+        }
 
         capsule.visibility = View.GONE
         content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
@@ -252,6 +259,14 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     fun showAnswer(text: String) {
         sprite.expression = BuddySpriteView.Expression.IDLE
         panel.showAnswer(text)
+        // A typed answer melts the box down into the compact strip. A spoken one
+        // has no box to melt, and a task keeps its HUD.
+        if (mode == Mode.COMPOSE && !panel.isVoiceMode &&
+            panel.shape == ChatPanelView.Shape.BOX
+        ) {
+            panel.releaseInput()
+            panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
+        }
         applyPosition()
     }
 

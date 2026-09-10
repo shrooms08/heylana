@@ -105,6 +105,9 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     /** Called when the user taps the question field, so the window can take focus. */
     var onInputTapped: (() -> Unit)? = null
 
+    /** Called when the compact strip is tapped, to reopen the box for a follow-up. */
+    var onStripTapped: (() -> Unit)? = null
+
     private val answer = TextView(context)
     private val note = TextView(context)
     private val input = EditText(context)
@@ -120,6 +123,18 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     /** The width the box takes when it rides beside the buddy as a task HUD. */
     val hudWidth = dp(264f)
+
+    /**
+     * What this pane currently is. The box, the reply strip and the task HUD are
+     * one shape in three shapes' clothing: the pane interpolates between them
+     * rather than swapping one view out for another.
+     */
+    enum class Shape { BOX, STRIP, HUD }
+
+    var shape: Shape = Shape.BOX
+        private set
+
+    private var morph: android.animation.ValueAnimator? = null
 
     private var blurBehind = false
 
@@ -265,6 +280,10 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         )
 
         applyGlass(blurBehind = false)
+
+        // Tapping the strip is a request to ask something else; tapping the box
+        // is not, so the listener only answers in the one shape.
+        setOnClickListener { if (shape == Shape.STRIP) onStripTapped?.invoke() }
     }
 
     /**
@@ -297,6 +316,69 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             HeylanaTokens.purpleBand
         )
         invalidate()
+    }
+
+    /**
+     * Melts the pane into another shape: the corner radius, the height and the
+     * content all travel together, so it reads as one thing changing rather
+     * than two things swapping.
+     */
+    fun morphTo(next: Shape, onDone: (() -> Unit)? = null) {
+        if (shape == next) {
+            onDone?.invoke()
+            return
+        }
+        val from = shape
+        shape = next
+        val glass = background as? GlassDrawable
+
+        morph?.cancel()
+        morph = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = HeylanaTokens.GROW_MS
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                glass?.radiusOverrideDp = lerp(radiusFor(from), radiusFor(next), t)
+                // The rows that are leaving fade out over the first half, the
+                // ones arriving fade in over the second.
+                leaving(from, next).forEach { row -> row.alpha = (1f - t * 2f).coerceIn(0f, 1f) }
+                arriving(from, next).forEach { row -> row.alpha = ((t - 0.5f) * 2f).coerceIn(0f, 1f) }
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    glass?.radiusOverrideDp = radiusFor(next)
+                    applyShape()
+                    onDone?.invoke()
+                }
+            })
+            start()
+        }
+    }
+
+    private fun radiusFor(s: Shape): Float = when (s) {
+        Shape.BOX -> HeylanaTokens.RADIUS_CARD_DP
+        Shape.STRIP, Shape.HUD -> HeylanaTokens.RADIUS_STRIP_DP
+    }
+
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
+
+    private fun rowsFor(s: Shape): List<View> = when (s) {
+        Shape.BOX -> listOf(inputRow)
+        Shape.STRIP -> emptyList()
+        Shape.HUD -> listOf(sessionRow)
+    }
+
+    private fun leaving(from: Shape, to: Shape) = rowsFor(from) - rowsFor(to).toSet()
+
+    private fun arriving(from: Shape, to: Shape) = rowsFor(to) - rowsFor(from).toSet()
+
+    /** Puts the rows in the state the current shape calls for. */
+    private fun applyShape() {
+        inputRow.visibility = if (shape == Shape.BOX && !isVoiceMode) View.VISIBLE else View.GONE
+        sessionRow.visibility = if (shape == Shape.HUD) View.VISIBLE else View.GONE
+        for (row in listOf(inputRow, sessionRow)) row.alpha = 1f
+        // The strip is the answer and the mute glyph, and nothing else.
+        answer.maxLines = if (shape == Shape.BOX) MAX_ANSWER_LINES else STRIP_LINES
     }
 
     /** Runs the sheen once across the pane, as it appears. */
@@ -478,6 +560,9 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         private const val THINKING = "thinking…"
         private const val LISTENING = "listening…"
         private const val MAX_ANSWER_LINES = 8
+
+        /** The strip shows three lines and then scrolls. */
+        private const val STRIP_LINES = 3
         private const val MUTE_LABEL = "Mute Heylana's voice"
         private const val UNMUTE_LABEL = "Unmute Heylana's voice"
     }

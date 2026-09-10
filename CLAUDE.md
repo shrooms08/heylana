@@ -312,10 +312,11 @@ adb shell input swipe <disc_x> <disc_y> <disc_x> <disc_y> 3000
 
 with the disc's centre taken from `adb shell dumpsys window windows`.
 
-**The glass has a preview that costs nothing.** Debug builds carry a second
-launcher icon, Heylana Glass, which renders the real message box over a bright
-backdrop and over black with the same dim the overlay uses. Check the glass
-there rather than by starting the buddy and asking it something.
+**The glass is checked on the debug states screen.** Settings → Debug states,
+and the backdrop button flips the page between black and white. There is no
+second launcher icon and no screen with PASS labels on it any more: **nothing
+labelled, measured or debug-looking may ever appear over another app**, and the
+surest way to keep that true is not to build such a screen at all.
 
 ## Working rules
 

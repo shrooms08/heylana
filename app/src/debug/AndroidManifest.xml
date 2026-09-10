@@ -2,18 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application android:networkSecurityConfig="@xml/network_security_config">
-        <!-- Debug builds only: a way to judge the glass without starting the
-             buddy or spending an API call. -->
-        <activity
-            android:name=".debug.GlassPreviewActivity"
-            android:exported="true"
-            android:label="Heylana Glass"
-            android:theme="@style/Theme.Heylana">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
         <activity
             android:name=".debug.DebugStatesActivity"
             android:exported="true"

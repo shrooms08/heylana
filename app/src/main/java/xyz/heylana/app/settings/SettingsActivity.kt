@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -22,6 +23,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -37,7 +39,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import xyz.heylana.app.BuildConfig
+import xyz.heylana.app.voice.CartesiaVoice
+import xyz.heylana.app.voice.Speaker
 import xyz.heylana.app.ui.theme.HeylanaTheme
 
 /**
@@ -49,15 +57,26 @@ import xyz.heylana.app.ui.theme.HeylanaTheme
  */
 class SettingsActivity : ComponentActivity() {
 
+    /** Only here to say one short line when a voice is picked. */
+    private var sample: CartesiaVoice? = null
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val settings = HeylanaSettings.get(this)
+        sample = CartesiaVoice(
+            settings = settings,
+            scope = scope,
+            phone = Speaker(this) { },
+            onSpeaking = { }
+        )
         setContent {
             HeylanaTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     SettingsScreen(
                         settings = settings,
+                        onSample = { sample?.speak(SAMPLE_LINE) },
                         onDone = { finish() },
                         modifier = Modifier.padding(innerPadding)
                     )
@@ -65,11 +84,24 @@ class SettingsActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        sample?.shutdown()
+        sample = null
+        scope.cancel()
+        super.onDestroy()
+    }
+
+    private companion object {
+        /** Three words, so hearing a voice costs as little as it can. */
+        const val SAMPLE_LINE = "Hi, I'm Heylana."
+    }
 }
 
 @Composable
 private fun SettingsScreen(
     settings: HeylanaSettings,
+    onSample: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -84,6 +116,8 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
+
+        VoiceCard(settings = settings, onSample = onSample)
 
         SwitchCard(
             title = "Show spoken answers as text",
@@ -115,6 +149,71 @@ private fun SettingsScreen(
 
         OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
             Text(text = "Back")
+        }
+    }
+}
+
+/**
+ * Which voice reads the answers out. Picking one says a short line in it, so the
+ * choice is made by ear rather than by name.
+ */
+@Composable
+private fun VoiceCard(settings: HeylanaSettings, onSample: () -> Unit) {
+    var chosen by remember { mutableStateOf(settings.voice) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(text = "Voice", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val pick: (String) -> Unit = { voice ->
+                chosen = voice
+                settings.voice = voice
+                onSample()
+            }
+
+            ChoiceRow(
+                label = "Skylar",
+                detail = "Heylana's own voice.",
+                selected = chosen == HeylanaSettings.VOICE_SKYLAR,
+                onSelect = { pick(HeylanaSettings.VOICE_SKYLAR) }
+            )
+            ChoiceRow(
+                label = "Archie",
+                detail = "The other one.",
+                selected = chosen == HeylanaSettings.VOICE_ARCHIE,
+                onSelect = { pick(HeylanaSettings.VOICE_ARCHIE) }
+            )
+            ChoiceRow(
+                label = "Phone voice",
+                detail = "Your phone's own. Works with no connection at all.",
+                selected = chosen == HeylanaSettings.VOICE_PHONE,
+                onSelect = { pick(HeylanaSettings.VOICE_PHONE) }
+            )
+        }
+    }
+}
+
+/** One choice out of a short list, with a line of explanation under it. */
+@Composable
+private fun ChoiceRow(
+    label: String,
+    detail: String,
+    selected: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onSelect)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(selected = selected, onClick = onSelect)
+        Spacer(modifier = Modifier.fillMaxWidth(0.03f))
+        Column {
+            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            Text(text = detail, style = MaterialTheme.typography.bodySmall)
         }
     }
 }
@@ -266,6 +365,30 @@ private fun AdvancedSection(settings: HeylanaSettings) {
 private fun DebugSection(settings: HeylanaSettings) {
     var warmUp by remember { mutableStateOf(settings.warmUpConnection) }
     val context = LocalContext.current
+
+    var phoneEars by remember { mutableStateOf(settings.forcePhoneEars) }
+    var phoneVoice by remember { mutableStateOf(settings.forcePhoneVoice) }
+
+    SwitchCard(
+        title = "Force phone ears",
+        detail = "Debug builds only. Skips Deepgram and listens with the phone's own " +
+            "recogniser, so the fallback can be heard on purpose.",
+        checked = phoneEars,
+        onCheckedChange = {
+            phoneEars = it
+            settings.forcePhoneEars = it
+        }
+    )
+
+    SwitchCard(
+        title = "Force phone voice",
+        detail = "Debug builds only. Skips Cartesia and answers in the phone's own voice.",
+        checked = phoneVoice,
+        onCheckedChange = {
+            phoneVoice = it
+            settings.forcePhoneVoice = it
+        }
+    )
 
     SwitchCard(
         title = "Warm up the connection",

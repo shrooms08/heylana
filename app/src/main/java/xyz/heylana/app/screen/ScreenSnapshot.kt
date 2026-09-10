@@ -19,7 +19,28 @@ data class ScreenNode(
     val editable: Boolean,
     val checked: Boolean?,
     val bounds: Rect
-)
+) {
+
+    /**
+     * Identity that survives a re-read of the screen. Elements that say something
+     * are identified by what they say, so scrolling does not make them look gone;
+     * anonymous ones fall back to where they sit.
+     */
+    val key: String
+        get() = buildString {
+            append(className).append('|')
+            append(viewId.orEmpty()).append('|')
+            append(text.orEmpty()).append('|')
+            append(contentDescription.orEmpty())
+            if (viewId == null && text == null && contentDescription == null) {
+                append('|').append(bounds.left).append(',').append(bounds.top)
+            }
+        }
+
+    /** What to call this element when recounting a step to the model. */
+    val label: String
+        get() = text ?: contentDescription ?: viewId ?: className
+}
 
 /** Everything Heylana can see on screen right now. */
 data class ScreenSnapshot(
@@ -33,6 +54,9 @@ data class ScreenSnapshot(
 
     /** Resolves an id the model gave back. Unknown ids simply mean "no pointer". */
     fun node(id: Int?): ScreenNode? = id?.let { wanted -> nodes.firstOrNull { it.id == wanted } }
+
+    /** True if an element that was pointed at earlier is still on screen. */
+    fun contains(key: String): Boolean = nodes.any { it.key == key }
 
     /** Compact indented list for the model — one element per line. */
     fun toPromptText(): String = buildString {

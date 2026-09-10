@@ -1,264 +1,264 @@
-# SMOKE TEST — Phase 2: pointing, voice out, voice in
+# SMOKE TEST — Phase 2b: multi-step guidance
 
-Heylana now points at things on screen, reads its answers out loud, and listens
-when you hold the buddy down.
+Heylana can now walk you through a task one step at a time, watching the screen
+and moving to the next step by itself once you have done the current one.
 
 Before you start:
 
-- Have **your own Anthropic API key** ready if it is not already saved. It goes in
-  the Heylana Settings screen and nowhere else — never into a browser, a chat, a
-  terminal, or any other app.
-- **Turn the phone's volume up.** Part B and Part D check that Heylana speaks.
+- Have **your own Anthropic API key** saved. It goes in the Heylana Settings
+  screen and nowhere else — never into a browser, a chat, a terminal, or any
+  other app.
+- **Turn the phone's volume up.** Heylana speaks every step.
+- You will need **internet** for Part C.
+
+Two things that are normal and not faults:
+
+- **The buddy moves itself during a task.** Before each step it shifts out of the
+  way so its card never covers the thing it is boxing. The **Next** and **Done**
+  buttons move with it.
+- **Each step takes a few seconds** — it re-reads the screen and thinks before it
+  answers.
 
 Do these in order. After each step, check the screen matches the "You should see"
 line before moving on.
 
 ---
 
-## Part A — Quick regression (Phase 0 and 1 still work)
+## Part A — Regression (Phases 0 to 2a still work)
 
-**1. Open the app.**
-Tap the **Heylana** icon.
-
-You should see: the title **Heylana**, then **five** grey cards: Overlay
-permission, Screen reading (accessibility), Notifications, API key, and
-**Microphone (optional)**. Each has a green ✓ or a blue button to fix it.
-
-If any of the first four is missing a green ✓, tap its button and follow it
-through, then come back. The **Microphone (optional)** row may stay grey for now —
-it does not block anything. Part D will need it.
-
----
-
-**2. Start the buddy.**
-Tap the blue **Start buddy** button.
+**1. Open the app and start the buddy.**
+Tap the **Heylana** icon. Make sure the first four cards have a green ✓, then tap
+**Start buddy**.
 
 You should see: the label change to **Stop buddy**, and the **purple pixel face**
-appear stuck to the RIGHT edge of the screen, about a third of the way down.
+appear at the RIGHT edge of the screen.
 
 ---
 
-**3. Open Chrome on a news page.**
-Press Home, open **Chrome**, and go to any news site, for example **bbc.com**. If
-Chrome asks about accounts, tap **Use without an account**.
+**2. Ask an ordinary question in Chrome.**
+Press Home, open **Chrome**, go to any news site (for example **bbc.com**). Tap
+the purple face, type **what is this page about**, and tap **Send**.
 
-You should see: the page load, with the **purple buddy still on top of Chrome**.
+You should see: the keyboard drop away, **thinking…** with the eyes UP, then a
+short answer about that actual page, **spoken aloud**.
 
----
-
-**4. Ask a typed question.**
-Tap the purple face once. Type **what is this page about** and tap **Send**.
-
-You should see: the keyboard drop away, the card read **thinking…**, and the
-buddy's eyes look UP. Then a short answer about that actual page, read out loud in
-a voice.
+**Importantly:** there is **no "step 1" chip and no Next or Done buttons**. This
+was a question, not a task.
 
 ---
 
-**5. Drag and snap.**
-Press and hold on the face and slide it to the middle-left of the screen, then
-lift.
+**3. One-shot pointing in the Clock app.**
+Press Home, open **Clock**, tap the **Alarm** tab. Tap the purple face, type
+**how do I add an alarm**, tap **Send**.
 
-You should see: the face follows your finger, and snaps flat to the **LEFT edge**
-when you let go. Tap it — the card now opens on its **RIGHT**.
+You should see: a spoken answer and a **pulsing purple box exactly on the round +
+button**, with the arrow from the buddy. Again **no step chip, no Next, no Done**.
 
-Tap somewhere well away from the card. The card closes.
-
-Drag the buddy back to the right edge before continuing.
+Wait about ten seconds — the box fades away on its own.
 
 ---
 
-## Part B — Pointing, in the Clock app
+## Part B — A whole task in the Clock app
 
-**6. Open the Clock app on the Alarm tab.**
-Press Home and open **Clock**. Tap **Alarm** in the bottom bar if it is not
-already selected.
+**4. Ask for the task.**
+Still on the Clock **Alarm** tab, tap the purple face, type
+**set an alarm for 7am**, and tap **Send**.
 
-You should see: your list of alarms, a large round **+** button near the bottom
-middle of the screen, and the purple buddy floating on top.
+You should see, after a few seconds:
 
----
-
-**7. Ask how to add an alarm.**
-Tap the purple face, type **how do I add an alarm**, and tap **Send**.
-
-You should see, in this order:
-
-1. The keyboard disappears and the card reads **thinking…**, eyes UP.
-2. A short answer appears, something like "Just tap the plus button at the bottom
-   of the screen to add a new alarm."
-3. **A purple box appears exactly around the round + button** — hugging it, not
-   off to one side, not around the wrong control.
-4. **The box pulses**, fading gently brighter and dimmer about once a second.
-5. **A curved purple arrow** runs from the buddy down to the box, with an
-   arrowhead touching it.
-6. **The buddy's eyes cut sideways toward the box**, and its **mouth opens and
-   closes** while it talks.
-7. **You hear the answer spoken aloud.**
+- A **"step 1"** chip in the card.
+- A **Next** button and a **Done** button next to it.
+- A spoken first step, something like "Let's add a new alarm, tap the Add alarm
+  button, the plus icon."
+- A **purple box on the round + button**, with the arrow from the buddy.
+- The box **stays put** — it does not fade after a few seconds like Part A did.
 
 ---
 
-**8. Watch the box clear itself.**
-Do nothing and count to ten.
+**5. Do what it says — and do NOT press Next.**
+Tap the **+ button** that is boxed.
 
-You should see: the box and arrow fade away on their own after about 8 seconds,
-and the buddy's eyes return to normal. The written answer stays in the card.
+You should see: the new-alarm time picker open. Then, **without you touching
+Heylana at all**, within a few seconds the card changes by itself:
 
----
+- The chip becomes **"step 2"**.
+- A new spoken step appears, about setting the hour.
+- The box moves to the **7 on the clock face** (or, if the hour is already 7, to
+  the AM button instead — Heylana reads the screen fresh each time, so it skips
+  steps that are already done).
 
-**9. Check that the box does not block the app.**
-Ask again (**how do I add an alarm**) so the box comes back, then, while the box
-is still showing, **tap the + button itself**.
-
-You should see: the Clock app opens its new-alarm time picker normally. The box
-does not swallow your tap. Press back to leave the time picker without saving.
-
----
-
-## Part C — Pointing, in Chrome
-
-**10. Go back to the news site.**
-Press Home, open **Chrome**, and make sure **bbc.com** is on screen.
+**This automatic move is the thing this phase is about.** If you had to press
+Next to get here, note it.
 
 ---
 
-**11. Ask how to search.**
-Tap the purple face, type **how do I search this site**, and tap **Send**.
+**6. Keep following the boxes.**
+Tap whatever is boxed, each time. Heylana will walk you through the hour, then
+**AM**, then **OK**.
 
-You should see: a short spoken answer, and a pulsing purple box **around the
-search control on the page** — the magnifying glass or search box — with the arrow
-running to it from the buddy.
+You should see: the chip count up — **step 3**, **step 4** — and the box land
+exactly on each control in turn. The buddy moves itself up or sideways when it
+would otherwise cover the thing it is boxing.
 
-If the page has no visible search control, Heylana should say so in words and
-draw **no box at all**. That is correct behaviour, not a failure.
-
----
-
-## Part D — Voice in
-
-**12. Allow the microphone.**
-Open **Heylana** again. If the **Microphone (optional)** card is not green, tap
-**Allow microphone** and tap **Allow** in the Android popup.
-
-You should see: the Microphone card turn green.
-
-(You can also just hold the buddy — the first hold asks for the microphone too.)
+**If the card ever stops moving forward on its own**, tap **Next**. Some controls
+stay on screen after you use them (the AM button is one), so Heylana cannot always
+tell you have done it. Pressing Next is the normal way through those.
 
 ---
 
-**13. Go back to the Clock app, Alarm tab.**
-Press Home, open **Clock**, tap **Alarm**.
+**7. Watch it finish.**
+Tap **OK** on the time picker.
+
+You should see, within a few seconds and with no input from you:
+
+- A spoken confirmation, something like **"All set, your alarm for 7 AM is
+  created and turned on."**
+- The **step chip, Next and Done all disappear** — the task is over.
+- The **purple box is gone**.
 
 ---
 
-**14. Hold the buddy and speak.**
-**Press and hold** your finger on the purple face and keep it held. Do not slide.
+**8. Check the alarm really exists.**
+Look at the Clock app behind the card.
 
-You should see, while you are still holding:
+You should see: a **7:00 AM** alarm in the list, switched **on**, set for
+**Tomorrow**.
 
-- The chat card opens by itself and reads **listening…**, with **no keyboard**.
-- The buddy's **eyes go wide** and a **small red dot pulses** in its top corner.
-- Android's own green microphone dot appears at the top of the screen.
-
-Now, still holding, say clearly: **"how do I add an alarm"**.
-
-You should see: **your words appearing in the text field as you speak**.
+(Delete it afterwards if you do not want it going off: expand it with the small
+**v** arrow and tap **Delete**.)
 
 ---
 
-**15. Let go.**
-Lift your finger.
+**9. Check "stuck" handling.**
+Start the task again — type **set an alarm for 7am** and Send. When the first
+step appears with the box on **+**, press **Next** without tapping anything.
 
-You should see: the wide eyes return to normal, the card goes to **thinking…**,
-and then the same result as step 7 — a short spoken answer plus a **pulsing purple
-box exactly on the + button**.
+You should see: Heylana either give a sensible next step, or say **"Looks like
+that didn't work. Try tapping it again, or tell me what you see."** with the box
+still on the same control. Both are correct — the second is what it says when it
+notices it has pointed at the same thing twice.
 
----
-
-**16. Check that holding and dragging stay separate.**
-Press and hold the face again until the card says **listening…**, then — without
-lifting — **slide your finger** across the screen and let go somewhere else.
-
-You should see: the listening stops the moment you start sliding, the card closes,
-and the buddy simply moves and snaps to the nearest edge. **Nothing is sent** and
-no answer appears.
+Tap **Done** to end this one.
 
 ---
 
-**17. Check the three gestures one after another.**
+## Part C — A whole task in Chrome
 
-- **Quick tap** → the card opens. Tap again → it closes.
-- **Slide** → the buddy moves and snaps to an edge. No card, no listening.
-- **Press and hold** → **listening…** and the wide eyes.
-
-You should see: each gesture does only its own thing, every time.
+**10. Go to the BBC home page.**
+Press Home, open **Chrome**, and go to **bbc.com**. Let it finish loading.
 
 ---
 
-## Part E — Mute
+**11. Ask for the task.**
+Tap the purple face, type **open the sport section**, tap **Send**.
 
-**18. Mute Heylana.**
-Tap the purple face to open the card. In the **top-right corner of the card**
-there is a small **speaker icon**. Tap it.
-
-You should see: the speaker icon change to a **speaker with a line struck through
-it**.
+You should see: a **"step 1"** chip with **Next** and **Done**, a spoken step, and
+a **purple box** on the way into Sport. On the BBC home page there is usually no
+Sport link visible, so it should box the **menu button** (the lines-and-magnifier
+icon at the top left) and say so.
 
 ---
 
-**19. Ask something while muted.**
+**12. Tap what is boxed.**
+Tap the **menu button**.
+
+You should see: the BBC menu open, and then **by itself** the chip becomes
+**step 2** with the box landing **exactly on the Sport row** in that menu.
+
+---
+
+**13. Finish the task.**
+Tap **Sport**.
+
+You should see: the BBC Sport page load, and then **by itself** a spoken
+confirmation such as **"You're already in the sport section, this is the BBC Sport
+page."** — with the **chip, Next and Done gone** and the **box cleared**.
+
+The address bar should read **bbc.com/sport**.
+
+---
+
+## Part D — Ending a task early
+
+**14. Start a task.**
+Press Home, open **Clock**, tap **Alarm**. Tap the purple face, type
+**set an alarm for 6am**, tap **Send**.
+
+You should see: **step 1**, the box on the **+ button**, Next and Done.
+
+---
+
+**15. Press Done.**
+Tap the **Done** button in the card.
+
+You should see, immediately:
+
+- The **step chip, Next and Done disappear**.
+- The **purple box and arrow vanish**.
+- The card stays open with the last thing Heylana said, and the normal
+  **Ask about this screen** field and **Send** button still there.
+
+No new alarm should have been created.
+
+---
+
+**16. Check the card is a normal card again.**
 Type **what is this screen** and tap **Send**.
 
-You should see: the written answer appear and the purple box still point at
-whatever the answer is about — but **no sound at all**, and the buddy's **mouth
-stays a smile** instead of opening and closing.
+You should see: an ordinary spoken answer with **no step chip** — you are back to
+plain questions.
 
 ---
 
-**20. Unmute.**
-Tap the speaker icon again.
+## Part E — Everything from before
 
-You should see: the line through the speaker disappear. Ask something else — the
-answer is spoken aloud again and the mouth moves.
-
----
-
-**21. Check that mute is remembered.**
-Mute it again, then tap **Stop buddy** in the app (or **Stop** in the
-notification), then **Start buddy**, then tap the face.
-
-You should see: the speaker icon still shows the line through it — the setting
-survived the restart. Unmute it again before you finish.
+**17. Drag, snap and the panel side.**
+Drag the buddy to the LEFT edge and let go — it snaps. Tap it — the card opens on
+its **RIGHT**. Tap well away from the card — it closes.
 
 ---
 
-## Part F — Stop
+**18. Hold to talk.**
+Press and hold the buddy until the card says **listening…** with wide eyes and a
+red dot. Say **how do I add an alarm**, then let go.
 
-**22. Stop from the notification.**
-Swipe down from the top of the screen. Expand the **"Heylana is on your screen"**
-notification with the small **v** arrow and tap **Stop**.
+You should see: your words appear in the field, then a spoken answer.
 
-You should see: the notification disappear, and the **purple buddy gone** — along
-with any purple box that was on screen.
+---
+
+**19. Mute.**
+Tap the **speaker icon** in the top-right of the card so it shows a line through
+it. Ask something.
+
+You should see: the answer in writing with **no sound**.
+
+Tap the speaker icon again to turn the voice back on.
+
+---
+
+**20. Stop.**
+Swipe down from the top, expand **"Heylana is on your screen"**, tap **Stop**.
+
+You should see: the buddy gone, along with any box.
 
 ---
 
 ## What to do if something goes wrong
 
-- **The box lands next to the button instead of on it** — that is a real failure.
-  Note which app and which button, and report it.
-- **The answer is spoken but no box appears, and the answer clearly names a
-  button** — note the app and the exact question.
-- **The card says "Voice input not available on this device, type instead."** —
-  this phone has no speech recogniser. Typing still works; skip Part D.
-- **The card shows a small "Voice unavailable on this device." note** — the
-  phone's text-to-speech would not start. Answers still appear in writing; skip
-  the listening-for-sound parts.
-- **The card says "I didn't catch that."** — Heylana heard no speech. Hold again
-  and speak while holding.
-- **The card says "API error 401"** — the key is wrong. Heylana → Settings →
-  **Replace**, enter your key, Save.
-- **The card says "Couldn't reach the API"** — no internet. Check the connection.
+- **A step's box lands next to the control instead of on it** — real failure. Note
+  the app, the step, and the control.
+- **The card covers the thing it is pointing at** — real failure; it is supposed
+  to move out of the way. Note which step.
+- **The task never advances on its own, in any app, even after tapping the boxed
+  control** — real failure. Note the app and step.
+- **The task keeps going past 8 steps** — real failure. It should say something
+  like "that is as far as I can take you, so let's stop here" and end.
+- **Heylana taps or types something itself** — real failure, and the most serious
+  one. It must only ever point.
+- **"Looks like that didn't work…"** — expected when you press Next without doing
+  the step, or when a control does not change the screen.
+- **"API error 401"** — key is wrong. Heylana → Settings → **Replace**.
+- **"Couldn't reach the API"** — no internet.
 
 ---
 
@@ -266,19 +266,18 @@ with any purple box that was on screen.
 
 The phase passes only if ALL of these are true:
 
-- The purple box lands **exactly on** the element the answer talks about, in both
-  the Clock app and Chrome.
-- The box **pulses**, has an **arrow from the buddy**, and **clears itself after
-  about 8 seconds** — and clears at once when you ask again or close the card.
-- Taps go **through** the box to the app underneath.
-- Answers are **spoken aloud**, and the buddy's mouth moves while it speaks.
-- The **speaker icon** silences the voice, and is remembered after a restart.
-- **Holding** the buddy listens, your words appear in the field as you speak, and
-  letting go sends them.
-- Tap, drag and hold each do **only** their own thing; a hold that turns into a
-  drag sends nothing.
-- Everything from before still works: drag, snap to edge, typed questions, the
-  card opening on the side with room, and the notification **Stop**.
-- Heylana never taps or types anything itself. Nothing on the screen underneath
-  moves unless you touch it.
+- An ordinary question still gives a one-shot answer with **no step chip**.
+- A task shows a **step chip**, a **Next** button and a **Done** button.
+- The box during a task **stays up** instead of fading after a few seconds.
+- **The task advances by itself** after you tap the boxed control, in both the
+  Clock app and Chrome, without pressing Next.
+- Each step's box lands **exactly on** the right control, and the buddy moves
+  itself so its card never covers it.
+- The task **ends by itself** with a spoken confirmation once the goal is reached,
+  and the chip, buttons and box all clear.
+- The **7:00 AM alarm actually exists** in the Clock app afterwards.
+- **Done** ends a task immediately and clears the box.
+- Heylana never taps or types anything itself. Nothing moves unless you touch it.
+- Everything from before still works: drag, snap, hold to talk, mute, typed
+  questions, and the notification **Stop**.
 - Nothing crashes at any step.

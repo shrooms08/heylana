@@ -12,6 +12,7 @@ import android.text.InputType
 import android.text.method.ScrollingMovementMethod
 import android.util.TypedValue
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowInsets
 import android.view.inputmethod.EditorInfo
@@ -96,11 +97,25 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     /** Called with the new muted state when the speaker glyph is tapped. */
     var onMuteToggled: ((Boolean) -> Unit)? = null
 
+    /** Called when the user asks for the next step of a task. */
+    var onNext: (() -> Unit)? = null
+
+    /** Called when the user ends a task early. */
+    var onDone: (() -> Unit)? = null
+
+    /** Called when the user taps the question field, so the window can take focus. */
+    var onInputTapped: (() -> Unit)? = null
+
     private val answer = TextView(context)
     private val note = TextView(context)
     private val input = EditText(context)
     private val send = Button(context)
     private val mute = MuteToggleView(context)
+
+    private val sessionRow = LinearLayout(context)
+    private val stepChip = TextView(context)
+    private val next = Button(context)
+    private val done = Button(context)
 
     val panelWidth = dp(248)
 
@@ -137,6 +152,82 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
         addView(topRow, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
 
+        sessionRow.apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+        }
+
+        stepChip.apply {
+            setTextColor(Color.parseColor("#4C1D95"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+            background = card(
+                Color.parseColor("#EDE7FB"),
+                Color.parseColor("#C4B5F0"),
+                dp(9).toFloat(),
+                dp(1)
+            )
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+        }
+        sessionRow.addView(
+            stepChip,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        )
+        sessionRow.addView(View(context), LayoutParams(0, 1, 1f))
+
+        next.apply {
+            text = "Next"
+            isAllCaps = false
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = card(
+                Color.parseColor("#7C3AED"),
+                Color.parseColor("#4C1D95"),
+                dp(9).toFloat(),
+                dp(1)
+            )
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            stateListAnimator = null
+            setOnClickListener { onNext?.invoke() }
+        }
+        sessionRow.addView(
+            next,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+        )
+
+        done.apply {
+            text = "Done"
+            isAllCaps = false
+            setTextColor(Color.parseColor("#4C1D95"))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+            background = card(
+                Color.WHITE,
+                Color.parseColor("#4C1D95"),
+                dp(9).toFloat(),
+                dp(1)
+            )
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            stateListAnimator = null
+            setOnClickListener { onDone?.invoke() }
+        }
+        sessionRow.addView(
+            done,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(6)
+            }
+        )
+
+        addView(
+            sessionRow,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(10)
+            }
+        )
+
         val row = LinearLayout(context).apply {
             orientation = HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -164,6 +255,13 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
                 } else {
                     false
                 }
+            }
+            // While a task is running the window is deliberately not focusable, so
+            // the app underneath keeps the keyboard. Touching the field asks for it.
+            @Suppress("ClickableViewAccessibility")
+            setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_UP) onInputTapped?.invoke()
+                false
             }
         }
         row.addView(input, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
@@ -229,6 +327,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         answer.text = "thinking…"
         send.isEnabled = false
         input.isEnabled = false
+        next.isEnabled = false
     }
 
     fun showAnswer(text: String) {
@@ -236,6 +335,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         answer.scrollTo(0, 0)
         send.isEnabled = true
         input.isEnabled = true
+        next.isEnabled = true
         input.setText("")
     }
 
@@ -245,6 +345,17 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         answer.scrollTo(0, 0)
         send.isEnabled = true
         input.isEnabled = true
+        next.isEnabled = true
+    }
+
+    /** Shows the step counter and the Next / Done buttons for a running task. */
+    fun showSession(stepNumber: Int) {
+        stepChip.text = "step $stepNumber"
+        sessionRow.visibility = View.VISIBLE
+    }
+
+    fun hideSession() {
+        sessionRow.visibility = View.GONE
     }
 
     /** Microphone open: the field fills in live as words are recognised. */

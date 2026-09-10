@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
 import android.graphics.PointF
+import android.graphics.Rect
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.KeyEvent
@@ -54,6 +55,12 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
     /** The panel just closed, however it closed. */
     var onPanelClosed: (() -> Unit)? = null
 
+    /** The user asked for the next step of a task. */
+    var onNext: (() -> Unit)? = null
+
+    /** The user ended a task early. */
+    var onDone: (() -> Unit)? = null
+
     private val windowManager = context.getSystemService(WindowManager::class.java)
 
     private val spriteSize = dp(96f)
@@ -75,12 +82,24 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
     private var usableWidth = 0
     private var usableHeight = 0
 
+    /** Where this window's own coordinate space starts on the display. */
+    private var usableLeft = 0
+    private var usableTop = 0
+
     /** Where the sprite itself sits — the panel is laid out around it. */
     private var spriteLeft = 0
     private var spriteTop = 0
 
     private var panelOpen = false
     private var panelOnLeft = false
+
+    /**
+     * True while a task is being walked through. The panel then behaves as a
+     * heads-up display: taps outside it are the user doing the step, not a
+     * request to dismiss it, and the window stays non-focusable so the app
+     * underneath keeps the keyboard and its own dialogs.
+     */
+    private var sessionActive = false
 
     private var dragging = false
     private var holding = false
@@ -97,6 +116,7 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
     private var measuredContainerHeight = spriteSize
 
     private val spriteLocation = IntArray(2)
+    private val occupied = Rect()
 
     private val longPress = Runnable {
         if (!dragging && !holding) {
@@ -113,6 +133,9 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
         panel.visibility = View.GONE
         panel.onSend = { question -> onQuestion?.invoke(question) }
         panel.onMuteToggled = { muted -> onMuteToggled?.invoke(muted) }
+        panel.onNext = { onNext?.invoke() }
+        panel.onDone = { onDone?.invoke() }
+        panel.onInputTapped = { takeFocusForTyping() }
 
         addView(sprite, LayoutParams(spriteSize, spriteSize))
         addView(panel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
@@ -184,6 +207,89 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
     }
 
     fun setMuted(muted: Boolean) = panel.setMuted(muted)
+
+    /** Shows the step counter with Next and Done while a task is running. */
+    fun showSession(stepNumber: Int) {
+        sessionActive = true
+        panel.showSession(stepNumber)
+        // Hand the keyboard back to the app the user is about to operate.
+        if (panelOpen && params.flags != FLAGS_CLOSED) {
+            panel.releaseInput()
+            params.flags = FLAGS_CLOSED
+        }
+        applyPosition()
+    }
+
+    fun hideSession() {
+        sessionActive = false
+        panel.hideSession()
+        applyPosition()
+    }
+
+    /** Opens the panel from code, e.g. when a task starts while it was closed. */
+    fun ensurePanelOpen() = openPanel(takeFocus = false)
+
+    /**
+     * Keeps the buddy and its card off the thing being pointed at. Tries the other
+     * side of the screen first, and only if both sides still cover it does it move
+     * the buddy up or down out of the way.
+     */
+    fun avoidOverlap(target: Rect) {
+        if (!panelOpen || target.isEmpty) return
+        refreshMetrics()
+
+        val startedOnLeft = panelOnLeft
+        for (side in booleanArrayOf(startedOnLeft, !startedOnLeft)) {
+            panelOnLeft = side
+            applyPosition()
+            if (!Rect.intersects(currentScreenRect(), target)) return
+        }
+
+        // Both sides are in the way: step above the target, then below it.
+        panelOnLeft = startedOnLeft
+        val gap = dp(8f)
+        val height = measuredContainerHeight
+        val startingTop = spriteTop
+
+        for (candidate in intArrayOf(
+            target.top - gap - height - usableTop,
+            target.bottom + gap - usableTop
+        )) {
+            if (candidate < 0 || candidate + height > usableHeight) continue
+            spriteTop = clamp(candidate + (height - spriteSize) / 2, 0, usableHeight - spriteSize)
+            applyPosition()
+            if (!Rect.intersects(currentScreenRect(), target)) return
+        }
+
+        // Nothing clears it on this screen; leave the buddy where it started.
+        spriteTop = startingTop
+        applyPosition()
+    }
+
+    /**
+     * Where the container will sit on the display, in screen coordinates.
+     *
+     * Derived from the window insets rather than [getLocationOnScreen], because
+     * this is called straight after moving the window and the view's real
+     * on-screen position does not update until the next layout pass.
+     */
+    private fun currentScreenRect(): Rect {
+        occupied.set(
+            params.x + usableLeft,
+            params.y + usableTop,
+            params.x + usableLeft + measuredContainerWidth,
+            params.y + usableTop + measuredContainerHeight
+        )
+        return occupied
+    }
+
+    /** The user touched the question field while the window was passive. */
+    private fun takeFocusForTyping() {
+        if (!panelOpen || params.flags == FLAGS_OPEN) return
+        params.flags = FLAGS_OPEN
+        updateLayout()
+        panel.focusInput()
+    }
 
     /** Drops the keyboard so the app underneath un-squeezes before it is read. */
     fun hideKeyboard() = panel.hideKeyboard()
@@ -269,6 +375,7 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
         panel.releaseInput()
         panel.visibility = View.GONE
         panelOpen = false
+        sessionActive = false
         params.flags = FLAGS_CLOSED
         applyPosition()
         onPanelClosed?.invoke()
@@ -278,7 +385,8 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
         if (ev.actionMasked == MotionEvent.ACTION_OUTSIDE) {
-            closePanel()
+            // During a task, a tap outside is the user doing the step we pointed at.
+            if (!sessionActive) closePanel()
             return true
         }
         return super.dispatchTouchEvent(ev)
@@ -408,8 +516,9 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
             usableHeight - measuredContainerHeight
         )
 
-        if (panelOpen) {
-            // Keep the card clear of where the keyboard will come up.
+        // Only when the window can actually raise the keyboard. During a task it
+        // cannot, and the card needs the full height of the screen to dodge things.
+        if (panelOpen && params.flags == FLAGS_OPEN) {
             val safeBottom = (usableHeight * KEYBOARD_SAFE_FRACTION).toInt()
             if (y + measuredContainerHeight > safeBottom) {
                 y = (safeBottom - measuredContainerHeight).coerceAtLeast(0)
@@ -440,6 +549,8 @@ class BuddyOverlayView(context: Context) : LinearLayout(context) {
         val metrics = windowManager.currentWindowMetrics
         val insets = metrics.windowInsets
             .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+        usableLeft = insets.left
+        usableTop = insets.top
         usableWidth = metrics.bounds.width() - insets.left - insets.right
         usableHeight = metrics.bounds.height() - insets.top - insets.bottom
     }

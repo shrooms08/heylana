@@ -10,8 +10,9 @@ foreground service that keeps it alive. AI, network, wallet and accessibility
 features come in later phases and must not leak into earlier ones. Phase 1 adds
 screen reading and text chat: the buddy reads the app in front of the user on
 demand and answers questions about it. Phase 2 makes it a guide: it points at the
-one thing on screen the answer is about, speaks its answers, and listens when the
-user holds it.
+one thing on screen the answer is about, speaks its answers, listens when the user
+holds it, and walks them through a task one step at a time, re-reading the screen
+after each step.
 
 ## Package layout
 
@@ -28,8 +29,10 @@ xyz.heylana.app
 │   ├── HeylanaAccessibilityService  on-demand screen reads, no continuous work
 │   └── ScreenSnapshot       the element list + its text rendering for the model
 ├── brain/                   talking to the model
-│   ├── AnthropicClient      POST /v1/messages over OkHttp, JSON in, say/point_at out
-│   └── HeylanaPrompt        the system prompt and user message, in one editable place
+│   ├── AnthropicClient      POST /v1/messages over OkHttp, JSON in, say/point_at/task out
+│   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
+│   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
+│                            (plus Conversation, the last few ordinary exchanges)
 ├── voice/                   Heylana's mouth and ears
 │   ├── Speaker              text-to-speech; degrades to text only if it will not start
 │   ├── Listener             SpeechRecognizer, held open only while the buddy is held
@@ -43,20 +46,55 @@ xyz.heylana.app
 ## How the pieces talk to each other
 
 **Response contract.** The model must reply with exactly
-`{"say": "...", "point_at": <element id or null>}` and nothing else. `say` is 1 to
-3 short sentences written to be read aloud — no markdown, no symbols. `point_at`
-is the numeric id of the single element from the screen listing that the answer is
-about, or null. Anything else — a missing field, a null, a non-number, or an id
-that is not in the snapshot that was just taken — means "do not point at
-anything". The snapshot is kept alive until the reply comes back so the id can be
-turned into real screen bounds.
+`{"say": "...", "point_at": <element id or null>, "task": {"goal": "...", "done":
+true|false} or null}` and nothing else. `say` is 1 to 3 short sentences written to
+be read aloud — no markdown, no symbols. `point_at` is the numeric id of the
+single element from the screen listing that the answer is about, or null. Anything
+else — a missing field, a null, a non-number, or an id that is not in the snapshot
+that was just taken — means "do not point at anything". The snapshot is kept alive
+until the reply comes back so the id can be turned into real screen bounds.
+
+`task` is null for an ordinary one-shot question. It is an object when the request
+is something to *do*: `goal` restates it in one line and stays word-for-word
+identical across the whole task, `say` describes only the current step, and
+`point_at` is that step's element. `done` flips to true when the screen shows the
+goal is met. A malformed or goal-less task object degrades to an ordinary answer.
+
+**Guidance sessions.** A task is stateful. `GuidanceSession` holds the goal, every
+step already given (its spoken text and the label of what it pointed at), and when
+it started. Each advance sends the model the goal, the steps so far, and a **fresh**
+snapshot, and asks for the next single step. Ordinary questions instead carry the
+last four exchanges, so "and then?" has something to refer back to.
+
+A session advances two ways: the user taps **Next**, or it advances itself when the
+element it pointed at is gone from a fresh snapshot, or the foreground app changed
+— debounced by 900ms so a screen has time to settle. It ends on `done`, on **Done**,
+when the panel closes, when the buddy stops, on any API error, or at 8 steps. If two
+steps in a row point at the same element the session is treated as stuck: it says so
+and stops advancing itself until the user acts.
+
+**Events only during a session.** This is a privacy rule, not an optimisation.
+Outside an active guidance session the accessibility service subscribes to
+*nothing* — its `eventTypes` is set to zero, so the system delivers no events at
+all — and its handler additionally returns immediately when no watcher is
+registered. Screen-change events are switched on when a task starts and off the
+moment it ends. Do not widen this to "always listening" for convenience.
+
+**The panel gets out of the way.** During a task the panel is a heads-up display:
+the window is deliberately *not* focusable, so the app underneath keeps the
+keyboard and its own dialogs, and a tap outside the card is the user doing the step
+rather than a request to dismiss it. Before each step is drawn, the buddy and its
+card are moved clear of whatever is about to be boxed — the other side of the
+screen first, then above or below it.
 
 **The highlight window.** The pointer is drawn in its own full-screen window that
 is not touchable and not focusable, so every touch falls straight through to the
 app underneath. It converts accessibility bounds (which are display coordinates)
 through its own `getLocationOnScreen`, so any status bar or cutout offset corrects
-itself rather than being assumed away. The box clears after 8 seconds, or at once
-when the next question is sent or the panel closes.
+itself rather than being assumed away. For a one-shot answer the box clears after 8
+seconds; during a task it stays up until the step changes, because the user needs
+it while they hunt for the thing. Either way it clears at once when the next
+question is sent or the panel closes.
 
 **Reading the screen.** The snapshot is taken after the keyboard is dismissed and
 the app underneath has been given a moment to lay itself out again. With the

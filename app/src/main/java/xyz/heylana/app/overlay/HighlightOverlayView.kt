@@ -109,8 +109,12 @@ class HighlightOverlayView(context: Context) : View(context) {
     /**
      * Points at [bounds] (screen coordinates from the accessibility snapshot),
      * with the arrow starting at [buddyCenter] (also screen coordinates).
+     *
+     * [persistent] keeps the box up until it is replaced or cleared, instead of
+     * fading after a few seconds — during a task the user needs it to stay put
+     * while they find the thing it is pointing at.
      */
-    fun point(bounds: Rect, buddyCenter: PointF) {
+    fun point(bounds: Rect, buddyCenter: PointF, persistent: Boolean = false) {
         if (!attached || bounds.isEmpty) return
         cancelEverything()
 
@@ -132,7 +136,7 @@ class HighlightOverlayView(context: Context) : View(context) {
             start()
         }
 
-        postDelayed(autoHide, VISIBLE_MS)
+        if (!persistent) postDelayed(autoHide, VISIBLE_MS)
         invalidate()
     }
 

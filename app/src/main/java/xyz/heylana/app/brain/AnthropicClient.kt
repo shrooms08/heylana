@@ -12,13 +12,17 @@ import xyz.heylana.app.settings.HeylanaSettings
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
+/** A multi-step task the model says it is walking the user through. */
+data class TaskState(val goal: String, val done: Boolean)
+
 /** What the buddy says back, or why it could not. */
 sealed interface BrainReply {
     /**
      * [pointAt] is the id of the one screen element the answer is about, or null.
      * It is taken on trust here and checked against the live snapshot by the caller.
+     * [task] is non-null only when the model treated the request as a task.
      */
-    data class Say(val text: String, val pointAt: Int?) : BrainReply
+    data class Say(val text: String, val pointAt: Int?, val task: TaskState?) : BrainReply
 
     data class Failed(val message: String) : BrainReply
 }
@@ -37,7 +41,19 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         .callTimeout(75, TimeUnit.SECONDS)
         .build()
 
-    suspend fun ask(question: String, screenText: String): BrainReply = withContext(Dispatchers.IO) {
+    /** An ordinary question, optionally with the recent conversation for context. */
+    suspend fun ask(question: String, screenText: String, history: String? = null): BrainReply =
+        send(HeylanaPrompt.userMessage(screenText, question, history))
+
+    /** The next step of a task already under way. */
+    suspend fun nextStep(
+        goal: String,
+        historyText: String,
+        screenText: String,
+        stepNumber: Int
+    ): BrainReply = send(HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber))
+
+    private suspend fun send(userMessage: String): BrainReply = withContext(Dispatchers.IO) {
         val key = settings.apiKey
         if (key.isNullOrBlank()) {
             return@withContext BrainReply.Failed("No API key yet. Add your key in Heylana → Settings.")
@@ -50,9 +66,7 @@ class AnthropicClient(private val settings: HeylanaSettings) {
             .put(
                 "messages",
                 JSONArray().put(
-                    JSONObject()
-                        .put("role", "user")
-                        .put("content", HeylanaPrompt.userMessage(screenText, question))
+                    JSONObject().put("role", "user").put("content", userMessage)
                 )
             )
 
@@ -90,7 +104,7 @@ class AnthropicClient(private val settings: HeylanaSettings) {
     /** First text block → strip fences → parse the JSON → fall back to raw text. */
     private fun extractReply(body: String): BrainReply {
         val content = JSONObject(body).optJSONArray("content")
-            ?: return BrainReply.Say(body.trim(), null)
+            ?: return BrainReply.Say(body.trim(), null, null)
 
         var raw: String? = null
         for (i in 0 until content.length()) {
@@ -102,19 +116,31 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         }
         val text = raw?.trim().orEmpty()
         if (text.isEmpty()) {
-            return BrainReply.Say("Heylana had nothing to say about this screen.", null)
+            return BrainReply.Say("Heylana had nothing to say about this screen.", null, null)
         }
 
         val unfenced = stripFences(text)
         val json = runCatching { JSONObject(unfenced) }.getOrNull()
-            ?: return BrainReply.Say(unfenced, null)
+            ?: return BrainReply.Say(unfenced, null, null)
 
         val say = json.optString("say").trim()
         return if (say.isEmpty()) {
-            BrainReply.Say(unfenced, null)
+            BrainReply.Say(unfenced, null, null)
         } else {
-            BrainReply.Say(say, readPointAt(json))
+            BrainReply.Say(say, readPointAt(json), readTask(json))
         }
+    }
+
+    /**
+     * Missing, null, not an object, or without a usable goal all mean "not a task",
+     * so a malformed reply degrades to an ordinary one-shot answer.
+     */
+    private fun readTask(json: JSONObject): TaskState? {
+        if (!json.has("task") || json.isNull("task")) return null
+        val task = json.optJSONObject("task") ?: return null
+        val goal = task.optString("goal").trim()
+        if (goal.isEmpty()) return null
+        return TaskState(goal = goal, done = task.optBoolean("done", false))
     }
 
     /**

@@ -1,6 +1,7 @@
 package xyz.heylana.app.screen
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Rect
@@ -12,9 +13,16 @@ import android.view.accessibility.AccessibilityWindowInfo
 /**
  * Reads the current screen — and only when asked.
  *
- * This service deliberately does no continuous work: [onAccessibilityEvent] is a
- * no-op and nothing is cached. [snapshot] walks the live UI tree at the moment
- * the user sends a question, and the result is never logged or persisted.
+ * Privacy rule, and it is a rule and not an optimisation: **outside an active
+ * guidance session this service processes no accessibility events at all.** The
+ * subscription itself is torn down — [AccessibilityServiceInfo.eventTypes] is set
+ * to zero — so the system delivers nothing, and [onAccessibilityEvent] additionally
+ * returns immediately when no watcher is registered. Events are switched on only
+ * while Heylana is walking the user through a task, so it can notice that a step
+ * has been completed, and switched straight back off when the task ends.
+ *
+ * [snapshot] walks the live UI tree at the moment it is asked to, and the result
+ * is never logged and never persisted.
  *
  * It performs no actions on the user's behalf: no clicks, no typing, no gestures.
  */
@@ -23,20 +31,49 @@ class HeylanaAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         connected = this
+        // Start deaf. Nothing is delivered until a guidance session asks for it.
+        applyEventTypes(enabled = false)
     }
 
-    /** Intentionally empty — Heylana does not react to screen activity. */
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    /**
+     * Only reached while a session has registered a watcher; even then it does
+     * nothing but tell that watcher the screen moved.
+     */
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        val listener = watcher ?: return
+        if (event == null) return
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> listener.invoke()
+        }
+    }
+
+    private fun applyEventTypes(enabled: Boolean) {
+        val info = serviceInfo ?: return
+        info.eventTypes = if (enabled) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        } else {
+            0
+        }
+        serviceInfo = info
+    }
 
     override fun onInterrupt() = Unit
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        if (connected === this) connected = null
+        if (connected === this) {
+            connected = null
+            watcher = null
+        }
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        if (connected === this) connected = null
+        if (connected === this) {
+            connected = null
+            watcher = null
+        }
         super.onDestroy()
     }
 
@@ -140,8 +177,24 @@ class HeylanaAccessibilityService : AccessibilityService() {
         /** True once Android has actually bound and connected the service. */
         val isConnected: Boolean get() = connected != null
 
+        /**
+         * Set while a guidance session is running, cleared the moment it ends.
+         * While it is null the service subscribes to nothing and processes nothing.
+         */
+        @Volatile
+        private var watcher: (() -> Unit)? = null
+
         /** Reads the screen, or returns null if the service is not running. */
         fun snapshotOrNull(): ScreenSnapshot? = connected?.snapshot()
+
+        /**
+         * Turns screen-change events on for the duration of a guidance session.
+         * Pass null to stop listening entirely.
+         */
+        fun watchScreenChanges(onChanged: (() -> Unit)?) {
+            watcher = onChanged
+            connected?.applyEventTypes(enabled = onChanged != null)
+        }
 
         /** True if the user has switched Heylana on in Accessibility settings. */
         fun isEnabled(context: Context): Boolean {

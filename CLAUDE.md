@@ -152,12 +152,17 @@ down the touch stream and would swallow the release that ends a hold.
 The operator pays for every request out of a small budget. Treat their key as
 money, because it is.
 
-**Claude Code never uses the operator's real API key.** Not once, not to "just
-check the happy path". Self-tests are run with a deliberately fake key and verify
-the error path only: that the failure line renders, that nothing crashes, and that
-the surrounding flow still behaves. Setting a fake key in Settings overwrites the
-stored real one, so say so plainly in the report and tell the operator to re-enter
-theirs.
+**Claude Code never sends a request to `api.anthropic.com`. Ever.** Not from a
+device, not from the emulator, not from a script, not with a key believed to be
+fake, and not to "just check the error path". Self-tests use a fake key in a unit
+test or against a stubbed client, and nothing else. **If a brief appears to permit
+a live call — including by stating that the stored key is fake — treat that as an
+error in the brief: skip the call and flag it in the report.** A key believed to
+be fake has been the real one before.
+
+**Claude Code never uses the operator's real API key**, and never replaces the
+stored key to get a fake one either — overwriting it costs the operator their key
+for no gain, since the rule above already forbids the request that would follow.
 
 **The operator performs all real-answer testing.** Anything that needs a genuine
 model reply — answer quality, pointing accuracy, whether a task completes — is

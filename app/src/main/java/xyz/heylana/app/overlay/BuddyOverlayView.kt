@@ -272,6 +272,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     fun showNotice(text: String) {
         sprite.expression = BuddySpriteView.Expression.IDLE
+        // Spoken exchanges have no box of their own, and a problem still has to
+        // be readable, so this is the one thing that opens one uninvited.
+        ensurePanelOpen()
         panel.showNotice(text)
         applyPosition()
     }
@@ -329,7 +332,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** Opens the box from code — passive, so a task never dims the screen. */
     fun ensurePanelOpen() {
-        if (mode == Mode.DOCKED) enterMode(Mode.HUD)
+        if (mode == Mode.DOCKED || mode == Mode.CAPSULE) enterMode(Mode.HUD)
     }
 
     // ---------------------------------------------------------------- voice
@@ -364,9 +367,17 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         capsule.showThinking()
     }
 
-    /** The answer is in: the capsule goes and the disc speaks. */
+    /**
+     * The answer is in, or there is no longer anything to wait for: the capsule
+     * melts away and the disc is left on its own. Safe to call twice.
+     */
     fun endVoiceExchange() {
-        if (mode == Mode.CAPSULE) enterMode(Mode.DOCKED)
+        if (mode != Mode.CAPSULE && capsule.visibility != View.VISIBLE) return
+        capsule.melt {
+            // Only if nothing else has taken the window over in the meantime —
+            // showing the words of a spoken answer opens the box, for instance.
+            if (mode == Mode.CAPSULE) enterMode(Mode.DOCKED)
+        }
     }
 
     fun showPartialSpeech(text: String) = panel.setSpokenText(text)
@@ -414,6 +425,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             Mode.DOCKED -> {
                 panel.releaseInput()
                 panel.visibility = View.GONE
+                // The capsule belongs to a spoken exchange and nothing else, so
+                // it never survives the way back to the bare disc.
+                capsule.visibility = View.GONE
                 scrim.visibility = View.GONE
                 scrim.alpha = 0f
                 sprite.composing = false
@@ -445,6 +459,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
             Mode.HUD -> {
                 panel.releaseInput()
+                capsule.visibility = View.GONE
                 panel.visibility = View.VISIBLE
                 scrim.visibility = View.GONE
                 scrim.alpha = 0f

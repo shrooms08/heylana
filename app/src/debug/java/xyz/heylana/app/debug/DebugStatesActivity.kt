@@ -144,6 +144,7 @@ class DebugStatesActivity : Activity() {
         Triple("thinking", "thinking", ::thinking),
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
+        Triple("cycle", "voice full cycle", ::voiceFullCycle),
         Triple("pointing", "pointing", ::pointing),
         Triple("task", "task 2 of 4", ::taskStep),
         Triple("done", "done", ::done)
@@ -194,6 +195,57 @@ class DebugStatesActivity : Activity() {
             sprite.talking = true
             sprite.refreshState()
         }, 1_600)
+    }
+
+    /**
+     * The whole spoken exchange end to end, on the same clock the buddy uses:
+     * the words fill in, the pill becomes the aurora, the aurora melts away as
+     * the answer lands, the disc speaks, and a second later it is idle again.
+     */
+    private fun voiceFullCycle() {
+        reset()
+        panel.setVoiceMode(voice = true, showsText = false)
+        capsule.visibility = View.VISIBLE
+        capsule.showTranscript("")
+        sprite.expression = BuddySpriteView.Expression.LISTENING
+        sprite.refreshState()
+
+        val words = HEARD.split(' ')
+        for ((index, _) in words.withIndex()) {
+            main.postDelayed({
+                caption.text = "voice full cycle · listening"
+                capsule.showTranscript(words.take(index + 1).joinToString(" "))
+                sprite.micLevel = MIC_LEVELS[index % MIC_LEVELS.size]
+            }, HEARD_STEP_MS * (index + 1))
+        }
+
+        val released = HEARD_STEP_MS * (words.size + 1)
+        main.postDelayed({
+            caption.text = "voice full cycle · thinking"
+            sprite.micLevel = 0f
+            sprite.expression = BuddySpriteView.Expression.THINKING
+            sprite.refreshState()
+            capsule.showThinking()
+        }, released)
+
+        main.postDelayed({
+            caption.text = "voice full cycle · speaking"
+            capsule.melt {
+                sprite.expression = BuddySpriteView.Expression.IDLE
+                sprite.talking = true
+                sprite.refreshState()
+            }
+        }, released + THINKING_MS)
+
+        // Speech ends, then the same one second beat the service waits.
+        main.postDelayed({
+            sprite.talking = false
+            sprite.refreshState()
+        }, released + THINKING_MS + SPEAKING_MS)
+        main.postDelayed({
+            caption.text = "voice full cycle · idle"
+            idle()
+        }, released + THINKING_MS + SPEAKING_MS + SETTLE_MS)
     }
 
     private fun pointing() {
@@ -275,6 +327,14 @@ class DebugStatesActivity : Activity() {
 
     private companion object {
         const val ANSWER = "The search bar is at the top."
+        const val HEARD = "where is the seed vault"
+        val MIC_LEVELS = floatArrayOf(0.35f, 0.7f, 0.5f, 0.85f, 0.4f)
+        const val HEARD_STEP_MS = 260L
+        const val THINKING_MS = 1_400L
+        const val SPEAKING_MS = 1_600L
+
+        /** The same beat BuddyOverlayService waits before it settles. */
+        const val SETTLE_MS = 1_000L
         const val EXTRA_STATE = "state"
         const val EXTRA_BACKDROP = "backdrop"
     }

@@ -59,6 +59,42 @@ class VoiceCapsuleView(context: Context) : TextView(context) {
         invalidate()
     }
 
+    /**
+     * The answer has landed: the pill shrinks and fades out of the way, then it
+     * is gone. [onGone] runs once it has, whether it had to animate or was not
+     * showing in the first place.
+     */
+    fun melt(onGone: () -> Unit) {
+        if (visibility != VISIBLE) {
+            reset()
+            onGone()
+            return
+        }
+        animate().cancel()
+        animate()
+            .alpha(0f)
+            .scaleX(MELT_SCALE)
+            .scaleY(MELT_SCALE)
+            .setDuration(HeylanaTokens.FADE_MS)
+            .withEndAction {
+                visibility = GONE
+                reset()
+                onGone()
+            }
+            .start()
+    }
+
+    /** Back to a blank pill ready for the next exchange. */
+    private fun reset() {
+        stopDrift()
+        thinking = false
+        text = ""
+        alpha = 1f
+        scaleX = 1f
+        scaleY = 1f
+        background = glass
+    }
+
     /** The same pill, now carrying the aurora while the answer is fetched. */
     fun showThinking() {
         thinking = true
@@ -116,5 +152,8 @@ class VoiceCapsuleView(context: Context) : TextView(context) {
         const val LISTENING = "listening…"
         const val THINKING = "thinking…"
         const val MAX_WIDTH_DP = 200f
+
+        /** How far the pill shrinks as it melts away. */
+        const val MELT_SCALE = 0.7f
     }
 }

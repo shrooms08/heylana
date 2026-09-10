@@ -98,10 +98,17 @@ class BuddyOverlayService : Service() {
             onFinal = { text -> ask(text) },
             onProblem = { message ->
                 overlayView?.stoppedListening()
-                // Nothing was heard, so nothing will be asked — the capsule has
-                // to go, or it sits there saying "listening" for ever.
+                // Nothing will be asked, so the capsule has to go, or it sits
+                // there saying "listening" for ever.
                 overlayView?.endVoiceExchange()
                 overlayView?.showNotice(message)
+            },
+            onNothingHeard = {
+                // They held the buddy and said nothing. Nothing to answer and
+                // nothing to apologise for: melt the capsule and rest.
+                overlayView?.stoppedListening()
+                overlayView?.endVoiceExchange()
+                overlayView?.setTalking(false)
             }
         )
     }
@@ -239,6 +246,9 @@ class BuddyOverlayService : Service() {
     /** An ordinary answer: say it, point once, let the box time out by itself. */
     private fun showOneShot(reply: BrainReply.Say, snapshot: ScreenSnapshot) {
         val view = overlayView ?: return
+        // A spoken answer normally leaves nothing on screen; the Settings switch
+        // is what puts its words in a box.
+        if (view.wasSpoken && settings.showTextForVoice) view.ensurePanelOpen()
         view.showAnswer(reply.text)
         // The snapshot is still in hand, so the id resolves to real bounds.
         snapshot.node(reply.pointAt)?.let { node ->
@@ -246,7 +256,15 @@ class BuddyOverlayService : Service() {
             highlight?.point(node.bounds, view.spriteCenterOnScreen())
             view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
         }
-        speak(reply.text)
+        // Muted, or no voice on this device: nothing will report speech ending,
+        // so the way back to idle has to be booked here instead.
+        if (!speak(reply.text)) settleSoon()
+    }
+
+    /** Puts everything back to rest a beat from now, cancelling any earlier one. */
+    private fun settleSoon() {
+        main.removeCallbacks(settleToIdle)
+        main.postDelayed(settleToIdle, SETTLE_MS)
     }
 
     /**
@@ -427,17 +445,19 @@ class BuddyOverlayService : Service() {
         }
     }
 
-    private fun speak(text: String) {
-        val voice = speaker ?: return
-        if (settings.voiceMuted) return
+    /** True if the answer really is being read out, so speech will report its end. */
+    private fun speak(text: String): Boolean {
+        val voice = speaker ?: return false
+        if (settings.voiceMuted) return false
         if (!voice.available) {
             if (voice.settled && !noteShown) {
                 noteShown = true
                 overlayView?.showNote("Voice unavailable on this device.")
             }
-            return
+            return false
         }
         voice.speak(text)
+        return true
     }
 
     // ---------------------------------------------------------------- voice

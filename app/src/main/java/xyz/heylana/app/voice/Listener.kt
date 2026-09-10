@@ -17,7 +17,12 @@ class Listener(
     private val context: Context,
     private val onPartial: (String) -> Unit,
     private val onFinal: (String) -> Unit,
-    private val onProblem: (String) -> Unit
+    private val onProblem: (String) -> Unit,
+    /**
+     * The user held the buddy and said nothing. That is not a problem worth a
+     * message on screen — the caller just puts everything back to rest.
+     */
+    private val onNothingHeard: () -> Unit
 ) {
 
     private var recognizer: SpeechRecognizer? = null
@@ -59,13 +64,18 @@ class Listener(
                 listening = false
                 if (abandoned) return
                 val text = firstResult(results)
-                if (text.isNullOrBlank()) onProblem(NOTHING_HEARD) else onFinal(text)
+                if (text.isNullOrBlank()) onNothingHeard() else onFinal(text)
             }
 
             override fun onError(error: Int) {
                 listening = false
                 if (abandoned) return
-                onProblem(message(error))
+                when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH,
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> onNothingHeard()
+
+                    else -> onProblem(message(error))
+                }
             }
         })
 
@@ -110,9 +120,6 @@ class Listener(
             ?.takeIf { it.isNotEmpty() }
 
     private fun message(error: Int): String = when (error) {
-        SpeechRecognizer.ERROR_NO_MATCH,
-        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> NOTHING_HEARD
-
         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
             "I need microphone permission. Open Heylana and allow the microphone."
 
@@ -126,6 +133,5 @@ class Listener(
 
     companion object {
         const val UNAVAILABLE = "Voice input not available on this device, type instead."
-        private const val NOTHING_HEARD = "I didn't catch that. Hold me and try again."
     }
 }

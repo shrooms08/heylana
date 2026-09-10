@@ -1,148 +1,168 @@
-# SMOKE TEST — design 2a, the buddy's states
+# SMOKE TEST — phase 2 behaviours
 
-Heylana now looks different in every state she can be in: resting, listening,
-thinking, answering, pointing, walking you through a task. This test is about
-what you see, not what she says.
+Four changes: the voice capsule now goes away when it should, the pointer box
+notices you doing the thing, Heylana remembers the last few questions, and the
+connection is opened before you have finished typing.
 
 ## Budget for this test: 4 live API calls
 
-I sent nothing to the API. Everything below that I could check, I checked on the
-phone through a debug screen that fakes the answers.
+I sent nothing to the API. Everything I could check without it, I checked on the
+Seeker through the debug states screen.
 
 | Step | Calls |
 |------|-------|
-| 1 the debug states screen | 0 |
-| 2 "what is my balance" in the wallet | 1 |
-| 3 hold-to-talk: "where is the seed vault" | 1 |
-| 4 "help me receive SOL" | 2 |
+| 1 debug states, "voice full cycle" | 0 |
+| 2 hold-to-talk in the wallet | 1 |
+| 3 type "how do I swap", then tap Swap | 1 |
+| 4 "what does this do", then "and the other button" | 2 |
 
-**Before you start:** install, run `./scripts/a11y.sh`, close Heylana from
-recents, reopen it, then tap **Start buddy**.
+**Before you start:**
+
+1. Install, run `./scripts/a11y.sh`, close Heylana from recents, reopen it.
+2. Open **Settings**. Turn **Show spoken answers as text** **off** — it is on
+   from the last test, and step 2 is about a spoken answer leaving nothing on
+   screen. Leave **Warm up the connection** **on** for now.
+3. Go back and tap **Start buddy**.
 
 ---
 
 ## 1. The debug states screen — 0 calls
 
-Open **Heylana**, tap **Settings**, scroll to the bottom and tap **Debug
-states**. This screen costs nothing: it fakes Heylana's answers so you can look
-at every state without spending a call.
+**Settings → Debug states.** The buttons now sit in rows instead of one long
+strip, so all of them are reachable. Tap **voice full cycle** and watch it right
+through without touching anything else:
 
-Along the bottom is a row of buttons. Swipe that row sideways to reach them all.
-Tap each in turn. This is what each one should show.
+1. a purple ring around the disc, and a small pill filling in word by word with
+   **where is the seed vault**;
+2. the same pill turns into the drifting **aurora**, purple to blue to cyan to
+   warm orange, and the mark unwinds into a turning ring;
+3. the pill **shrinks and fades away** as the answer lands — it does not sit
+   there, and it does not blink out;
+4. the mark comes back to full white and the disc **sheds rings** while it
+   speaks;
+5. about a second after that, the disc is back to its resting purple and **the
+   screen is empty**.
 
-**idle** — a dark purple disc with the swirl mark in it, knocked back and quiet.
-A bright edge along the top of the disc that fades smoothly round to the bottom.
-No square, no hard corners, no seam anywhere around it.
+Tap it a few times. Step 3 is the one that was broken: the pill used to stay on
+screen beside the buddy with the aurora still turning, and nothing ever took it
+away.
 
-**backdrop** — the far right button. Tap it to flip the page from black to
-white, and tap **idle** again. The disc must still read as a piece of glass: a
-bright edge, a soft shadow under it, and a lighter face. Tap **backdrop** again
-to go back to black.
-
-**tapped** — a purple bloom opens behind the disc, the mark comes up to full
-white, and the box grows out with **ask about this screen** in it, a purple
-**ask** pill and a speaker icon.
-
-**thinking** — the mark unwinds into a broken ring that turns on its own, and
-the box says **thinking…** with the ask pill dimmed.
-
-**typed answer** — the box shrinks into a **single-line strip** holding the
-answer and the speaker icon. The question field is gone.
-
-**voice answer** — no box at all. A small pill floats under the disc saying
-**thinking…** with purple, blue, cyan and warm orange drifting through it. After
-a moment the pill goes, the mark comes to full white and the disc **sheds rings**
-as she speaks. No words appear on screen — that is the point.
-
-**pointing** — the strip stays, a purple box appears lower down the page, and the
-**mark leans and stretches toward it**.
-
-**task 2 of 4** — the strip grows a second row: a **step 2** chip on the left,
-a purple **next** and a quiet **done** on the right, and a thin purple rail along
-the bottom **filled halfway**.
-
-**done** — starts on that task, then the second row and the rail go away, the
-strip says the task is finished, and a second later everything closes and the
-disc is back to resting.
-
-If any one of those does not match, say which button you tapped and what you saw
-instead. Nothing here costs a call, so tap them as often as you like.
+The other buttons are unchanged from the last test and still cost nothing.
 
 ---
 
-## 2. A question in the wallet — 1 call
+## 2. Hold-to-talk in the wallet — 1 call
 
-Open your **wallet**. **Tap the buddy**, type **what is my balance** and tap
-**ask**.
+Open your **wallet**. **Press and hold the buddy**, say **where is the seed
+vault**, and let go.
 
-You should see: the disc bloom and the ring turn while it thinks, then the box
-**shrink into a one-line strip** with the answer in it. If the answer is about
-something on screen, a purple box appears around that thing and the mark leans
-toward it.
+You should see the same five things as step 1, on the real thing: the ring, your
+words in the pill, the aurora, the pill melting away, the answer spoken aloud
+with **no text**, and the disc back to resting about a second after it stops
+speaking.
 
----
+**Nothing should be left on screen except the purple box**, if the answer pointed
+at something. That box has its own rules — see step 3.
 
-## 3. Hold-to-talk — 1 call
-
-Anywhere, **press and hold the buddy** and say **where is the seed vault**, then
-let go.
-
-While holding: the disc **stays where it is**, a purple ring around it breathes
-with your voice, and a small capsule beside it fills in with your words.
-
-On release: the capsule turns into the drifting **aurora pill**, then goes, and
-the answer is **spoken aloud with no text**, with rings shedding off the disc.
-
-**This is the step I could least verify.** The phone's states screen shows the
-aurora, the speaking rings and the silence correctly, but the microphone half —
-your words appearing as you speak — has still never run here. Watch it closely
-and say exactly where it stops if it does.
+Then try it once more, **hold the buddy and say nothing at all**, and let go. The
+pill should melt away and the disc go back to resting, with **no message and no
+box**. It used to sit there saying "listening".
 
 ---
 
-## 4. A task — 2 calls
+## 3. Type a question, then do the thing — 1 call
 
-Open your **wallet** again. **Tap the buddy**, type **help me receive SOL** and
-tap **ask**.
+Still in the wallet. **Tap the buddy**, type **how do I swap** and tap **ask**.
 
-You should see: an answer strip, and under it the **step row** — a **step 1**
-chip, **next**, **done** and the purple rail nearly empty. A purple box points at
-what to tap.
+You should see the answer strip and a **purple box around Swap**.
 
-**Tap what it points at.** The step row must survive that tap: it does not close
-when you touch the screen underneath.
+Now **tap Swap**. The box should **flash green and disappear**, and Heylana
+should **say nothing at all** about it. That is the whole feature: it noticed you
+did the thing and got out of the way.
 
-The rail fills as you go. When you reach the address, the step row and the rail
-go away and the strip confirms it, then everything settles back to the resting
-disc.
+Try the other half too, on a later question: point at something and **do
+nothing**. After about fifteen seconds the box should **clear quietly** — no
+green, no message.
 
-That is 2 calls: one to start the task, one for the step after your tap.
+While a box is up, Heylana is watching for that one tap. When there is no box, it
+is watching nothing at all: the notification and the first screen of the app both
+say so now — *reads the screen only when you ask, and watches for your tap only
+while it is pointing at something*.
+
+---
+
+## 4. A follow-up question — 2 calls
+
+On the **Swap** screen. **Tap the buddy**, type **what does this do** and tap
+**ask**. Read the answer.
+
+Then ask a second question: **and the other button**.
+
+The second answer should be about a **different** button on that same screen,
+and should make sense as a follow-up to the first — it knows what you already
+asked. Before this change the second question had nothing to go on and would
+usually answer as if it were the first.
+
+Heylana remembers the **last three questions and answers**, for **ten minutes**,
+in memory only. It forgets them when you stop the buddy, when you ask from a
+different app, and after ten minutes. Closing the box does not make it forget.
+
+Worth trying, at no cost: go to a **different app** and ask something that only
+makes sense as a follow-up. It should not understand it — that is the app-change
+reset doing its job.
+
+---
+
+## Optional: the numbers, from the Mac
+
+None of this costs a call; it just reads what the phone already printed.
+
+```
+$HOME/Library/Android/sdk/platform-tools/adb logcat -s HeylanaTokens
+```
+
+Each question prints three lines worth reading:
+
+- `screen elements=… chars=… memory=N exchanges` — how big the screen listing was
+  and how many remembered exchanges went with it.
+- `input_tokens=… output_tokens=…` — compare the input number with the **744 to
+  844** we were seeing on Haiku before. Memory should add roughly a hundred or so,
+  never hundreds: what is sent is capped at 600 characters however long the
+  answers were.
+- `first_byte_ms=… warmed=true|false` — how long the answer took to start coming
+  back, and whether the connection had been opened in advance.
+
+**To see what the warmup is worth**, run step 2 with **Warm up the connection**
+turned **off** in Settings, and step 3 with it back **on**. That is two calls you
+were spending anyway, and it gives you a `warmed=false` number and a
+`warmed=true` number to compare. I could not produce those two numbers myself:
+getting them means opening a connection to the API host, and I do not touch it.
 
 ---
 
 ## What to do if something goes wrong
 
-- **A faint square or a hard edge around the disc** — say which backdrop you
-  were on, black or white.
-- **The bright edge stops dead somewhere around the disc** — say roughly where.
-- **The box does not shrink to a strip after an answer** — say so.
-- **Words appear on screen when you asked out loud** — quote them.
-- **The step row vanishes when you tap what she points at** — that is the whole
-  point of step 4; say so.
-- **The rail does not fill, or the step number does not change** — say what the
-  chip said each time.
+- **The pill stays on screen after the answer** — say whether it was showing your
+  words or the aurora, and whether the disc had gone back to resting.
+- **The disc never goes back to resting** — say what it was doing when it stuck:
+  turning ring, shedding rings, or purple listening ring.
+- **The box flashes green when you have not touched anything** — say what was on
+  screen and roughly how long after the box appeared.
+- **The box never goes green when you tap the thing** — say which app and which
+  button, and whether it cleared quietly after fifteen seconds instead.
+- **The follow-up answer ignores the first question** — quote both questions and
+  both answers.
+- **Anything gets slower** — quote the `first_byte_ms` lines.
 
 ---
 
 ## Pass criteria
 
-- Every one of the eight buttons on the debug states screen shows what is listed
-  above, on both backdrops.
-- The disc reads as glass on black and on white, with no square and no seam.
-- A typed answer melts into a one-line strip.
-- A spoken answer shows no text and sheds rings.
-- Pointing leans the mark toward the purple box.
-- A task shows the step chip, next, done and a rail that fills, and survives a
-  tap on the screen underneath.
-- Everything returns to the resting disc on its own.
+- The voice pill melts away as the answer lands, every time, and the disc is back
+  to resting about a second after speech ends with nothing left but the box.
+- Holding and saying nothing leaves nothing on screen and says nothing.
+- Tapping what the box points at flashes it green and clears it, silently.
+- Fifteen seconds of nothing clears the box quietly.
+- A follow-up question in the same app understands the one before it.
+- A question in a different app does not.
 - Nothing crashes, and the test costs 4 live calls and no more.

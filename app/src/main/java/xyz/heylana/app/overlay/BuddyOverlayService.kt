@@ -228,7 +228,7 @@ class BuddyOverlayService : Service() {
         snapshot.node(reply.pointAt)?.let { node ->
             view.avoidOverlap(node.bounds)
             highlight?.point(node.bounds, view.spriteCenterOnScreen())
-            view.lookAt(node.bounds.centerX())
+            view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
         }
         speak(reply.text)
     }
@@ -292,7 +292,7 @@ class BuddyOverlayService : Service() {
             view.avoidOverlap(node.bounds)
             // Stays up until the step changes: the user needs it while they look.
             highlight?.point(node.bounds, view.spriteCenterOnScreen(), persistent = true)
-            view.lookAt(node.bounds.centerX())
+            view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
         } else {
             // No box for this step, but the task is still running.
             highlight?.hide()

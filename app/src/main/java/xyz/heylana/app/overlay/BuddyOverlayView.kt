@@ -298,13 +298,14 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     }
 
     /** Look at whatever is being highlighted. */
-    fun lookAt(targetCenterX: Int) {
-        val center = spriteCenterOnScreen().x
-        sprite.pointDirection = if (targetCenterX < center) -1 else 1
+    fun lookAt(target: PointF) {
+        sprite.pointDirection = if (target.x < spriteCenterOnScreen().x) -1 else 1
+        sprite.pointTarget = target
         sprite.expression = BuddySpriteView.Expression.POINTING
     }
 
     fun stopLooking() {
+        sprite.pointTarget = null
         if (sprite.expression == BuddySpriteView.Expression.POINTING) {
             sprite.expression = BuddySpriteView.Expression.IDLE
         }

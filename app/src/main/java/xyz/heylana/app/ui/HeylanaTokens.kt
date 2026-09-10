@@ -170,6 +170,12 @@ object HeylanaTokens {
     const val BREATHE_SCALE = 1.055f
 
     const val RING_SPIN_MS = 1200L
+
+    /** How long the mark takes to come apart into the ring, and back. */
+    const val UNWIND_MS = 260L
+
+    /** How far the mark leans toward what it is pointing at. */
+    const val POINT_LEAN = 0.18f
     const val AURORA_DRIFT_MS = 6000L
     const val RIPPLE_MS = 900L
 

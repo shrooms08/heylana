@@ -9,7 +9,11 @@ import android.graphics.RadialGradient
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.view.View
+import kotlin.math.abs
+import kotlin.math.hypot
+import android.graphics.RectF
 import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.LinearInterpolator
 import xyz.heylana.app.R
 import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.HeylanaTokens
@@ -34,6 +38,7 @@ class BuddySpriteView(context: Context) : View(context) {
         set(value) {
             if (field != value) {
                 field = value
+                syncThinking()
                 syncActive()
             }
         }
@@ -55,6 +60,16 @@ class BuddySpriteView(context: Context) : View(context) {
                 field = value
                 syncActive()
             }
+        }
+
+    /**
+     * Where the highlight box is, in screen coordinates, while one is showing.
+     * The mark leans toward it. Null when nothing is being pointed at.
+     */
+    var pointTarget: android.graphics.PointF? = null
+        set(value) {
+            field = value
+            invalidate()
         }
 
     /** 0 to 1, how loud the microphone is hearing. Breathes the listening ring. */
@@ -94,12 +109,30 @@ class BuddySpriteView(context: Context) : View(context) {
     }
     private val listenRing = HeylanaTokens.dp(context, 3f)
 
+    /**
+     * How far the mark has unwound into the thinking ring: 0 is the mark, 1 is
+     * a gapped ring turning on its own.
+     */
+    private var unwind = 0f
+    private var unwindAnimator: ValueAnimator? = null
+    private var spin = 0f
+    private var spinAnimator: ValueAnimator? = null
+
+    private val ringPath = android.graphics.Path()
+    private val ringOval = RectF()
+    private val thinkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        color = Color.WHITE
+    }
+
     /** Where the shed rings are in their cycle while Heylana speaks. */
     private var ringPhase = 0f
     private var ringAnimator: ValueAnimator? = null
 
     private val discDiameter = HeylanaTokens.dp(context, HeylanaTokens.DISC_DP)
     private val glowBlur = HeylanaTokens.dp(context, HeylanaTokens.GLOW_BLUR_DP)
+    private val spriteLocation = IntArray(2)
 
     /** The resting breath, and how far through it we are. */
     private var breathe = 0f
@@ -140,7 +173,45 @@ class BuddySpriteView(context: Context) : View(context) {
         breatheAnimator?.cancel(); breatheAnimator = null
         activeAnimator?.cancel(); activeAnimator = null
         ringAnimator?.cancel(); ringAnimator = null
+        unwindAnimator?.cancel(); unwindAnimator = null
+        spinAnimator?.cancel(); spinAnimator = null
         super.onDetachedFromWindow()
+    }
+
+    /**
+     * Thinking unwinds the mark into a gapped ring that turns once every 1.2s,
+     * and snaps it back the moment the answer lands.
+     */
+    private fun syncThinking() {
+        val wanted = if (expression == Expression.THINKING) 1f else 0f
+        unwindAnimator?.cancel()
+        unwindAnimator = ValueAnimator.ofFloat(unwind, wanted).apply {
+            duration = HeylanaTokens.UNWIND_MS
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener {
+                unwind = it.animatedValue as Float
+                invalidate()
+            }
+            start()
+        }
+
+        if (wanted == 1f) {
+            if (spinAnimator != null) return
+            spinAnimator = ValueAnimator.ofFloat(0f, 360f).apply {
+                duration = HeylanaTokens.RING_SPIN_MS
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener {
+                    spin = it.animatedValue as Float
+                    invalidate()
+                }
+                start()
+            }
+        } else {
+            spinAnimator?.cancel()
+            spinAnimator = null
+            spin = 0f
+        }
     }
 
     /**
@@ -283,8 +354,42 @@ class BuddySpriteView(context: Context) : View(context) {
             )
             val amount = HeylanaTokens.MARK_DULLED +
                 (HeylanaTokens.MARK_ACTIVE - HeylanaTokens.MARK_DULLED) * activeAmount
-            drawable.alpha = (amount * 255f).toInt().coerceIn(0, 255)
+            drawable.alpha = ((1f - unwind) * amount * 255f).toInt().coerceIn(0, 255)
+
+            val lean = canvas.save()
+            pointTarget?.let { target ->
+                // Lean and stretch toward whatever is being pointed at.
+                getLocationOnScreen(spriteLocation)
+                val dx = target.x - (spriteLocation[0] + w / 2f)
+                val dy = target.y - (spriteLocation[1] + h / 2f)
+                val reach = hypot(dx, dy).coerceAtLeast(1f)
+                val amountX = (dx / reach) * HeylanaTokens.POINT_LEAN * discRadius
+                val amountY = (dy / reach) * HeylanaTokens.POINT_LEAN * discRadius
+                canvas.translate(amountX, amountY)
+                canvas.scale(
+                    1f + HeylanaTokens.POINT_LEAN * abs(dx) / reach,
+                    1f + HeylanaTokens.POINT_LEAN * abs(dy) / reach,
+                    cx, cy
+                )
+            }
             drawable.draw(canvas)
+            canvas.restoreToCount(lean)
+        }
+
+        if (unwind > 0.01f) {
+            // The arms have come apart into two arcs with a gap either side.
+            thinkPaint.strokeWidth = discRadius * 0.16f
+            thinkPaint.alpha = (unwind * 255f).toInt().coerceIn(0, 255)
+            val ringRadius = discRadius * (0.62f - 0.04f * (1f - unwind))
+            ringOval.set(cx - ringRadius, cy - ringRadius, cx + ringRadius, cy + ringRadius)
+            val sweep = 150f * unwind
+            val turn = canvas.save()
+            canvas.rotate(spin, cx, cy)
+            ringPath.reset()
+            ringPath.addArc(ringOval, 0f, sweep)
+            ringPath.addArc(ringOval, 180f, sweep)
+            canvas.drawPath(ringPath, thinkPaint)
+            canvas.restoreToCount(turn)
         }
 
         canvas.restoreToCount(save)

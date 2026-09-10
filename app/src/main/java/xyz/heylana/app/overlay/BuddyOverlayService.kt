@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
@@ -35,12 +36,17 @@ import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
+import xyz.heylana.app.screen.Keyterms
 import xyz.heylana.app.screen.ScreenNode
 import xyz.heylana.app.screen.ScreenSignal
 import xyz.heylana.app.screen.ScreenSnapshot
 import xyz.heylana.app.screen.TapWatch
 import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
+import xyz.heylana.app.voice.DeepgramEars
+import xyz.heylana.app.voice.EarCallbacks
+import xyz.heylana.app.voice.Ears
+import xyz.heylana.app.voice.FallbackWindow
 import xyz.heylana.app.voice.Listener
 import xyz.heylana.app.voice.MicPermissionActivity
 import xyz.heylana.app.voice.Speaker
@@ -65,7 +71,21 @@ class BuddyOverlayService : Service() {
     private val brain: ProxyClient by lazy { ProxyClient(settings) }
 
     private var speaker: Speaker? = null
-    private var listener: Listener? = null
+
+    /** The phone's own ears: always there, and what everything falls back to. */
+    private var phoneEars: Listener? = null
+
+    /** The good ears, when the proxy can lend a key for them. */
+    private var cloudEars: DeepgramEars? = null
+
+    /** Whichever pair is actually listening right now. */
+    private var ears: Ears? = null
+
+    /** How long the good ears have left to prove they are up. */
+    private var earsChoice: FallbackWindow? = null
+    private var earsAskedAt = 0L
+    private var earsKeyterms: List<String> = emptyList()
+    private val phoneEarsTakeOver = Runnable { fallBackToPhoneEars() }
 
     /** So the "voice unavailable" footnote is only ever shown once. */
     private var noteShown = false
@@ -117,15 +137,24 @@ class BuddyOverlayService : Service() {
                 main.postDelayed(settleToIdle, SETTLE_MS)
             }
         }
-        listener = Listener(
-            context = this,
+        phoneEars = Listener(this, earCallbacks)
+    }
+
+    /**
+     * What the ears report back, whichever pair is listening. Written once so
+     * the two behave identically from here on.
+     */
+    private val earCallbacks: EarCallbacks by lazy {
+        EarCallbacks(
             onPartial = { text -> overlayView?.showHeard(text) },
             onFinal = { text ->
                 HeylanaLog.state("listen: heard something")
+                stopEarsTimer()
                 ask(text)
             },
             onProblem = { message ->
                 HeylanaLog.state("listen: problem")
+                stopEarsTimer()
                 exchange.over()
                 overlayView?.stoppedListening()
                 // Nothing will be asked, so the capsule has to go, or it sits
@@ -135,13 +164,15 @@ class BuddyOverlayService : Service() {
             },
             onNothingHeard = {
                 HeylanaLog.state("listen: nothing heard")
+                stopEarsTimer()
                 exchange.over()
                 // They held the buddy and said nothing. Nothing to answer and
                 // nothing to apologise for: melt the capsule and rest.
                 overlayView?.stoppedListening()
                 overlayView?.endVoiceExchange()
                 overlayView?.setTalking(false)
-            }
+            },
+            onLevel = { level -> overlayView?.showMicLevel(level) }
         )
     }
 
@@ -171,8 +202,11 @@ class BuddyOverlayService : Service() {
         stopTapWatch()
         main.removeCallbacksAndMessages(null)
         scope.cancel()
-        listener?.shutdown()
-        listener = null
+        cloudEars?.shutdown()
+        cloudEars = null
+        phoneEars?.shutdown()
+        phoneEars = null
+        ears = null
         speaker?.shutdown()
         speaker = null
         highlight?.removeFromWindow()
@@ -370,7 +404,7 @@ class BuddyOverlayService : Service() {
         val inSession = session != null
         tapWatch = TapWatch(
             elementKey = node.key,
-            armedAt = android.os.SystemClock.uptimeMillis(),
+            armedAt = SystemClock.uptimeMillis(),
             persistent = inSession
         )
         HeylanaAccessibilityService.watchTaps { signal -> main.post { onTapSignal(signal) } }
@@ -379,7 +413,7 @@ class BuddyOverlayService : Service() {
 
     private fun onTapSignal(signal: ScreenSignal) {
         val watch = tapWatch ?: return
-        when (watch.consider(android.os.SystemClock.uptimeMillis(), signal)) {
+        when (watch.consider(SystemClock.uptimeMillis(), signal)) {
             Verdict.ACKNOWLEDGE -> endTapWatch(acknowledged = true)
             Verdict.EXPIRE -> endTapWatch(acknowledged = false)
             Verdict.IGNORE -> Unit
@@ -580,9 +614,11 @@ class BuddyOverlayService : Service() {
 
     private fun startListening() {
         val view = overlayView ?: return
-        val ears = listener ?: return
+        val phone = phoneEars ?: return
 
-        if (!ears.available()) {
+        // The phone's own ears are the floor: if even they are missing there is
+        // nothing to fall back to, whatever the proxy could have lent us.
+        if (!phone.available() && !Proxy(settings).isConfigured) {
             view.showNotice(Listener.UNAVAILABLE)
             return
         }
@@ -601,7 +637,89 @@ class BuddyOverlayService : Service() {
         highlight?.hide()
         view.stopLooking()
         view.startedListening()
-        ears.start()
+        openEars()
+    }
+
+    /**
+     * Opens whichever ears can be ready first.
+     *
+     * Deepgram hears the names on a wallet screen properly, so it is asked
+     * first — but a user holding the buddy down expects it to be listening now,
+     * not in a second, so it gets [FallbackWindow.EARS_MS] and no more. If the
+     * key, the socket or the microphone is not up by then, the phone's own ears
+     * start instead and the user never knows the difference.
+     */
+    private fun openEars() {
+        val keyterms = keytermsForNow()
+        earsKeyterms = keyterms
+
+        if (settings.forcePhoneEars || !Proxy(settings).isConfigured) {
+            startPhoneEars(keyterms)
+            return
+        }
+
+        val window = FallbackWindow(FallbackWindow.EARS_MS)
+        earsChoice = window
+        earsAskedAt = SystemClock.uptimeMillis()
+
+        val deepgram = DeepgramEars(
+            proxy = Proxy(settings),
+            scope = scope,
+            callbacks = earCallbacks,
+            onReady = { main.post { deepgramReady() } },
+            onUnavailable = { main.post { fallBackToPhoneEars() } }
+        )
+        cloudEars = deepgram
+        ears = deepgram
+        deepgram.start(keyterms)
+        main.postDelayed(phoneEarsTakeOver, FallbackWindow.EARS_MS)
+    }
+
+    /** The socket is open and the microphone is running — in time, or not. */
+    private fun deepgramReady() {
+        val window = earsChoice ?: return
+        val elapsed = SystemClock.uptimeMillis() - earsAskedAt
+        if (window.preferredReady(elapsed)) {
+            main.removeCallbacks(phoneEarsTakeOver)
+            ears = cloudEars
+            HeylanaLog.state("ears=deepgram")
+        } else {
+            // The phone is already listening; two microphones is one too many.
+            cloudEars?.cancel()
+            cloudEars = null
+        }
+    }
+
+    /** The good ears were too slow, or could not start at all. */
+    private fun fallBackToPhoneEars() {
+        main.removeCallbacks(phoneEarsTakeOver)
+        val window = earsChoice ?: return
+        if (!window.useFallback()) return
+        cloudEars?.cancel()
+        cloudEars = null
+        if (exchange.phase != Exchange.Phase.LISTENING) return
+        startPhoneEars(earsKeyterms)
+    }
+
+    private fun startPhoneEars(keyterms: List<String>) {
+        val phone = phoneEars ?: return
+        ears = phone
+        HeylanaLog.state("ears=android")
+        phone.start(keyterms)
+    }
+
+    private fun stopEarsTimer() {
+        main.removeCallbacks(phoneEarsTakeOver)
+    }
+
+    /**
+     * The names to expect: the words this phone is about, plus the biggest
+     * tappable labels on the screen in front of the user. Read on demand, like
+     * everything else, and only ever labels.
+     */
+    private fun keytermsForNow(): List<String> {
+        val snapshot = HeylanaAccessibilityService.snapshotOrNull()
+        return Keyterms.from(snapshot?.tappableLabels().orEmpty())
     }
 
     private fun finishListening() {
@@ -609,10 +727,11 @@ class BuddyOverlayService : Service() {
         exchange.released()
         val view = overlayView ?: return
         view.stoppedListening()
-        val ears = listener ?: return
+        stopEarsTimer()
+        val listening = ears ?: return
         // Waiting on the final transcript: the capsule turns into the aurora.
-        if (ears.isListening) view.showThinkingCapsule()
-        if (ears.release()) return
+        if (listening.isListening) view.showThinkingCapsule()
+        if (listening.release()) return
 
         // Nothing is coming — fall back to whatever ended up in the field, and
         // if there is nothing there either, put everything back to rest.
@@ -627,8 +746,11 @@ class BuddyOverlayService : Service() {
 
     private fun abandonListening() {
         HeylanaLog.state("listen: abandoned")
+        stopEarsTimer()
         exchange.over()
-        listener?.cancel()
+        cloudEars?.cancel()
+        cloudEars = null
+        phoneEars?.cancel()
         overlayView?.stoppedListening()
     }
 

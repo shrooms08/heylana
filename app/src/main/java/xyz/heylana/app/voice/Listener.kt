@@ -2,6 +2,7 @@ package xyz.heylana.app.voice
 
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -9,22 +10,26 @@ import android.speech.SpeechRecognizer
 import xyz.heylana.app.HeylanaLog
 
 /**
- * Listens while the user holds the buddy.
+ * The phone's own ears: always there, free, and hard of hearing when it comes to
+ * names like Kamino or SKR.
  *
- * Partial results stream out through [onPartial] so the chat field fills in live;
- * the final transcript arrives once through [onFinal] after [stop].
+ * Heylana would rather use [DeepgramEars], but these are what it falls back to
+ * when the proxy cannot be reached, when the socket is too slow to open, or when
+ * the debug switch says to.
+ *
+ * Partial results stream out as they are heard; the final transcript arrives
+ * once, after [release].
  */
 class Listener(
     private val context: Context,
-    private val onPartial: (String) -> Unit,
-    private val onFinal: (String) -> Unit,
-    private val onProblem: (String) -> Unit,
-    /**
-     * The user held the buddy and said nothing. That is not a problem worth a
-     * message on screen — the caller just puts everything back to rest.
-     */
-    private val onNothingHeard: () -> Unit
-) {
+    private val callbacks: EarCallbacks
+) : Ears {
+
+    private val onPartial: (String) -> Unit get() = callbacks.onPartial
+    private val onFinal: (String) -> Unit get() = callbacks.onFinal
+    private val onProblem: (String) -> Unit get() = callbacks.onProblem
+    private val onNothingHeard: () -> Unit get() = callbacks.onNothingHeard
+
 
     private var recognizer: SpeechRecognizer? = null
     private var listening = false
@@ -35,12 +40,12 @@ class Listener(
     /** Set when the user drags away mid-hold: results are then thrown away. */
     private var abandoned = false
 
-    val isListening: Boolean get() = listening
+    override val isListening: Boolean get() = listening
 
-    fun available(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
+    override fun available(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
 
-    /** Must be called on the main thread. */
-    fun start() {
+    /** Must be called on the main thread. [keyterms] bias it where the platform allows. */
+    override fun start(keyterms: List<String>) {
         if (listening) return
         if (!available()) {
             onProblem(UNAVAILABLE)
@@ -59,7 +64,10 @@ class Listener(
             override fun onBeginningOfSpeech() =
                 HeylanaLog.state("recogniser: speech began")
 
-            override fun onRmsChanged(rmsdB: Float) = Unit
+            override fun onRmsChanged(rmsdB: Float) {
+                // Roughly -2dB quiet to 10dB loud, in this recogniser's units.
+                callbacks.onLevel(((rmsdB + 2f) / 12f).coerceIn(0f, 1f))
+            }
             override fun onBufferReceived(buffer: ByteArray?) = Unit
 
             override fun onEndOfSpeech() =
@@ -110,6 +118,13 @@ class Listener(
             )
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            // The same hints Deepgram gets, where the platform will take them.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && keyterms.isNotEmpty()) {
+                putExtra(
+                    RecognizerIntent.EXTRA_BIASING_STRINGS,
+                    ArrayList(keyterms.take(MAX_BIASING_STRINGS))
+                )
+            }
         }
 
         listening = true
@@ -125,7 +140,7 @@ class Listener(
      * were holding, in which case [onNothingHeard] fires now, or it was never
      * running.
      */
-    fun release(): Boolean {
+    override fun release(): Boolean {
         HeylanaLog.state("recogniser: released, listening=$listening")
         val heardNothing = nothingHeard.releasedNow()
         if (listening) {
@@ -137,7 +152,7 @@ class Listener(
     }
 
     /** The hold turned into a drag: stop and discard whatever was heard. */
-    fun cancel() {
+    override fun cancel() {
         HeylanaLog.state("recogniser: cancel asked, listening=$listening")
         nothingHeard.started()
         if (!listening) return
@@ -146,7 +161,7 @@ class Listener(
         recognizer?.cancel()
     }
 
-    fun shutdown() {
+    override fun shutdown() {
         abandoned = true
         listening = false
         recognizer?.destroy()
@@ -173,5 +188,8 @@ class Listener(
 
     companion object {
         const val UNAVAILABLE = "Voice input not available on this device, type instead."
+
+        /** More than this and the platform starts ignoring them anyway. */
+        private const val MAX_BIASING_STRINGS = 20
     }
 }

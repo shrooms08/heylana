@@ -134,8 +134,10 @@ private fun PrivacyCard() {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Your voice goes to Deepgram to be transcribed while you hold the " +
-                    "buddy. The spoken answer text goes to Cartesia to become speech. The " +
-                    "screen never goes to either.",
+                    "buddy, along with the names of the buttons on your screen so it " +
+                    "spells them right. The spoken answer text goes to Cartesia to become " +
+                    "speech. Nothing else about your screen goes to either, and no " +
+                    "picture of it ever does.",
                 style = MaterialTheme.typography.bodySmall
             )
         }

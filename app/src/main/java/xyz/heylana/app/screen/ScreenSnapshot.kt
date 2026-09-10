@@ -75,6 +75,14 @@ data class ScreenSnapshot(
     /** Resolves an id the model gave back. Unknown ids simply mean "no pointer". */
     fun node(id: Int?): ScreenNode? = id?.let { wanted -> nodes.firstOrNull { it.id == wanted } }
 
+    /**
+     * The tappable things on screen, biggest first, as hints for the ears. Only
+     * labels: no coordinates, no text the user cannot already see.
+     */
+    fun tappableLabels(): List<Keyterms.Labelled> = nodes
+        .filter { it.clickable }
+        .map { Keyterms.Labelled(it.label, it.bounds.width() * it.bounds.height()) }
+
     /** True if an element that was pointed at earlier is still on screen. */
     fun contains(key: String): Boolean = nodes.any { it.key == key }
 

@@ -170,6 +170,9 @@ class BuddyOverlayService : Service() {
             // The pointer's window doubles as the stage the disc flies across.
             view.flightStage = highlight
             view.onQuestion = { question -> ask(question) }
+            // Touching the disc is the earliest warning that a request is
+            // coming, so the connection is opened while they are still typing.
+            view.onTouched = { scope.launch { brain.warmUp() } }
             view.onHoldStart = { startListening() }
             view.onHoldEnd = { finishListening() }
             view.onHoldCancel = { abandonListening() }

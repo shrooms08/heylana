@@ -216,6 +216,36 @@ private fun SettingsScreen(
         }
 
         if (BuildConfig.DEBUG) {
+            var warmUp by remember { mutableStateOf(settings.warmUpConnection) }
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth(0.8f)) {
+                        Text(
+                            text = "Warm up the connection",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Debug builds only. On by default: touching the buddy " +
+                                "opens the connection early so the answer arrives sooner. " +
+                                "Turn it off to see the difference.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                    Spacer(modifier = Modifier.fillMaxWidth(0.05f))
+                    Switch(
+                        checked = warmUp,
+                        onCheckedChange = {
+                            warmUp = it
+                            settings.warmUpConnection = it
+                        }
+                    )
+                }
+            }
+
             val context = LocalContext.current
             OutlinedButton(
                 onClick = {

@@ -64,6 +64,17 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_SHOW_TEXT_VOICE, value).apply()
         }
 
+    /**
+     * Whether the connection to the API is opened as soon as the buddy is
+     * touched. On by default; the switch exists so the gain can be measured with
+     * it off, and is only shown in debug builds.
+     */
+    var warmUpConnection: Boolean
+        get() = prefs.getBoolean(KEY_WARM_UP, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_WARM_UP, value).apply()
+        }
+
     val hasApiKey: Boolean get() = apiKey != null
 
     /** "sk-ant-…4f2a" — enough to recognise the key, never enough to use it. */
@@ -76,6 +87,8 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
     companion object {
         const val DEFAULT_QUICK_MODEL = "claude-haiku-4-5-20251001"
         const val DEFAULT_TASK_MODEL = "claude-sonnet-5"
+
+        private const val KEY_WARM_UP = "warm_up_connection"
 
         private const val FILE_NAME = "heylana_secure_settings"
         private const val KEY_API_KEY = "api_key"

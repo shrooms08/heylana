@@ -1,5 +1,6 @@
 package xyz.heylana.app.brain
 
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -13,6 +14,8 @@ import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.settings.HeylanaSettings
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.SSLSocketFactory
 
 /** A multi-step task the model says it is walking the user through. */
 data class TaskState(val goal: String, val done: Boolean)
@@ -42,6 +45,44 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         .readTimeout(60, TimeUnit.SECONDS)
         .callTimeout(75, TimeUnit.SECONDS)
         .build()
+
+    /** When the connection to the API host was last opened ahead of a request. */
+    @Volatile
+    private var warmedAt = 0L
+
+    private val warm: Boolean
+        get() = warmedAt != 0L && SystemClock.elapsedRealtime() - warmedAt < WARM_TTL_MS
+
+    /**
+     * Opens the connection to the API host before there is anything to send, so
+     * the request that follows does not wait for DNS, for the radio to come out
+     * of idle, or for a full TLS handshake.
+     *
+     * **No request is made.** Not a byte of a body, no headers, and above all no
+     * API key: this is a socket and a handshake to a hostname, and then it is
+     * closed again. What survives is the DNS answer, a woken radio, and the TLS
+     * session, which the platform caches per host and OkHttp's default socket
+     * factory can resume.
+     */
+    suspend fun warmUp() = withContext(Dispatchers.IO) {
+        if (!settings.warmUpConnection) return@withContext
+        if (warm) return@withContext
+        val started = SystemClock.elapsedRealtime()
+        val opened = runCatching {
+            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            (factory.createSocket(HOST, HTTPS_PORT) as SSLSocket).use { socket ->
+                socket.soTimeout = WARM_TIMEOUT_MS
+                socket.startHandshake()
+            }
+        }.isSuccess
+        if (opened) warmedAt = SystemClock.elapsedRealtime()
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                USAGE_TAG,
+                "warmup opened=$opened in ${SystemClock.elapsedRealtime() - started}ms"
+            )
+        }
+    }
 
     /**
      * An ordinary question, optionally with the recent conversation for context.
@@ -88,8 +129,14 @@ class AnthropicClient(private val settings: HeylanaSettings) {
             .post(payload.toString().toRequestBody(JSON))
             .build()
 
+        val warmed = warm
+        val started = SystemClock.elapsedRealtime()
         try {
             http.newCall(request).execute().use { response ->
+                // execute() returns as the response headers land, which is the
+                // first byte back — the part a warm connection actually changes.
+                logFirstByte(SystemClock.elapsedRealtime() - started, warmed)
+                warmedAt = 0L
                 val body = response.body.string()
                 if (!response.isSuccessful) {
                     return@withContext BrainReply.Failed(httpError(response.code, body))
@@ -102,6 +149,15 @@ class AnthropicClient(private val settings: HeylanaSettings) {
         } catch (_: Exception) {
             BrainReply.Failed("Something went wrong reading the reply.")
         }
+    }
+
+    /**
+     * Debug builds only: how long the request waited for its first byte back, and
+     * whether the connection had been opened in advance. Timings only.
+     */
+    private fun logFirstByte(millis: Long, warmed: Boolean) {
+        if (!BuildConfig.DEBUG) return
+        Log.d(USAGE_TAG, "first_byte_ms=$millis warmed=$warmed")
     }
 
     /**
@@ -189,7 +245,13 @@ class AnthropicClient(private val settings: HeylanaSettings) {
     }
 
     companion object {
-        private const val ENDPOINT = "https://api.anthropic.com/v1/messages"
+        private const val HOST = "api.anthropic.com"
+        private const val HTTPS_PORT = 443
+        private const val ENDPOINT = "https://$HOST/v1/messages"
+
+        /** How long an opened connection is worth counting on. */
+        private const val WARM_TTL_MS = 60_000L
+        private const val WARM_TIMEOUT_MS = 5_000
         private const val ANTHROPIC_VERSION = "2023-06-01"
         private const val MAX_TOKENS = 300
 

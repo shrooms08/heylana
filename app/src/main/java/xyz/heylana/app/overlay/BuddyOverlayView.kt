@@ -56,6 +56,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     /** Called with the user's question when they ask. */
     var onQuestion: ((String) -> Unit)? = null
 
+    /**
+     * The disc has been touched, before anyone knows whether it will turn into a
+     * tap, a drag or a hold. The one thing worth doing this early is opening the
+     * connection the answer will need.
+     */
+    var onTouched: (() -> Unit)? = null
+
     /** The user has held the disc down: start listening. */
     var onHoldStart: (() -> Unit)? = null
 
@@ -744,6 +751,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun handleSpriteTouch(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                onTouched?.invoke()
                 cancelFlight()
                 refreshMetrics()
                 dragging = false

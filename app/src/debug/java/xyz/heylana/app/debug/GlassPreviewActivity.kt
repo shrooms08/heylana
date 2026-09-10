@@ -186,11 +186,12 @@ class GlassPreviewActivity : Activity() {
 
         val textLuminance = luminance(HeylanaTokens.textPrimary)
         var worst = Double.MAX_VALUE
-        // The band the answer sits in: the top third, inside the padding.
-        val left = dp(HeylanaTokens.SPACE_4_DP)
-        val right = panel.width - left
-        val top = dp(HeylanaTokens.SPACE_4_DP)
-        val bottom = minOf(panel.height, top + dp(HeylanaTokens.SPACE_6_DP))
+        // The band the answer sits in. The pane is inset inside the view by its
+        // own shadow margin, so the view's padding is what locates the glass.
+        val left = panel.paddingLeft
+        val right = panel.width - panel.paddingRight
+        val top = panel.paddingTop
+        val bottom = minOf(panel.height - panel.paddingBottom, top + dp(HeylanaTokens.SPACE_6_DP))
         var y = top
         while (y < bottom) {
             var x = left

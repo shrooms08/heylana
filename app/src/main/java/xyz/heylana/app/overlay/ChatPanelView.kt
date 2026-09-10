@@ -128,10 +128,15 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     private var blurBehind = false
 
+    /** Room for the pane's own shadow, on top of the content padding. */
+    private val shadowPad = HeylanaTokens.dpInt(context, HeylanaTokens.GLASS_SHADOW_DP)
+
     init {
         orientation = VERTICAL
-        val pad = dp(HeylanaTokens.SPACE_4_DP)
+        val pad = dp(HeylanaTokens.SPACE_4_DP) + shadowPad
         setPadding(pad, pad, pad, pad)
+        // A blur mask needs software rendering.
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
 
         // ---------------------------------------------------- answer + mute
         // Packed to the end so the speaker stays in the corner even with no answer.
@@ -296,7 +301,8 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     fun applyGlass(blurBehind: Boolean) {
         this.blurBehind = blurBehind
         background = GlassDrawable(
-            context, HeylanaTokens.RADIUS_CARD_DP, blurBehind, GlassDrawable.Kind.PANEL
+            context, HeylanaTokens.RADIUS_CARD_DP, blurBehind, GlassDrawable.Kind.PANEL,
+            withShadow = true
         )
         // The field is a lighter sheet sunk into the panel, never a darker hole.
         input.background = GlassDrawable(

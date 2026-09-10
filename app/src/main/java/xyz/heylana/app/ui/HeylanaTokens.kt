@@ -31,11 +31,15 @@ object HeylanaTokens {
      * page, so every sheet starts with a dark base and the white fill goes on
      * top of that.
      *
-     * 48 percent, not the 40 the design called for: at 40 the body text measures
-     * 3.93:1 over a white page, under the 4.5:1 the same design asks for. The
-     * debug preview measures this on every run.
+     * 68 percent, not the 40 the design called for, and the specular and sheen
+     * are dimmer than asked too. The two halves of the brief cannot both hold:
+     * a white 25 percent specular over a 40 percent base puts the body text at
+     * 2.46:1 over a white page, well under the 4.5:1 the same brief requires.
+     * These are the brightest values that still clear it, worst case, with the
+     * specular and the resting sheen stacked on the same pixel. The debug
+     * preview measures it on every run.
      */
-    val glassBase = withAlpha(Color.BLACK, 0.48f)
+    val glassBase = withAlpha(Color.BLACK, 0.68f)
 
     /**
      * The white fill above the base is a vertical gradient, brighter at the top
@@ -44,12 +48,21 @@ object HeylanaTokens {
     val glassFillTop = withAlpha(Color.WHITE, 0.14f)
     val glassFillBottom = withAlpha(Color.WHITE, 0.04f)
 
-    /** The border runs bright at the top-left down to almost nothing bottom-right. */
-    val glassBorderBright = withAlpha(Color.WHITE, 0.45f)
-    val glassBorderDim = withAlpha(Color.WHITE, 0.08f)
+    /** The rim runs bright at the top-left down to almost nothing bottom-right. */
+    val glassRimBright = withAlpha(Color.WHITE, 0.55f)
+    val glassRimDim = withAlpha(Color.WHITE, 0.08f)
 
-    /** A hairline of light just inside the top edge, fading out at the corners. */
-    val glassTopHighlight = withAlpha(Color.WHITE, 0.30f)
+    /** The faked refraction edge: a dark line just inside the rim. */
+    val glassLensLine = withAlpha(Color.BLACK, 0.25f)
+
+    /** The soft blob of light on the pane, as if a lamp were off to one side. */
+    val glassSpecular = withAlpha(Color.WHITE, 0.10f)
+
+    /** The sweep that crosses a pane once as it appears. */
+    val glassSheen = withAlpha(Color.WHITE, 0.08f)
+
+    /** What lifts the pane off the screen behind it. */
+    val glassShadow = withAlpha(Color.BLACK, 0.35f)
 
     /** The question field: its own smoked base, then a lighter fill on top. */
     val inputBase = withAlpha(Color.BLACK, 0.30f)
@@ -90,10 +103,27 @@ object HeylanaTokens {
     /** Blur radius behind glass surfaces. */
     const val BLUR_DP = 40f
 
-    /** Border, inner highlight and shadow geometry. */
-    const val GLASS_BORDER_DP = 1.5f
-    const val GLASS_HIGHLIGHT_DP = 1f
+    /** Rim thickness: heavier along the top, tapering everywhere else. */
+    const val GLASS_RIM_TOP_DP = 2f
+    const val GLASS_RIM_DP = 1f
+    const val GLASS_LENS_DP = 1f
     const val INPUT_BORDER_DP = 1f
+
+    /** The specular blob, as fractions of the pane. */
+    const val SPECULAR_WIDTH = 0.60f
+    const val SPECULAR_HEIGHT = 0.35f
+    const val SPECULAR_X = 0.30f
+    const val SPECULAR_Y = 0.10f
+
+    /** The sheen band, as a fraction of the pane, and where it comes to rest. */
+    const val SHEEN_WIDTH = 0.40f
+    const val SHEEN_ANGLE_DEG = 20f
+    const val SHEEN_REST = 0.35f
+    const val SHEEN_SWEEP_MS = 600L
+
+    /** Shadow under a pane. */
+    const val GLASS_SHADOW_DP = 24f
+    const val GLASS_SHADOW_DY_DP = 8f
 
     const val RADIUS_SM_DP = 8f
     const val RADIUS_MD_DP = 14f

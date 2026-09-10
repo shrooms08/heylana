@@ -90,7 +90,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * bloom's transparent margin does not read as a gap at the screen edge.
      */
     private val dockInset = dp(HeylanaTokens.DOCK_INSET_DP - HeylanaTokens.DISC_BLEED_DP)
-    private val gutter = dp(HeylanaTokens.SPACE_5_DP)
+    /**
+     * The gutter is measured to the visible pane. The panel carries its own
+     * shadow margin, so that much is taken off the layout margin or the box
+     * would sit twice as far in as it should.
+     */
+    private val gutter = (dp(HeylanaTokens.SPACE_5_DP) -
+        dp(HeylanaTokens.GLASS_SHADOW_DP)).coerceAtLeast(0)
 
     private val sprite = BuddySpriteView(context)
 

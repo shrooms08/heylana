@@ -283,6 +283,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     fun setMuted(muted: Boolean) = panel.setMuted(muted)
 
+    /** True when the exchange in progress was asked by voice rather than typed. */
+    val wasSpoken: Boolean get() = panel.isVoiceMode
+
     /** Remembered preference: whether spoken answers also show their words. */
     var voiceShowsText: Boolean = false
         set(value) {

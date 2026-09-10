@@ -155,15 +155,25 @@ class GlassDrawable(
         }
         if (kind == Kind.INPUT) fillPaint.color = HeylanaTokens.inputFill
 
-        // The refraction band follows the top-left corner rather than cutting
-        // straight across, so it reads as light bending round the edge.
-        bandPaint.shader = RadialGradient(
-            body.left + r * 0.9f, body.top + r * 0.9f,
-            maxOf(r * 2.6f, hypot(body.width(), body.height()) * 0.34f),
-            intArrayOf(bandColor, HeylanaTokens.withAlpha(bandColor, 0f)),
-            floatArrayOf(0.35f, 1f),
-            Shader.TileMode.CLAMP
-        )
+        bandPaint.shader = if (kind == Kind.PANEL) {
+            // On a sheet the band follows the top-left corner, so it reads as
+            // light bending round the edge.
+            RadialGradient(
+                body.left + r * 0.9f, body.top + r * 0.9f,
+                maxOf(r * 2.6f, hypot(body.width(), body.height()) * 0.34f),
+                intArrayOf(bandColor, HeylanaTokens.withAlpha(bandColor, 0f)),
+                floatArrayOf(0.35f, 1f),
+                Shader.TileMode.CLAMP
+            )
+        } else {
+            // On a pill there is no corner to bend around, and a corner-only
+            // wash left a primary button reading as an ordinary one. Straight
+            // across, at full strength.
+            LinearGradient(
+                body.left, body.top, body.right, body.bottom,
+                bandColor, bandColor, Shader.TileMode.CLAMP
+            )
+        }
 
         val sw = body.width() * HeylanaTokens.SPECULAR_WIDTH
         val sh = body.height() * HeylanaTokens.SPECULAR_HEIGHT

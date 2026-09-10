@@ -69,13 +69,29 @@ class BuddyOverlayService : Service() {
     private val conversation = Conversation()
 
     private val main = Handler(Looper.getMainLooper())
+
+    /**
+     * Puts everything back to rest a beat after an exchange finishes. A typed
+     * answer keeps its strip; a spoken one leaves nothing behind but the
+     * highlight, which clears on its own rules.
+     */
+    private val settleToIdle = Runnable {
+        val view = overlayView ?: return@Runnable
+        view.endVoiceExchange()
+        if (view.wasSpoken) view.closePanel()
+        view.setTalking(false)
+    }
     private val autoAdvanceCheck = Runnable { considerAutoAdvance() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
-        speaker = Speaker(this) { speaking -> overlayView?.setTalking(speaking) }
+        speaker = Speaker(this) { speaking ->
+            overlayView?.setTalking(speaking)
+            main.removeCallbacks(settleToIdle)
+            if (!speaking) main.postDelayed(settleToIdle, SETTLE_MS)
+        }
         listener = Listener(
             context = this,
             onPartial = { text -> overlayView?.showHeard(text) },
@@ -539,6 +555,9 @@ class BuddyOverlayService : Service() {
     }
 
     companion object {
+        /** The beat between an answer finishing and the screen going back to rest. */
+        private const val SETTLE_MS = 1_000L
+
         /** Long enough for the keyboard to finish leaving and the app to re-layout. */
         private const val KEYBOARD_SETTLE_MS = 350L
 

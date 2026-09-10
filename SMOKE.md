@@ -1,166 +1,160 @@
-# SMOKE TEST — design v2 polish
+# SMOKE TEST — design v2 polish, round two
 
-Four fixes from the last smoke test: the buddy's flight is smooth, the glass is
-a lit sheet rather than a dark slab, a spoken question is answered by voice
-rather than with a wall of text, and questions that are not about the screen get
-answered instead of deflected.
+Five changes from the last smoke test: the glass is smoked so it stays visible
+and readable on a bright page, it has shine and a faked refraction edge, the box
+grows out of the disc, and a spoken question no longer takes over the screen.
 
 ## Budget for this test: 3 live API calls
 
-Run by you. I sent nothing to the API.
+Run by you. I sent nothing to the API — the glass was checked in the debug
+preview and voice mode against a stubbed client.
 
 | Step | Calls |
 |------|-------|
-| 1 flight | 0 |
-| 2 glass | 0 |
+| 1 glass on a bright page | 0 |
+| 2 glass on a dark page | 0 |
 | 3 typed question | 1 |
-| 4 voice question | 1 |
-| 5 show text | 1 |
+| 4 hold-to-talk | 1 |
+| 5 show spoken answers as text | 1 |
 | 6 helper script | 0 |
 
-**Before you start:** install the build, then run `./scripts/a11y.sh` in the
-Local terminal, then open Heylana and tap **Start buddy**. Without the script
-that button stays greyed out — that is step 6, and it is worth doing first so
-the rest works.
+**Before you start:** install, run `./scripts/a11y.sh`, close Heylana from
+recents, reopen it, then tap **Start buddy**.
 
 ---
 
-## 1. The flight — 0 calls
+## 1. Glass on a bright page — 0 calls
 
-**Tap the buddy.**
+Open **Chrome** on a bright page. **Tap the buddy.**
 
-You should see it **fly to the top centre in one smooth movement**, overshoot
-very slightly and settle. No stutter, no stepping, no jump at the end. The
-purple bloom travels with it. The dim and the glass box arrive **after** it
-lands, not during.
+You should see, as it opens:
 
-**Tap the dimmed area away from the box.** The box goes first, then the buddy
-flies back to exactly where it was docked — same smoothness.
+- the box **grows out of the disc** — starting small under it and springing out
+  to full width, not dropping in
+- a **light sweep crosses the pane once**, left to right, and settles
+- the pane is **dark smoked glass**, clearly darker than the page behind it, and
+  the text on it is **easy to read**
+- a **bright rim along the top edge**, brighter at the top-left, fading to
+  almost nothing at the bottom-right
+- a **soft glow of light** in the upper-left area of the pane
+- a **soft shadow** under the pane, with no hard edges or grey rectangles
+- a **purple tint curving around the top-left corner**
+- the **question field lighter** than the pane around it
 
-**Drag the buddy to the middle of the screen and let go.** It should spring to
-the nearest edge with the same motion, not slide stiffly.
-
-If any of these three stutters, say which one.
+There is also a debug-only check: open the second launcher icon, **Heylana
+Glass**. Under each panel it prints the measured contrast of the body text and
+PASS or FAIL. On the emulator these read **5.38:1** over a bright backdrop and
+about **14:1** over black. Both must say PASS.
 
 ---
 
-## 2. The glass — 0 calls
+## 2. Glass on a dark page — 0 calls
 
-**Open the second Heylana icon in the app drawer, "Heylana Glass".** This is a
-debug-only screen that shows the real message box over a bright backdrop and
-over black, with the same dim the overlay uses.
+Switch Chrome to a dark page, or turn on Chrome's dark theme, and tap the buddy
+again.
 
-You should see, on **both** panels:
-
-- the panel clearly **lighter than the dimmed backdrop**, not a dark slab
-- a **bright top edge** — a hairline of light just inside it, fading out towards
-  the corners
-- a border that is **brighter at the top-left** and almost gone at the
-  bottom-right
-- a **soft purple wash** inside the glass near the top-left
-- the **question field lighter than the panel** around it, not a darker hole
-
-**Then check it live:** press Home, open **Chrome** on a bright page, and tap the
-buddy. The panel should look like the preview, and the page behind it should be
-**soft and smeared** where the blur is working.
-
-**Known gap:** there is no drop shadow under the panel. Every other layer of the
-recipe is there; the shadow is not, and I have said why in the report.
+You should see: the pane still clearly **lighter than the page**, with the same
+rim and the same readable text. It must not disappear into the background.
 
 ---
 
 ## 3. A typed question — 1 call
 
-Over **Chrome**, tap the buddy, type **what is the capital of japan**, tap
-**ask**.
+Type **what is the capital of japan** and tap **ask**.
 
-You should see: **Tokyo**, in a sentence or two. It must **not** refuse, and it
-must not say it can only talk about what is on screen. This is the fix for
-questions that have nothing to do with the page.
+You should see: **Tokyo**, in the box.
 
----
-
-## 4. A spoken question — 1 call
-
-Still over Chrome. **Press and hold the buddy** and say **what is on this page**,
-then let go.
-
-You should see:
-
-- the app **dims and blurs**, exactly as when you type — not a small box beside
-  the buddy
-- **no keyboard**
-- an **aurora capsule** under the buddy while it thinks: a glass pill with
-  purple, violet, cyan and warm orange **drifting through it**, not a static
-  gradient
-- then the answer **spoken aloud with no text** in the box
-- the buddy **shedding rings** outward while it speaks
-
-If the text appears anyway, that is a failure — say so.
+**Known gap:** the brief asked for the box to melt into a compact reply strip in
+one continuous shape. That strip has never been built in this app — it was
+scheduled for a design part 2 that was skipped — so there is nothing for the box
+to melt into, and the answer simply appears in the box. Nothing to report here
+unless the answer itself is wrong.
 
 ---
 
-## 5. Show text — 1 call
+## 4. Hold-to-talk — 1 call
 
-In the box there is a **show text** chip next to the speaker icon. **Tap it.**
+Over Chrome, **press and hold the buddy** and say **what is on this page**, then
+let go.
 
-Then **hold the buddy and ask anything by voice again.**
+While holding, you should see:
 
-You should see: the same dim, blur and capsule, and this time **the words of the
-answer appear** as well as being spoken. The chip now reads **hide text**.
+- the disc **stays exactly where it is docked** — it does not fly to the top
+- the screen is **not dimmed and not blurred**
+- a **purple ring** around the disc that **breathes with your voice**
+- a **small glass capsule** beside the disc, filling in with **your words as you
+  say them**
 
-Close the box, stop the buddy and start it again, then open the box once more —
-**no call needed, just check the chip still reads hide text.** The choice is
-remembered.
+On release:
+
+- the same capsule becomes the **aurora "thinking…" pill** in place — purple,
+  violet, cyan and warm orange drifting through it
+- then the capsule goes, the answer is **spoken aloud**, **no text appears**, and
+  the disc **sheds rings** while it talks
+- if the answer is about something on the page, the **purple box and arrow**
+  still appear
+
+**This is the step I could least verify.** I confirmed the capsule appears
+beside the docked disc with no dim and no blur, using a stubbed answer. The
+emulator has no microphone input, so everything after you let go — the
+transcript, the aurora, the speaking rings and the pointing — has never actually
+run. Please watch it closely and say exactly where it stops if it does.
+
+---
+
+## 5. Show spoken answers as text — 1 call
+
+Open **Heylana → Settings**. At the top there is a switch, **Show spoken answers
+as text**, off by default. **Turn it on**, go back, and repeat step 4.
+
+You should see: everything as before, and this time the **words of the answer
+also appear** in the box.
 
 ---
 
 ## 6. The helper script — 0 calls
 
-This is the workflow fix, and you have already used it.
+**Run the app from Android Studio.** Heylana will show **Screen reading**
+unticked and **Start buddy** greyed out.
 
-**Run the app from Android Studio.** Open Heylana: the **Screen reading** row
-will be unticked and **Start buddy** greyed out, because installing switches the
-accessibility service off.
-
-**In the Local terminal run:**
+**In the Local terminal:**
 
 ```
 ./scripts/a11y.sh
 ```
 
-Then **reopen Heylana** — close it from recents first, or it will not notice.
+Then **close Heylana from recents and reopen it** — it will not notice
+otherwise.
 
-You should see: **Screen reading ticked** and **Start buddy** blue, without
-opening Android Settings at all.
+You should see: **Screen reading ticked**, **Start buddy** blue.
 
 ---
 
 ## What to do if something goes wrong
 
-- **The flight stutters** — say which of the three (out, back, snap).
-- **The buddy jumps or flickers at the end of a flight** — that is the handoff
-  between windows; say where it jumped to.
-- **The panel still reads as a dark slab** — say whether the preview screen
-  looked wrong too, or only the live one.
-- **The blur is not working** — normal on battery saver and weaker phones;
-  Settings, System, Developer options, Window blurs.
-- **A voice answer shows its text without you asking** — quote what it said.
-- **A voice answer opens beside the buddy instead of dimming the screen** — that
-  is the part of this phase I could not verify on the emulator; say so.
-- **Start buddy stays grey after running the script** — check you closed and
-  reopened Heylana rather than just switching back to it.
+- **The pane is still hard to read on a bright page** — say what the Heylana
+  Glass screen printed, and whether it said PASS.
+- **The box drops in rather than growing out of the disc** — say so.
+- **No sweep, no rim, or no shadow** — say which is missing.
+- **The disc flies or the screen dims when you hold it** — that is the whole
+  point of step 4; say so.
+- **The capsule sits saying "listening" and never changes** — say whether you
+  actually spoke and whether the microphone dot appeared.
+- **The spoken answer shows its text with the switch off** — quote it.
 
 ---
 
 ## Pass criteria
 
-- All three flights are smooth, with a small overshoot and no jump at the end.
-- The panel reads as a lit sheet on both a bright backdrop and black, with a
-  bright top edge and a field lighter than the panel.
-- A question with nothing to do with the screen is answered, not refused.
-- A spoken question dims and blurs like a typed one, shows a drifting aurora
-  capsule, and is answered aloud with no text.
-- The show-text chip turns the words on and is remembered.
-- `./scripts/a11y.sh` gets Start buddy working without opening Settings.
+- The pane reads as dark smoked glass with readable text on a bright page and is
+  still clearly lighter than a dark page.
+- Rim, sweep, highlight, corner tint and shadow are all present, with no hard
+  rectangles anywhere.
+- The Heylana Glass screen says PASS on both backdrops.
+- The box grows out of the disc.
+- A typed question answers in the box.
+- Holding leaves the disc docked and the screen clear, shows a breathing ring
+  and a transcript capsule, then an aurora, then speaks with no text.
+- The Settings switch turns the text on and is remembered.
+- `./scripts/a11y.sh` gets Start buddy working.
 - Nothing crashes, and the test costs 3 live calls and no more.

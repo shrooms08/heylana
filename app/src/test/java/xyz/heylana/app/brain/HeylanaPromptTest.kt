@@ -34,10 +34,11 @@ class HeylanaPromptTest {
     }
 
     @Test
-    fun `system prompt names Solana only to forbid mentioning it unprompted`() {
+    fun `system prompt names Solana only as context and to forbid mentioning it`() {
         val prompt = HeylanaPrompt.SYSTEM
-        // The one mention that is allowed is the rule that bans the others.
-        assertEquals(1, Regex("Solana").findAll(prompt).count())
+        // Twice, and only twice: once to say which phone this is, once in the rule
+        // that stops it bringing Solana up unprompted.
+        assertEquals(2, Regex("Solana").findAll(prompt).count())
         assertTrue(
             prompt.contains("mention Solana, Seeker or Heylana unless the question is about")
         )
@@ -99,6 +100,6 @@ class HeylanaPromptTest {
 
     private companion object {
         /** Every request pays for this string, so it is capped deliberately. */
-        const val BUDGET = 1350
+        const val BUDGET = 1400
     }
 }

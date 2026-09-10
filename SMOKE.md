@@ -1,208 +1,88 @@
-# SMOKE TEST — Phase 2c: token trim and model routing
+# SMOKE TEST — no more self-promotion at the end of answers
 
-This phase makes every question cost less. The test below is deliberately small.
+Heylana had started tacking a line onto its answers offering more help, or
+explaining what it is and that it knows about Solana. You already know what it is
+from onboarding. This stops that.
 
-## Budget for this test: EXACTLY 4 live API calls
+Nothing else changed: pointing, tasks, voice, mute and the notification all work
+exactly as before.
 
-That is the whole cost of running this page, and it breaks down like this:
+## Budget for this test: 3 live API calls
 
-| Call | What triggers it | Which model |
-|------|------------------|-------------|
-| 1 | The question in Chrome (Part B) | Quick model — Haiku |
-| 2 | The question in Clock (Part C) | Quick model — Haiku |
-| 3 | Starting the timer task (Part D) | Quick model — Haiku |
-| 4 | The task moving to step 2 by itself (Part D) | Task model — Sonnet |
+Run by you, not by me. I did not send anything to the API — the prompt was
+checked with unit tests on the computer instead.
 
-Pressing **Done** in Part E costs **nothing** — that is why Part E uses the task
-that is already running rather than starting a new one.
+| Call | What you type |
+|------|---------------|
+| 1 | what time is it in tokyo |
+| 2 | what is 15 percent of 80 |
+| 3 | what can you do |
 
-**Do not re-send a question to "check it again".** Every send is money. If a step
-does not do what this page says, write down what happened and move on.
+**Send each one once.** If an answer is wrong, write down exactly what it said
+and move on rather than retrying.
 
----
-
-## Part A — Put your key back (no API calls)
-
-Your real key was **replaced with a fake one** during development, on purpose, so
-that no test could ever spend your budget. You need to put yours back before
-anything below will work.
-
-**1. Open Settings.**
-Tap the **Heylana** icon, then the **Settings** button at the bottom.
-
-You should see: **"Key saved · sk-ant-…0000"** — that is the fake key — and below
-it a **Models** card with two fields:
-
-- **Quick model**, showing **claude-haiku-4-5-20251001**
-- **Task model**, showing **claude-sonnet-5**
+Before you start, check **Heylana → Settings** shows **Key saved** with the last
+four characters of your own key. Then **Start buddy**.
 
 ---
 
-**2. Replace the key.**
-Tap **Replace**, type or paste **your key**, tap **Save**.
+**1. Call 1 — a question with nothing to do with this app.**
+Press Home, open **Chrome** on any page. Tap the buddy, type
+**what time is it in tokyo**, and send.
 
-You should see: **"Key saved · sk-ant-…"** ending in the last four characters of
-**your** key, and the word **Saved.**
+You should see: the time in Tokyo, and **nothing else**.
 
-Tap **Back**, check all five checklist rows, then tap **Start buddy**.
+It must **not** say any of these:
 
----
+- anything about **Solana**, **Seeker**, wallets, swaps or staking
+- anything about **what Heylana is** or what it can help with
+- a closing offer such as *"let me know if…"*, *"I can also…"*, *"feel free
+  to…"*, or *"I'm here to help with…"*
 
-## Part B — Call 1: a question in Chrome
-
-**3. Open a news page.**
-Press Home, open **Chrome**, go to **bbc.com**.
-
----
-
-**4. Ask one question.**
-Tap the purple face, type **what is this page about**, tap **Send**.
-
-You should see: **thinking…**, then a short spoken answer about that page.
-
-**No step chip, no Next, no Done** — this was a question, not a task.
-
-That was **call 1**, on the quick model.
+One or two sentences that answer the question and stop. That is the whole test.
 
 ---
 
-## Part C — Call 2: pointing in Clock
+**2. Call 2 — a sum.**
+Tap the buddy, type **what is 15 percent of 80**, and send.
 
-**5. Open the Clock app.**
-Press Home, open **Clock**, tap the **Alarm** tab.
+You should see: **12**, in one short sentence — something like "That's 12."
 
----
-
-**6. Ask one question.**
-Tap the purple face, type **how do I add an alarm**, tap **Send**.
-
-You should see: a short spoken answer and a **pulsing purple box exactly on the
-round + button**, with the arrow from the buddy. Still **no step chip**.
-
-That was **call 2**, on the quick model. The box fades by itself after about
-eight seconds.
+It must **not** add an offer of more help, and must not explain that it can do
+other things too.
 
 ---
 
-## Part D — Calls 3 and 4: a two-step task on the Timer tab
+**3. Call 3 — the one time it may talk about itself.**
+Tap the buddy, type **what can you do**, and send.
 
-**7. Go to the Timer tab.**
-In the Clock app, tap **Timer** in the bottom bar.
+You should see: **two sentences** describing what Heylana does — reading the
+screen you are on and answering questions about it, pointing at things, walking
+you through a task.
 
-You should see: the timer keypad, with digits and a start button.
-
----
-
-**8. Ask for the task.**
-Tap the purple face, type **start a 1 minute timer**, tap **Send**.
-
-You should see: a **"step 1"** chip, a **Next** button, a **Done** button, a
-spoken first step, and a **purple box** on whatever you should touch first —
-usually the **1** on the keypad.
-
-That was **call 3**, on the quick model.
-
----
-
-**9. Do the step, and do not press Next.**
-Tap whatever is boxed.
-
-You should see: within a few seconds, and with no input from you, the chip becomes
-**"step 2"** with a new spoken step and the box moved to the next control —
-usually the **start** button.
-
-That was **call 4**, on the task model. **Stop here — do not tap the boxed start
-button**, or the task will spend a fifth call finishing itself.
-
----
-
-## Part E — Done costs nothing
-
-**10. End the task.**
-Tap the **Done** button in the card.
-
-You should see and hear:
-
-- Heylana say **"Okay, stopping here."** out loud, and the same words in the card.
-- The **step chip, Next and Done disappear**.
-- The **purple box and arrow vanish**.
-
-No API call is made by pressing Done.
-
----
-
-## Part F — Reading the token count in Logcat (no API calls)
-
-This is how you check what a question actually cost.
-
-**11. Open Logcat.**
-On the computer, open **Android Studio** with the Heylana project. At the bottom
-of the window click the **Logcat** tab. If you cannot see it, use the menu
-**View → Tool Windows → Logcat**.
-
-You should see: a fast-scrolling list of messages, and the emulator selected in
-the dropdown at the top left.
-
----
-
-**12. Filter it.**
-Click the search box at the top of the Logcat panel and type exactly:
-
-```
-tag:HeylanaTokens
-```
-
-You should see: the list shrink to only Heylana's own counter lines.
-
----
-
-**13. Read the numbers.**
-Scroll to the top of what is left and find the lines from **call 1** — the Chrome
-question. There are two kinds:
-
-```
-screen elements=24 chars=1211
-model=claude-haiku-4-5-20251001 input_tokens=... output_tokens=...
-```
-
-The **input_tokens** number on the second line is what that question cost you to
-send. That is the number this phase set out to reduce.
-
-You should see: the model on **calls 1, 2 and 3** is
-**claude-haiku-4-5-20251001**, and on **call 4** it is **claude-sonnet-5**. That
-proves the cheap model is doing the ordinary work.
-
-These lines contain only counts and model names — never anything from your screen
-or your conversation.
+Here it **is** allowed to describe itself, and it may mention Solana if that is
+part of the answer. What it must **not** do is run on past two sentences.
 
 ---
 
 ## What to do if something goes wrong
 
-- **"API error 401"** — the key is wrong or you skipped Part A. Settings →
-  **Replace** → your key → **Save**.
-- **"Couldn't reach the API"** — no internet.
-- **The Logcat filter shows nothing** — check the emulator is picked in the
-  dropdown, and that you have asked at least one question since opening Logcat.
-- **A question comes back noticeably worse than before** — the quick model is
-  cheaper and may be weaker. Note the question and the answer. You can put
-  **claude-sonnet-5** into the **Quick model** field in Settings to undo the
-  routing, at higher cost.
-- **The count of live calls does not match the table** — that matters for the
-  budget. Note where the extra call happened.
+Write down the exact words it said, and which of the three questions it was.
+
+- **A closing offer still appears** — quote the whole line.
+- **It mentions Solana or Heylana in call 1 or 2** — quote the sentence.
+- **Call 3 gives nothing, or refuses to describe itself** — that is the opposite
+  failure and worth reporting too.
+- **Answers got shorter but also worse** — say which and how; the persona line was
+  trimmed and that is the thing most likely to have overshot.
 
 ---
 
 ## Pass criteria
 
-- Both model fields appear in Settings with the right defaults, and both save.
-- A question gives a one-shot answer with **no step chip**; a task gives a chip
-  with **Next** and **Done**.
-- The task moves to step 2 **by itself**.
-- **Done** says **"Okay, stopping here."** and clears the chip, buttons and box.
-- Logcat under **tag:HeylanaTokens** shows **Haiku for calls 1 to 3** and
-  **Sonnet for call 4**, with an input token count for each.
-- The whole test cost **4 live calls** and no more.
-- Answers are still good enough to be useful, and the box still lands on the right
-  control.
-- Nothing crashes.
+- Calls 1 and 2 answer the question and stop, with no offer of further help and
+  no mention of Solana, Seeker or Heylana.
+- Call 3 describes Heylana in about two sentences.
+- Answers are still accurate and still spoken aloud.
+- Pointing, tasks, voice, mute and the notification all still behave as before.
+- The whole test costs 3 live calls and no more.

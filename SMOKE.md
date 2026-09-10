@@ -111,18 +111,20 @@ visible.
 
 ---
 
-**9. See an error inside the glass box (optional, costs nothing).**
+**9. See an error inside the glass box (costs nothing, and leaves your key alone).**
 This checks that failures land in the box rather than crashing.
 
-Open **Heylana → Settings → Replace**, type any nonsense such as
-`sk-ant-not-a-real-key`, tap **Save**, and go back. Start the buddy, tap it, type
-**what is this**, and tap **ask**.
+Turn on **aeroplane mode**. Then tap the buddy, type **what is this**, and tap
+**ask**.
 
 You should see: the box show **thinking…** for a moment, then a short line inside
-the same glass box reading **API error 401** and something about the key being
-invalid. No crash, and the box stays open.
+the same glass box saying it **couldn't reach the API**. No crash, the box stays
+open, and what you typed is still in the field so you could try again.
 
-**Then put your real key back**: Settings → **Replace** → your key → **Save**.
+Turn aeroplane mode back off.
+
+There is no need to put a fake key in Settings to test this — that would cost you
+re-entering your real key, and this proves the same thing.
 
 ---
 

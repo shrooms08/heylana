@@ -176,7 +176,10 @@ object HeylanaTokens {
      * and settles rather than arriving dead.
      */
     const val SPRING_STIFFNESS = 380f
-    const val SPRING_DAMPING = 0.7f
+    const val SPRING_DAMPING = 0.72f
+
+    /** The box growing out of the disc. */
+    const val GROW_MS = 360L
 
     /** Glass fading in behind the buddy, or out ahead of it. */
     const val FADE_MS = 180L

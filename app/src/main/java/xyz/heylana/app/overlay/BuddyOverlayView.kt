@@ -416,9 +416,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                 sprite.refreshState()
                 updateLayout()
                 scrim.alpha = 0f
-                panel.alpha = 0f
                 scrim.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
-                panel.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
+                growBoxOutOfDisc()
                 // A spoken question has no field to type in.
                 if (!panel.isVoiceMode) panel.focusInput()
             }
@@ -489,6 +488,32 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     }
 
     // -------------------------------------------------------------- flight
+
+    /**
+     * The box does not drop in — it grows out of the disc, from a small pill
+     * just under it out to full size, on the same spring as the flight.
+     */
+    private fun growBoxOutOfDisc() {
+        panel.alpha = 0f
+        panel.post {
+            // Pivot at the top centre of the box, which is where the disc is.
+            panel.pivotX = panel.width / 2f
+            panel.pivotY = 0f
+            panel.scaleX = GROW_FROM_X
+            panel.scaleY = GROW_FROM_Y
+            panel.alpha = 1f
+            for (property in arrayOf(DynamicAnimation.SCALE_X, DynamicAnimation.SCALE_Y)) {
+                SpringAnimation(panel, property).apply {
+                    spring = SpringForce(1f).apply {
+                        stiffness = HeylanaTokens.SPRING_STIFFNESS
+                        dampingRatio = HeylanaTokens.SPRING_DAMPING
+                    }
+                    start()
+                }
+            }
+            panel.sweepSheen()
+        }
+    }
 
     /** The disc's top-left on the display, right now. */
     private fun spriteScreenPosition(): PointF {
@@ -863,6 +888,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun dp(value: Float): Int = HeylanaTokens.dpInt(context, value)
 
     companion object {
+        /** The box starts as a small pill under the disc. */
+        private const val GROW_FROM_X = 0.25f
+        private const val GROW_FROM_Y = 0.12f
+
         /** Small window: invisible to touch and keyboard beyond its own bounds. */
         private const val FLAGS_PASSIVE =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or

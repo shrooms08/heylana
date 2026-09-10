@@ -326,6 +326,22 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         invalidate()
     }
 
+    /** Runs the sheen once across the pane, as it appears. */
+    fun sweepSheen() {
+        val glass = background as? GlassDrawable ?: return
+        android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = HeylanaTokens.SHEEN_SWEEP_MS
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener { glass.sheenProgress = it.animatedValue as Float }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    glass.sheenProgress = HeylanaTokens.SHEEN_REST
+                }
+            })
+            start()
+        }
+    }
+
     private fun styleLabel(view: TextView, colour: Int) {
         view.setTextColor(colour)
         view.typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_MEDIUM)

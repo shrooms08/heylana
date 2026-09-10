@@ -162,7 +162,11 @@ class BuddyOverlayService : Service() {
         if (overlayView != null) return
 
         highlight = HighlightOverlayView(this).also { view ->
-            view.onFadedOut = { overlayView?.stopLooking() }
+            view.onFadedOut = {
+                // Nothing is being pointed at any more, so nothing is watched.
+                stopTapWatch()
+                overlayView?.stopLooking()
+            }
             view.addToWindow()
         }
 

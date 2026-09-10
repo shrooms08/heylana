@@ -1,5 +1,7 @@
 package xyz.heylana.app.settings
 
+import android.content.ComponentName
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,7 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.ui.theme.HeylanaTheme
 
 /**
@@ -211,8 +215,27 @@ private fun SettingsScreen(
             Text(text = status, style = MaterialTheme.typography.bodyMedium)
         }
 
+        if (BuildConfig.DEBUG) {
+            val context = LocalContext.current
+            OutlinedButton(
+                onClick = {
+                    // Debug builds only, so the class is named rather than imported.
+                    context.startActivity(
+                        Intent().setComponent(
+                            ComponentName(context, DEBUG_STATES_ACTIVITY)
+                        )
+                    )
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = "Debug states")
+            }
+        }
+
         OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
             Text(text = "Back")
         }
     }
 }
+
+private const val DEBUG_STATES_ACTIVITY = "xyz.heylana.app.debug.DebugStatesActivity"

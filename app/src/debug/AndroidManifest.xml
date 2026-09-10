@@ -14,6 +14,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".debug.DebugStatesActivity"
+            android:exported="true"
+            android:label="Heylana States"
+            android:theme="@style/Theme.Heylana" />
     </application>
 
 </manifest>

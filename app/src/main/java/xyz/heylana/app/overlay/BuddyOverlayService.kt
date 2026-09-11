@@ -681,8 +681,15 @@ class BuddyOverlayService : Service() {
     private fun prepareEars() {
         if (settings.forcePhoneEars) return
         if (!Proxy(settings).isConfigured) return
-        if (cloudEars != null) return
         if (!micGranted()) return
+
+        cloudEars?.let { existing ->
+            // One that is already getting ready is left alone; one that gave up
+            // is thrown away, because the next touch deserves a fresh try.
+            if (existing.stage != DeepgramEars.Stage.FAILED) return
+            existing.cancel()
+            cloudEars = null
+        }
 
         earsKeyterms = Keyterms.forEars(emptyList())
         earsChoice = FallbackWindow(FallbackWindow.EARS_MS)
@@ -708,9 +715,18 @@ class BuddyOverlayService : Service() {
     }
 
     /**
-     * The user is holding. Whichever ears are ready take it; if the good ones
-     * are still getting up, they have until the window measured from the first
-     * touch, and then the phone takes over mid-hold without the user knowing.
+     * The user is holding.
+     *
+     * **Nothing is decided here.** The good ears are usually still borrowing a
+     * key at this point — that is a round trip to Deepgram and back — and
+     * treating "not ready yet" as "not working" was why they never got used. The
+     * microphone opens now either way, and what it records waits in hand until
+     * the socket answers.
+     *
+     * The one thing that is decided here is a failure already known: a key the
+     * proxy refused is not going to be accepted in two seconds' time, and
+     * standing in silence waiting for it would be worse than a plain
+     * transcription now.
      */
     private fun openEars() {
         val deepgram = cloudEars
@@ -722,16 +738,27 @@ class BuddyOverlayService : Service() {
             startPhoneEars(Keyterms.forEars(emptyList()), "not_set_up")
             return
         }
+        if (deepgram.stage == DeepgramEars.Stage.FAILED) {
+            fallBackToPhoneEars(deepgram.failure ?: "failed")
+            return
+        }
 
+        // Recording starts now whether or not there is anywhere to send it yet.
         deepgram.beginSpeaking()
+        ears = deepgram
+
         if (deepgram.stage == DeepgramEars.Stage.READY) {
             deepgramReady()
             return
         }
 
-        // Still getting ready: give it the rest of the window, then give up.
-        val left = FallbackWindow.EARS_MS - (SystemClock.uptimeMillis() - earsAskedAt)
-        main.postDelayed(phoneEarsTakeOver, left.coerceAtLeast(0))
+        // Still getting ready: it has the rest of the window, measured from the
+        // touch that started all this, and the decision is made when it runs out.
+        val window = earsChoice ?: return
+        main.postDelayed(
+            phoneEarsTakeOver,
+            window.remaining(SystemClock.uptimeMillis() - earsAskedAt)
+        )
     }
 
     /** The socket is open — in time, or too late to matter. */
@@ -742,7 +769,13 @@ class BuddyOverlayService : Service() {
             main.removeCallbacks(phoneEarsTakeOver)
             ears = cloudEars
             if (exchange.phase == Exchange.Phase.LISTENING) {
-                HeylanaLog.state("ears=deepgram after=${elapsed}ms keyterms=${earsKeyterms.size}")
+                val deepgram = cloudEars
+                HeylanaLog.state(
+                    "ears=deepgram after=${elapsed}ms " +
+                        "token_ms=${deepgram?.tokenMillis ?: -1} " +
+                        "socket_ms=${deepgram?.socketMillis ?: -1} " +
+                        "keyterms=${earsKeyterms.size}"
+                )
             }
         } else {
             // The phone is already listening; two microphones is one too many.
@@ -758,22 +791,34 @@ class BuddyOverlayService : Service() {
         else -> "timeout"
     }
 
-    /** The good ears were too slow, or could not start at all. */
+    /**
+     * The good ears were too slow, or cannot work at all.
+     *
+     * If nobody is holding the buddy yet this only records the verdict — the
+     * prepared ears are kept, failure and timings and all, so the long press
+     * that follows can say why it is using the phone's instead.
+     */
     private fun fallBackToPhoneEars(reason: String) {
         main.removeCallbacks(phoneEarsTakeOver)
         val window = earsChoice ?: return
         if (!window.useFallback()) return
+        if (exchange.phase != Exchange.Phase.LISTENING) return
+
+        startPhoneEars(earsKeyterms, reason)
         cloudEars?.cancel()
         cloudEars = null
-        if (exchange.phase != Exchange.Phase.LISTENING) return
-        startPhoneEars(earsKeyterms, reason)
     }
 
     private fun startPhoneEars(keyterms: List<String>, reason: String) {
         val phone = phoneEars ?: return
+        val deepgram = cloudEars
         ears = phone
         val elapsed = if (earsAskedAt == 0L) 0 else SystemClock.uptimeMillis() - earsAskedAt
-        HeylanaLog.state("ears=android reason=$reason after=${elapsed}ms")
+        HeylanaLog.state(
+            "ears=android reason=$reason after=${elapsed}ms " +
+                "token_ms=${deepgram?.tokenMillis ?: -1} " +
+                "socket_ms=${deepgram?.socketMillis ?: -1}"
+        )
         phone.start(keyterms)
     }
 

@@ -56,6 +56,23 @@ npx wrangler secret put CARTESIA_API_KEY
 npx wrangler secret put DEEPGRAM_API_KEY
 ```
 
+> **The Deepgram key has to be allowed to make other keys.** `/stt-token` works
+> by minting a short-lived key for the phone, and a plain "usage" key cannot do
+> that — it comes back `INSUFFICIENT_PERMISSIONS ... keys:write`, the phone never
+> gets ears, and it quietly uses the phone's own recogniser instead. In the
+> Deepgram console, make a key with the **Owner** or **Administrator** role (or
+> any role that includes `keys:write`) and use that one here.
+>
+> To check it without the phone:
+>
+> ```
+> curl -s -X POST -H "X-Heylana-Device: 00000000-0000-4000-8000-000000000000" \
+>   -d '{}' https://<your-worker>.workers.dev/stt-token
+> ```
+>
+> A working key answers `{"key":"…","expires_in":120}`. A key without the scope
+> answers `{"reason":"deepgram_scope", …}`.
+
 **4. Put in the Deepgram project id.** It is not a secret. Open the Deepgram
 console, copy the project id, and replace `DEEPGRAM_PROJECT_ID = "replace-me"`
 in `wrangler.toml`.

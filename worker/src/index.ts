@@ -223,9 +223,28 @@ async function sttToken(env: Env, device: string, started: number): Promise<Resp
   })
 
   const text = await upstream.text()
-  log({ route: 'stt-token', device, ms: Date.now() - started, status: upstream.status })
+  const scopeProblem = text.includes('INSUFFICIENT_PERMISSIONS') || text.includes('keys:write')
+  log({
+    route: 'stt-token',
+    device,
+    ms: Date.now() - started,
+    status: upstream.status,
+    scope_problem: scopeProblem || undefined,
+  })
 
-  if (!upstream.ok) return fail(502, 'upstream', scrub(text, env))
+  if (!upstream.ok) {
+    // The one failure worth naming: a Deepgram key that is not allowed to mint
+    // keys can never work, so the phone should stop waiting and say why.
+    if (scopeProblem) {
+      return fail(
+        502,
+        'deepgram_scope',
+        "The Deepgram key cannot mint keys. It needs the 'keys:write' scope — " +
+          'make an owner key in the Deepgram console and put it in again.',
+      )
+    }
+    return fail(502, 'upstream', scrub(text, env))
+  }
 
   const minted = JSON.parse(text)
   return new Response(

@@ -248,6 +248,23 @@ test('one device running out does not affect another', async () => {
   assert.equal(response.status, 200)
 })
 
+test('a Deepgram key that cannot mint keys is named, not passed through as noise', async () => {
+  reply = () =>
+    new Response(
+      JSON.stringify({
+        category: 'INSUFFICIENT_PERMISSIONS',
+        message: 'Your account does not have the required scope to perform that action.',
+        details: "Check that your account has the 'keys:write' scope for this project.",
+      }),
+      { status: 403 },
+    )
+  const response = await worker.fetch(post('/stt-token', {}), env())
+  const body = await response.json()
+  assert.equal(response.status, 502)
+  assert.equal(body.reason, 'deepgram_scope')
+  assert.ok(body.detail.includes('keys:write'))
+})
+
 // --------------------------------------------------------------- the errors
 
 test('an upstream error that quotes the key comes back with it removed', async () => {

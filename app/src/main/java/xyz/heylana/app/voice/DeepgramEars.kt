@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.os.SystemClock
 import androidx.annotation.RequiresPermission
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import okhttp3.WebSocketListener
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 import xyz.heylana.app.HeylanaLog
+import xyz.heylana.app.net.Borrowed
 import xyz.heylana.app.net.Proxy
 import java.net.URLEncoder
 import kotlin.math.abs
@@ -74,6 +76,36 @@ class DeepgramEars(
     /** Everything Deepgram has settled on so far, in order. */
     private val heard = StringBuilder()
 
+    /**
+     * Audio recorded before the socket was up.
+     *
+     * The microphone starts the moment the user holds the buddy, whether or not
+     * the socket has finished opening — waiting would throw away the first words
+     * of every question. What is captured in the meantime waits here and is
+     * flushed the moment the socket answers.
+     */
+    private val early = ArrayDeque<ByteArray>()
+
+    @Volatile
+    private var earlyBytes = 0
+
+    /** How long the socket took to open, once it has. */
+    @Volatile
+    var socketMillis = 0L
+        private set
+
+    /** How long borrowing the key took. */
+    @Volatile
+    var tokenMillis = 0L
+        private set
+
+    /** Why the last attempt failed, in a word. Null while it is still going. */
+    @Volatile
+    var failure: String? = null
+        private set
+
+    private var socketAskedAt = 0L
+
     private val nothingHeard = NothingHeardGate()
 
     override val isListening: Boolean get() = listening
@@ -100,15 +132,41 @@ class DeepgramEars(
         stage = Stage.TOKEN
 
         scope.launch {
-            val key = proxy.sttToken()
-            if (abandoned) return@launch
-            if (key == null) {
-                stage = Stage.FAILED
-                onUnavailable(if (proxy.isConfigured) REASON_NO_NETWORK else REASON_NOT_SET_UP)
-                return@launch
+            when (val borrowed = proxy.sttToken()) {
+                is Borrowed.Key -> {
+                    tokenMillis = borrowed.millis
+                    HeylanaLog.state(
+                        "deepgram: token_ms=${borrowed.millis} cached=${borrowed.cached}"
+                    )
+                    if (abandoned) return@launch
+                    stage = Stage.SOCKET
+                    open(borrowed.value, keyterms)
+                }
+
+                is Borrowed.Refused -> {
+                    tokenMillis = borrowed.millis
+                    stage = Stage.FAILED
+                    // A key that is not allowed to mint keys will never be, so
+                    // this one is worth saying out loud rather than as a number.
+                    failure = if (borrowed.scopeProblem) {
+                        REASON_TOKEN_SCOPE
+                    } else {
+                        "token_refused_${borrowed.code}"
+                    }
+                    if (!abandoned) onUnavailable(failure!!)
+                }
+
+                is Borrowed.Unreachable -> {
+                    tokenMillis = borrowed.millis
+                    stage = Stage.FAILED
+                    failure = if (borrowed.cause == "not_set_up") {
+                        REASON_NOT_SET_UP
+                    } else {
+                        "token_unreachable_${borrowed.cause}"
+                    }
+                    if (!abandoned) onUnavailable(failure!!)
+                }
             }
-            stage = Stage.SOCKET
-            open(key, keyterms)
         }
     }
 
@@ -133,6 +191,7 @@ class DeepgramEars(
 
     private fun open(key: String, keyterms: List<String>) {
         HeylanaLog.state("deepgram: opening socket, keyterms=${keyterms.size}")
+        socketAskedAt = SystemClock.elapsedRealtime()
         val request = Request.Builder()
             .url(deepgramUrl(keyterms, SAMPLE_RATE))
             .addHeader("Authorization", "Token $key")
@@ -145,7 +204,10 @@ class DeepgramEars(
                     return
                 }
                 stage = Stage.READY
-                HeylanaLog.state("deepgram: socket open")
+                socketMillis = SystemClock.elapsedRealtime() - socketAskedAt
+                HeylanaLog.state("deepgram: socket_ms=$socketMillis")
+                // Anything recorded while it was opening goes first, in order.
+                flushEarly(webSocket)
                 onReady()
                 // The hold may have started while the socket was still opening.
                 if (wanted) startRecordingNow()
@@ -166,9 +228,10 @@ class DeepgramEars(
                 listening = false
                 // A key the socket would not take is not worth keeping.
                 if (refused == 401 || refused == 403) proxy.forgetSttToken()
+                failure = if (refused != null) "socket_error_$refused" else REASON_SOCKET_ERROR
                 // Before the user let go this is still recoverable: the phone's
                 // own ears can take over without them noticing.
-                if (!released) onUnavailable(REASON_SOCKET_ERROR) else if (wasReady) finish()
+                if (!released) onUnavailable(failure ?: REASON_SOCKET_ERROR) else if (wasReady) finish()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -202,10 +265,16 @@ class DeepgramEars(
         }
     }
 
+    /**
+     * Opens the microphone, socket or no socket.
+     *
+     * Until it is up, the audio goes into [early] rather than being thrown away,
+     * because the first half second of a question is usually the half that says
+     * what it is about.
+     */
     @SuppressLint("MissingPermission")
     private fun startRecordingNow() {
         if (listening) return
-        val webSocket = socket ?: return
         listening = true
         val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
         if (minimum <= 0) {
@@ -236,10 +305,42 @@ class DeepgramEars(
             while (!abandoned && recorder != null) {
                 val read = record.read(frame, 0, frame.size)
                 if (read <= 0) break
-                webSocket.send(frame.copyOf(read).toByteString())
+                val piece = frame.copyOf(read)
+                val live = socket.takeIf { stage == Stage.READY }
+                if (live != null) {
+                    live.send(piece.toByteString())
+                } else {
+                    keepEarly(piece)
+                }
                 callbacks.onLevel(levelOf(frame, read))
             }
         }
+    }
+
+    /** Holds the audio recorded before the socket answered, oldest first. */
+    private fun keepEarly(piece: ByteArray) {
+        synchronized(early) {
+            early.addLast(piece)
+            earlyBytes += piece.size
+            // A few seconds is all that can be worth keeping; past that the
+            // socket is not coming and the phone's ears have taken over anyway.
+            while (earlyBytes > MAX_EARLY_BYTES && early.isNotEmpty()) {
+                earlyBytes -= early.removeFirst().size
+            }
+        }
+    }
+
+    private fun flushEarly(webSocket: WebSocket) {
+        val pieces = synchronized(early) {
+            val all = early.toList()
+            early.clear()
+            earlyBytes = 0
+            all
+        }
+        if (pieces.isEmpty()) return
+        val bytes = pieces.sumOf { it.size }
+        HeylanaLog.state("deepgram: flushed ${bytes / BYTES_PER_MS}ms recorded while connecting")
+        for (piece in pieces) webSocket.send(piece.toByteString())
     }
 
     private fun stopRecording() {
@@ -309,6 +410,10 @@ class DeepgramEars(
         wanted = false
         listening = false
         stage = Stage.IDLE
+        synchronized(early) {
+            early.clear()
+            earlyBytes = 0
+        }
         stopRecording()
         socket?.close(NORMAL_CLOSE, null)
         socket?.cancel()
@@ -338,8 +443,14 @@ class DeepgramEars(
 
         val CLOSE_STREAM: String = JSONObject().put("type", "CloseStream").toString()
 
+        /** 16-bit audio at 16kHz: two bytes a sample, sixteen samples a millisecond. */
+        const val BYTES_PER_MS = SAMPLE_RATE * 2 / 1000
+
+        /** Four seconds of audio is more than any hold needs to survive. */
+        const val MAX_EARLY_BYTES = BYTES_PER_MS * 4_000
+
         /** Why the phone's own ears had to take over. */
-        const val REASON_NO_NETWORK = "no_network"
+        const val REASON_TOKEN_SCOPE = "token_scope_keys_write"
         const val REASON_NOT_SET_UP = "not_set_up"
         const val REASON_SOCKET_ERROR = "socket_error"
         const val REASON_NO_MICROPHONE = "no_microphone"

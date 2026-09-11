@@ -17,6 +17,25 @@ import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
 /**
+ * What came back when the ears asked to borrow a key.
+ *
+ * The ears used to get a plain null and call every failure "no network", which
+ * sent us looking in the wrong place for a fortnight. Every way this can fail
+ * now says which way it was, and how long it took to find out.
+ */
+sealed interface Borrowed {
+
+    /** [millis] is the whole round trip, or near zero when it was already in hand. */
+    data class Key(val value: String, val cached: Boolean, val millis: Long) : Borrowed
+
+    /** The proxy answered, and the answer was no. */
+    data class Refused(val code: Int, val millis: Long, val scopeProblem: Boolean) : Borrowed
+
+    /** The proxy could not be reached at all. [cause] names the failure, not the address. */
+    data class Unreachable(val cause: String, val millis: Long) : Borrowed
+}
+
+/**
  * Where Heylana's keys live — which is to say, not here.
  *
  * The phone knows one address and its own device id. Everything that needs a
@@ -82,39 +101,52 @@ class Proxy(private val settings: HeylanaSettings) {
 
     /**
      * Borrowed ears: a Deepgram key that stops working two minutes from now.
-     * Null when the proxy is unreachable or has run the day's allowance out.
      *
      * The key is kept until it is nearly out of time, so holding the buddy twice
-     * in a minute does not mint twice — the first hold pays for the round trip
-     * and the second one starts listening immediately.
+     * in a minute does not pay for a second round trip — the first hold pays for
+     * it and the second one starts listening immediately.
      */
-    suspend fun sttToken(): String? = withContext(Dispatchers.IO) {
-        if (!isConfigured) return@withContext null
+    suspend fun sttToken(): Borrowed = withContext(Dispatchers.IO) {
+        val started = SystemClock.elapsedRealtime()
+        fun since() = SystemClock.elapsedRealtime() - started
+
+        if (!isConfigured) return@withContext Borrowed.Unreachable("not_set_up", 0)
 
         borrowed?.let { key ->
             if (SystemClock.elapsedRealtime() < borrowedUntil) {
-                HeylanaLog.state("proxy: stt-token from cache")
-                return@withContext key
+                return@withContext Borrowed.Key(key, cached = true, millis = since())
             }
         }
 
-        val minted = runCatching {
+        try {
             http.newCall(post("stt-token", "{}")).execute().use { response ->
+                val body = response.body.string()
                 if (!response.isSuccessful) {
-                    HeylanaLog.state("proxy: stt-token refused ${response.code}")
-                    return@use null
+                    // The one refusal worth naming: a Deepgram key that is not
+                    // allowed to mint keys can never work, however long we wait.
+                    val scope = body.contains("deepgram_scope") ||
+                        body.contains("INSUFFICIENT_PERMISSIONS") ||
+                        body.contains("keys:write")
+                    HeylanaLog.state(
+                        "proxy: stt-token refused ${response.code} scope=$scope in ${since()}ms"
+                    )
+                    return@use Borrowed.Refused(response.code, since(), scope)
                 }
-                org.json.JSONObject(response.body.string())
-                    .optString("key")
-                    .takeIf { it.isNotBlank() }
-            }
-        }.getOrNull()
 
-        if (minted != null) {
-            borrowed = minted
-            borrowedUntil = SystemClock.elapsedRealtime() + STT_KEY_KEEP_MS
+                val key = org.json.JSONObject(body).optString("key").takeIf { it.isNotBlank() }
+                    ?: return@use Borrowed.Refused(response.code, since(), scopeProblem = false)
+
+                borrowed = key
+                borrowedUntil = SystemClock.elapsedRealtime() + STT_KEY_KEEP_MS
+                Borrowed.Key(key, cached = false, millis = since())
+            }
+        } catch (e: Exception) {
+            // Name the failure, not the address: UnknownHostException and
+            // SocketTimeoutException want different fixes.
+            val cause = e::class.simpleName ?: "Exception"
+            HeylanaLog.state("proxy: stt-token unreachable $cause in ${since()}ms")
+            Borrowed.Unreachable(cause, since())
         }
-        minted
     }
 
     /** The last borrowed key is no good any more — the socket said so. */

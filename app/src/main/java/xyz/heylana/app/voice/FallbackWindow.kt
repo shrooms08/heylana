@@ -30,6 +30,9 @@ class FallbackWindow(val limitMs: Long) {
         return choice == Choice.PREFERRED
     }
 
+    /** How much of the window is left, given how long ago it started. */
+    fun remaining(elapsed: Long): Long = (limitMs - elapsed).coerceAtLeast(0)
+
     /**
      * The window ran out, or the preferred one failed outright. True if the
      * fallback should start now — false if the preferred one already won.
@@ -40,8 +43,20 @@ class FallbackWindow(val limitMs: Long) {
     }
 
     companion object {
-        /** Someone is holding the buddy down: this is all the patience there is. */
-        const val EARS_MS = 800L
+        /**
+         * All the patience there is for the good ears, measured from the moment
+         * the buddy is touched — not from the long press, because borrowing a
+         * key and opening a socket starts on the way down.
+         *
+         * Set from measurements in Lagos: borrowing a key is a round trip
+         * through the proxy to Deepgram and back, around 1.0 to 1.5 seconds, and
+         * opening the socket to Deepgram is another 1.1 seconds cold. Anything
+         * under two seconds is a window the good ears cannot reach.
+         *
+         * **This is the only place the number lives.** Every timer and every
+         * check measures against this one constant.
+         */
+        const val EARS_MS = 2_500L
 
         /** An answer is ready to be read out; silence past this is worse than a plain voice. */
         const val VOICE_MS = 1_500L

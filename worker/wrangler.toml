@@ -15,6 +15,23 @@ VOICE_ARCHIE = "ef191366-f52f-447a-a398-ed8c0f2943a1"
 # Replace with the project id from the Deepgram console before deploying.
 DEEPGRAM_PROJECT_ID = "d65fab1f-f014-4150-9c80-3a192941040e"
 
+# ---- Pro payments --------------------------------------------------------
+# The treasury WALLET address (not a token account). Payments go to its
+# associated token account for each token, created by the payer if missing.
+TREASURY_ADDRESS = "replace-me"
+
+# Circle's USDC on Solana mainnet.
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+
+# Copy the SKR mint from Solscan. Do not guess it: until this is a real
+# address, SKR quotes answer "not set up" and USDC still works.
+SKR_MINT = "replace-me"
+
+# Price of 30 days of Pro in US dollars. "0.10" for a live smoke test, and
+# back to "15" before submission. See README.md.
+PRICE_USD = "15"
+PRO_DAYS = "30"
+
 # The last day of judging. A judge code gives Pro until the end of this day (UTC).
 JUDGE_UNTIL = "2026-11-09"
 

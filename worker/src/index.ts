@@ -16,8 +16,12 @@
 import { isAddress } from './base58.ts'
 import { challengeMessage, randomNonce, readSession, signSession, verifySignature } from './session.ts'
 import {
-  type Account, type Standing, grantWelcome, makeJudge, monthKey, newAccount, spendTalk, standing,
+  type Account, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, spendTalk, standing,
 } from './plans.ts'
+import {
+  type Quote, QUOTE_TTL_MS, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, USDC_DECIMALS, checkPayment, decimalToUnits,
+  mintInfo, newReference, rpc, usdPrice, usdToTokenUnits,
+} from './pay.ts'
 
 /** The smallest slice of Workers KV this needs; keeps the types dependency-free. */
 export interface CapStore {
@@ -38,6 +42,10 @@ export interface Env {
   SESSION_SECRET: string
   /** The code that turns an account into a judge's. */
   JUDGE_CODE: string
+  /** A Solana mainnet RPC endpoint. Its URL carries a token, so it is a secret. */
+  RPC_URL: string
+  /** Optional: raises Jupiter's rate limit above the keyless one. */
+  JUPITER_API_KEY?: string
 
   /** Plain configuration. */
   DEEPGRAM_PROJECT_ID: string
@@ -45,6 +53,14 @@ export interface Env {
   VOICE_ARCHIE: string
   /** The last day of judging, as YYYY-MM-DD. Judge plans end with it. */
   JUDGE_UNTIL: string
+  /** Where Pro payments go: the treasury wallet's address, not a token account. */
+  TREASURY_ADDRESS: string
+  USDC_MINT: string
+  /** Filled in from Solscan before deploying; "replace-me" turns SKR off. */
+  SKR_MINT: string
+  /** The price of 30 days of Pro in US dollars, as text: "15", or "0.10" to test. */
+  PRICE_USD: string
+  PRO_DAYS: string
 
   CAPS: CapStore
 }
@@ -67,6 +83,10 @@ const DAILY_CAPS: Record<string, number> = {
   'wallet/verify': 50,
   judge: 20,
   me: 500,
+  'pay/quote': 100,
+  'pay/blockhash': 200,
+  // Confirming polls for up to a minute, so it is allowed plenty.
+  'pay/confirm': 300,
 }
 
 /** Every route the worker answers, and the one method each takes. */
@@ -78,6 +98,9 @@ const ROUTES: Record<string, 'GET' | 'POST'> = {
   'wallet/verify': 'POST',
   judge: 'POST',
   me: 'GET',
+  'pay/quote': 'POST',
+  'pay/blockhash': 'POST',
+  'pay/confirm': 'POST',
 }
 
 /** Who is asking: always a device, and a wallet once one has been connected. */
@@ -158,6 +181,9 @@ export default {
       if (route === 'wallet/challenge') return await walletChallenge(request, env, who)
       if (route === 'wallet/verify') return await walletVerify(request, env, who)
       if (route === 'judge') return await judge(request, env, who)
+      if (route === 'pay/quote') return await payQuote(request, env, who)
+      if (route === 'pay/blockhash') return await payBlockhash(env, who)
+      if (route === 'pay/confirm') return await payConfirm(request, env, who)
       return await me(env, who)
     } catch (error) {
       // Whatever went wrong, the reply is a shape the app understands and
@@ -418,6 +444,145 @@ async function me(env: Env, who: Who): Promise<Response> {
   return json(200, { ...standing(account, used, now), wallet: who.wallet })
 }
 
+// ------------------------------------------------------------------- paying
+
+/**
+ * What to send for 30 days of Pro, in USDC or SKR. The reference is a fresh
+ * address the phone puts in the transaction so this exact payment can be found.
+ */
+async function payQuote(request: Request, env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
+  if (!payConfigured(env)) return fail(503, 'not_configured', 'Payments are not set up.')
+  const body = await readJson(request)
+
+  let mint: string
+  let decimals: number
+  let program: string
+  let amount: bigint
+  if (body.currency === 'usdc') {
+    mint = env.USDC_MINT
+    decimals = USDC_DECIMALS
+    program = TOKEN_PROGRAM
+    amount = decimalToUnits(env.PRICE_USD, decimals)
+  } else if (body.currency === 'skr') {
+    if (!isAddress(env.SKR_MINT)) return fail(503, 'not_configured', 'SKR payments are not set up.')
+    mint = env.SKR_MINT
+    // Decimals and token program come from the chain, not from a guess.
+    const info = await mintInfo(env.RPC_URL, mint)
+    if (info.program !== TOKEN_PROGRAM && info.program !== TOKEN_2022_PROGRAM) {
+      return fail(502, 'upstream', 'The SKR mint is not a token mint.')
+    }
+    decimals = info.decimals
+    program = info.program
+    amount = usdToTokenUnits(env.PRICE_USD, await usdPrice(mint, env.JUPITER_API_KEY), decimals)
+  } else {
+    return fail(400, 'bad_currency', 'currency must be usdc or skr.')
+  }
+
+  const now = clock.now()
+  const quote: Quote = {
+    currency: body.currency,
+    mint,
+    amount: amount.toString(),
+    decimals,
+    token_program: program,
+    treasury: env.TREASURY_ADDRESS,
+    reference: newReference(),
+    expires_at: new Date(now + QUOTE_TTL_MS).toISOString(),
+    pubkey: who.wallet,
+  }
+  // Kept for an hour: a payment sent just before the quote expired still confirms.
+  await env.CAPS.put(`quote:${quote.reference}`, JSON.stringify(quote), { expirationTtl: 3600 })
+  log({ route: 'pay/quote', device: who.device, wallet: who.wallet.slice(0, 8), currency: quote.currency })
+
+  const { pubkey: _owner, ...shown } = quote
+  return json(200, shown)
+}
+
+/** A recent blockhash, fetched at the moment Pay is tapped so it is still fresh. */
+async function payBlockhash(env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
+  if (!env.RPC_URL) return fail(503, 'not_configured', 'Payments are not set up.')
+  const result = await rpc(env.RPC_URL, 'getLatestBlockhash', [{ commitment: 'confirmed' }])
+  return json(200, {
+    blockhash: result?.value?.blockhash,
+    last_valid_block_height: result?.value?.lastValidBlockHeight,
+  })
+}
+
+/**
+ * The phone says it paid; the chain has to agree. Answers 409 not_confirmed while
+ * the transaction is not yet confirmed, so the phone keeps asking; 402 with a
+ * reason if the transaction is not the payment quoted; and Pro once it is. A
+ * reference is only ever paid for once.
+ */
+async function payConfirm(request: Request, env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
+  if (!payConfigured(env)) return fail(503, 'not_configured', 'Payments are not set up.')
+  const body = await readJson(request)
+  const reference = String(body.reference ?? '')
+  const signature = String(body.signature ?? '')
+  if (!isAddress(reference) || !/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) {
+    return fail(400, 'bad_request', 'reference and signature are required.')
+  }
+
+  const stored = await env.CAPS.get(`quote:${reference}`)
+  if (!stored) return fail(404, 'unknown_quote', 'That quote has expired. Ask for a new one.')
+  const quote = JSON.parse(stored) as Quote
+  if (quote.pubkey !== who.wallet) return fail(403, 'not_yours', 'That quote is for another wallet.')
+
+  const now = new Date(clock.now())
+  if (await env.CAPS.get(`paid:${reference}`)) {
+    const account = await loadAccount(env, who.key)
+    return json(200, {
+      ...standing(account, await talksUsed(env, who.key, now), now),
+      wallet: who.wallet,
+      confirmed: true,
+      already_confirmed: true,
+    })
+  }
+  const usedFor = await env.CAPS.get(`sig:${signature}`)
+  if (usedFor && usedFor !== reference) {
+    return fail(409, 'signature_used', 'That transaction already paid for something else.')
+  }
+
+  const tx = await rpc(env.RPC_URL, 'getTransaction', [
+    signature,
+    { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+  ])
+  const verdict = checkPayment(tx, quote)
+  if (!verdict.ok) {
+    log({ route: 'pay/confirm', device: who.device, wallet: who.wallet.slice(0, 8), accepted: false, reason: verdict.reason })
+    if (verdict.reason === 'not_confirmed') return json(409, { reason: 'not_confirmed' })
+    return json(402, { reason: verdict.reason })
+  }
+
+  // Marked paid before Pro is extended, so a repeated confirm cannot extend twice.
+  await env.CAPS.put(`paid:${reference}`, JSON.stringify({ signature, pubkey: who.wallet, at: now.toISOString() }))
+  await env.CAPS.put(`sig:${signature}`, reference)
+  const account = extendPro(await loadAccount(env, who.key), now, Number(env.PRO_DAYS))
+  await saveAccount(env, who.key, account)
+  log({
+    route: 'pay/confirm', device: who.device, wallet: who.wallet.slice(0, 8),
+    accepted: true, currency: quote.currency, amount: verdict.amount,
+  })
+  return json(200, {
+    ...standing(account, await talksUsed(env, who.key, now), now),
+    wallet: who.wallet,
+    confirmed: true,
+  })
+}
+
+function payConfigured(env: Env): boolean {
+  return (
+    isAddress(env.TREASURY_ADDRESS) &&
+    isAddress(env.USDC_MINT) &&
+    Boolean(env.RPC_URL) &&
+    /^\d+(\.\d+)?$/.test(String(env.PRICE_USD ?? '')) &&
+    Number(env.PRO_DAYS) > 0
+  )
+}
+
 // -------------------------------------------------------------------- parts
 
 /**
@@ -534,6 +699,8 @@ export function scrub(text: string, env: Env): string {
     env.DEEPGRAM_API_KEY,
     env.SESSION_SECRET,
     env.JUDGE_CODE,
+    env.RPC_URL,
+    env.JUPITER_API_KEY,
   ]
   let safe = text
   for (const secret of secrets) {

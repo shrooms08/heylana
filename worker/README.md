@@ -77,7 +77,43 @@ npx wrangler secret put DEEPGRAM_API_KEY
 console, copy the project id, and replace `DEEPGRAM_PROJECT_ID = "replace-me"`
 in `wrangler.toml`.
 
-**5. Send it up.**
+**5. Set up wallets and payments.** Four things in `wrangler.toml`, then three
+secrets.
+
+In `wrangler.toml`, under `[vars]`:
+
+- `TREASURY_ADDRESS` — the wallet address Pro payments go to. The wallet's own
+  address, not a token account: the payer's transaction creates the treasury's
+  USDC or SKR account if it does not exist yet.
+- `SKR_MINT` — copy the SKR mint address from Solscan. **Do not guess it.** Until
+  it is a real address, SKR quotes say "not set up" and USDC still works.
+- `PRICE_USD` — the price of 30 days of Pro. `"15"` normally.
+- `USDC_MINT`, `PRO_DAYS` and `JUDGE_UNTIL` are already filled in; leave them.
+
+Then the secrets. Each asks for the value and does not echo it.
+
+```
+npx wrangler secret put RPC_URL
+npx wrangler secret put SESSION_SECRET
+npx wrangler secret put JUDGE_CODE
+```
+
+- `RPC_URL` — your QuickNode **mainnet** endpoint, the whole `https://…` line.
+  Its URL carries your token, which is why it is a secret and never a var.
+- `SESSION_SECRET` — any long random string. This makes one:
+
+  ```
+  openssl rand -base64 48
+  ```
+
+  It seals wallet sign-ins. Changing it later signs every wallet out.
+- `JUDGE_CODE` — the code you will give the judges. Anything you like.
+
+Optionally, `npx wrangler secret put JUPITER_API_KEY` with a free key from
+developers.jup.ag/portal. SKR pricing works without one, at Jupiter's keyless
+rate limit, which is plenty for Heylana.
+
+**6. Send it up.**
 
 ```
 npx wrangler deploy
@@ -100,13 +136,43 @@ heylana.proxyUrl=https://heylana-proxy.<your-account>.workers.dev
 Then rebuild and reinstall the app. `local.properties` is not in git, so the
 address stays on your machine.
 
+## Testing a real payment for ten cents
+
+Before submission, test Pro with a real payment that costs almost nothing:
+
+1. In `wrangler.toml`, set `PRICE_USD = "0.10"`.
+2. `npx wrangler deploy`
+3. Run the payment steps in `SMOKE.md`. A USDC payment is then 0.10 USDC.
+4. **Set it back:** `PRICE_USD = "15"`, and `npx wrangler deploy` again.
+
+A plan already paid for keeps its Pro days when the price changes back; only new
+quotes use the new price.
+
+## What the wallet routes do
+
+| Route | Needs a wallet session | Does |
+|---|---|---|
+| `/wallet/challenge` | no | A message for the wallet to sign. Not a transaction; costs nothing. |
+| `/wallet/verify` | no | Checks the signature, returns a 30-day session. The first time a wallet connects it gets 20 welcome talks. |
+| `GET /me` | optional | The plan, talks used of the limit, the skills cap, and Pro or judge end dates. |
+| `/judge` | optional | With the right code: Judge until `JUDGE_UNTIL`. |
+| `/pay/quote` | yes | The exact USDC or SKR amount for Pro, and a reference to put in the payment. |
+| `/pay/blockhash` | yes | A fresh blockhash for the payment transaction. |
+| `/pay/confirm` | yes | Reads the payment back from the chain and checks it; Pro for `PRO_DAYS` if it is right. |
+
+Plans: **Free** is 30 talks a calendar month (plus the one-off 20 welcome talks);
+**Pro** and **Judge** are unlimited. Over the limit, `/chat` answers
+`429 {"reason":"talks_cap", …}` and the app says so plainly. The daily per-device
+caps stay on as a ceiling over every plan.
+
 ## Checking it without spending anything
 
 ```
 npm test
 ```
 
-Twenty-five tests, no network: every upstream call is faked. They check that the
+Every test runs with no network: Anthropic, Cartesia, Deepgram, the Solana RPC
+and Jupiter are all faked. They check that the
 app cannot choose its own model, that the caps hold, that a request without a
 device id is refused, and that no reply can carry a key even when the upstream
 service puts one in its error message.

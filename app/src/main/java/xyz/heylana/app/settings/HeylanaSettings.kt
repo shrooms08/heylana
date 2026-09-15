@@ -141,6 +141,23 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_WARM_UP, value).apply()
         }
 
+    private val walletStore = xyz.heylana.app.wallet.WalletSessionStore(
+        read = { prefs.getString(it, null) },
+        write = { key, value ->
+            prefs.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
+        }
+    )
+
+    /**
+     * The connected wallet: its address and the session the worker sealed for
+     * it. Encrypted with everything else here; null when no wallet is connected.
+     */
+    var walletSession: xyz.heylana.app.wallet.WalletSession?
+        get() = walletStore.load()
+        set(value) {
+            if (value == null) walletStore.clear() else walletStore.save(value)
+        }
+
     val hasApiKey: Boolean get() = apiKey != null
 
     /** "sk-ant-…4f2a" — enough to recognise the key, never enough to use it. */

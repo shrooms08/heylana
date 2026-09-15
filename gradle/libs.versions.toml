@@ -12,6 +12,10 @@ okhttp = "5.5.0"
 securityCrypto = "1.1.0"
 coroutines = "1.11.0"
 dynamicAnimation = "1.1.0"
+# Mobile Wallet Adapter: 2.1.1 is the newest stable built for Kotlin 2.2; 2.2.0 needs Kotlin 2.4.
+mwa = "2.1.1"
+# sol4k: 0.7.0 is the newest this Kotlin 2.2 compiler can read (0.8.x is built with 2.4).
+sol4k = "0.7.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -32,6 +36,8 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 androidx-dynamicanimation = { group = "androidx.dynamicanimation", name = "dynamicanimation", version.ref = "dynamicAnimation" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+mwa-clientlib-ktx = { group = "com.solanamobile", name = "mobile-wallet-adapter-clientlib-ktx", version.ref = "mwa" }
+sol4k = { group = "org.sol4k", name = "sol4k", version.ref = "sol4k" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

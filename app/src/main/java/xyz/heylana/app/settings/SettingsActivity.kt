@@ -43,7 +43,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import xyz.heylana.app.BuildConfig
+import xyz.heylana.app.ui.GlassButton
+import xyz.heylana.app.ui.GlassCard
+import xyz.heylana.app.ui.HeylanaTokens
+import xyz.heylana.app.ui.glassText
+import xyz.heylana.app.wallet.Answer
+import xyz.heylana.app.wallet.SeedVault
+import xyz.heylana.app.wallet.WalletApi
+import xyz.heylana.app.wallet.WalletProblem
+import xyz.heylana.app.wallet.WalletSession
 import xyz.heylana.app.voice.CartesiaVoice
 import xyz.heylana.app.voice.Speaker
 import xyz.heylana.app.ui.theme.HeylanaTheme
@@ -59,12 +70,16 @@ class SettingsActivity : ComponentActivity() {
 
     /** Only here to say one short line when a voice is picked. */
     private var sample: CartesiaVoice? = null
+
+    /** Created with the activity, as Mobile Wallet Adapter requires. */
+    private lateinit var seedVault: SeedVault
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val settings = HeylanaSettings.get(this)
+        seedVault = SeedVault(this)
         sample = CartesiaVoice(
             context = this,
             settings = settings,
@@ -77,6 +92,7 @@ class SettingsActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     SettingsScreen(
                         settings = settings,
+                        seedVault = seedVault,
                         onSample = { sample?.speak(SAMPLE_LINE) },
                         onDone = { finish() },
                         modifier = Modifier.padding(innerPadding)
@@ -102,6 +118,7 @@ class SettingsActivity : ComponentActivity() {
 @Composable
 private fun SettingsScreen(
     settings: HeylanaSettings,
+    seedVault: SeedVault,
     onSample: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier
@@ -117,6 +134,8 @@ private fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
+
+        WalletCard(settings = settings, seedVault = seedVault)
 
         VoiceCard(settings = settings, onSample = onSample)
 
@@ -216,6 +235,90 @@ private fun ChoiceRow(
             Text(text = label, style = MaterialTheme.typography.bodyLarge)
             Text(text = detail, style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+/**
+ * Connect a wallet: Seed Vault asks to connect, then to sign a sign-in message.
+ * Never a transaction. Afterwards the short address and Disconnect.
+ */
+@Composable
+private fun WalletCard(settings: HeylanaSettings, seedVault: SeedVault) {
+    val scope = rememberCoroutineScope()
+    val api = remember { WalletApi(settings) }
+    var session by remember { mutableStateOf(settings.walletSession) }
+    var busy by remember { mutableStateOf(false) }
+    var line by remember { mutableStateOf("") }
+
+    GlassCard {
+        Text(text = "Wallet", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
+        Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
+
+        val connected = session
+        if (connected == null) {
+            Text(
+                text = "Connect with Seed Vault to keep your plan with your wallet. " +
+                    "Connecting only signs a message; it never moves funds.",
+                style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
+            )
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+            GlassButton(
+                text = if (busy) "Waiting for Seed Vault…" else "Connect wallet",
+                primary = true,
+                enabled = !busy,
+                onClick = {
+                    busy = true
+                    line = ""
+                    scope.launch {
+                        line = connect(settings, seedVault, api) { session = it }
+                        busy = false
+                    }
+                }
+            )
+        } else {
+            Text(
+                text = connected.shortAddress,
+                style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary)
+            )
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+            GlassButton(
+                text = "Disconnect",
+                onClick = {
+                    settings.walletSession = null
+                    session = null
+                    line = ""
+                }
+            )
+        }
+
+        if (line.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
+            Text(text = line, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+        }
+    }
+}
+
+/** One full connection: the wallet signs, the worker checks, the session is kept. */
+private suspend fun connect(
+    settings: HeylanaSettings,
+    seedVault: SeedVault,
+    api: WalletApi,
+    onConnected: (WalletSession) -> Unit
+): String {
+    val signedIn = when (val trip = seedVault.connect(api)) {
+        is SeedVault.Trip.Done -> trip.value
+        SeedVault.Trip.NoWallet -> return WalletProblem.NO_WALLET.words
+        is SeedVault.Trip.Stopped -> return trip.problem.words
+    }
+    return when (val verified = api.verify(signedIn.pubkey, signedIn.nonce, signedIn.signature)) {
+        is Answer.Ok -> {
+            val session = WalletSession(signedIn.pubkey, verified.value.session)
+            settings.walletSession = session
+            onConnected(session)
+            if (verified.value.welcomeGranted) "20 welcome talks added" else ""
+        }
+        is Answer.Refused -> WalletProblem.fromWorker(verified.reason).words
+        is Answer.Unreachable -> WalletProblem.UNREACHABLE.words
     }
 }
 

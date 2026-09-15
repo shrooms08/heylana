@@ -54,13 +54,28 @@ class Proxy(private val settings: HeylanaSettings) {
     val isConfigured: Boolean
         get() = url.startsWith("http://") || url.startsWith("https://")
 
-    /** A POST to one of the proxy's routes, carrying this install's id. */
-    fun post(path: String, json: String): Request = Request.Builder()
+    /**
+     * A POST to one of the proxy's routes, carrying this install's id — and the
+     * wallet's session once one is connected, so plans and talks count against
+     * the wallet rather than the phone.
+     */
+    fun post(path: String, json: String): Request = signed(Request.Builder())
         .url("$url/${path.trimStart('/')}")
-        .addHeader(DEVICE_HEADER, settings.deviceId)
         .addHeader("content-type", "application/json")
         .post(json.toRequestBody(JSON))
         .build()
+
+    /** A GET, carrying the same id and session. */
+    fun get(path: String): Request = signed(Request.Builder())
+        .url("$url/${path.trimStart('/')}")
+        .get()
+        .build()
+
+    private fun signed(builder: Request.Builder): Request.Builder {
+        builder.addHeader(DEVICE_HEADER, settings.deviceId)
+        settings.walletSession?.let { builder.addHeader("Authorization", "Bearer ${it.token}") }
+        return builder
+    }
 
     /**
      * Opens the connection before there is anything to send, so the request

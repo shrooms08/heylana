@@ -36,6 +36,11 @@ test('a reference is a fresh address every time', () => {
   assert.notEqual(a, newReference())
 })
 
+test('the treasury paying itself is refused as a self-payment', () => {
+  const own = { ...quote, pubkey: TREASURY }
+  assert.deepEqual(checkPayment(paymentTx({ payer: TREASURY, sender: TREASURY }), own), { ok: false, reason: 'self_payment' })
+})
+
 test('the payment asked for is accepted', () => {
   assert.deepEqual(checkPayment(paymentTx(), quote), { ok: true, amount: '100000' })
 })

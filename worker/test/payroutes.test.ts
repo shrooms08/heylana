@@ -176,6 +176,20 @@ test('a correct payment makes the wallet Pro for thirty days', async () => {
   assert.equal(me.pro_until, '2026-10-15T12:00:00.000Z')
 })
 
+test('a treasury wallet paying itself is refused and unlocks nothing', async () => {
+  const e = env()
+  const { pubkey, session } = await connected(e)
+  e.TREASURY_ADDRESS = pubkey
+  const q = await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, session), e)).json()
+  assert.equal(q.treasury, pubkey)
+  chain.tx = paymentTx({ payer: pubkey, sender: pubkey, destOwner: pubkey, amount: q.amount, reference: q.reference })
+  const res = await worker.fetch(req('/pay/confirm', { reference: q.reference, signature: SIG }, session), e)
+  assert.equal(res.status, 402)
+  assert.equal((await res.json()).reason, 'self_payment')
+  const me = await (await worker.fetch(new Request('https://proxy.heylana.xyz/me', { headers: { 'X-Heylana-Device': DEVICE, Authorization: `Bearer ${session}` } }), e)).json()
+  assert.equal(me.plan, 'free')
+})
+
 for (const [name, over, reason] of [
   ['the wrong mint', { mint: 'So11111111111111111111111111111111111111112' }, 'wrong_mint'],
   ['too little', { amount: '14999999' }, 'short_amount'],

@@ -98,7 +98,7 @@ export async function usdPrice(mint: string, apiKey?: string): Promise<number> {
 
 export type Verdict = { ok: true; amount: string } | { ok: false; reason: string }
 
-const CHECK_ORDER = ['wrong_mint', 'wrong_destination', 'short_amount', 'wrong_sender'] as const
+const CHECK_ORDER = ['self_payment', 'wrong_mint', 'wrong_destination', 'short_amount', 'wrong_sender'] as const
 
 /**
  * Whether a transaction, as the RPC returned it with jsonParsed encoding, is the
@@ -149,6 +149,8 @@ export function checkPayment(tx: any, quote: Quote): Verdict {
     if (destination?.owner !== quote.treasury) failures.push('wrong_destination')
     if (amount < BigInt(quote.amount)) failures.push('short_amount')
     if (sender !== quote.pubkey && source?.owner !== quote.pubkey) failures.push('wrong_sender')
+    // The treasury paying itself moves nothing, so it buys nothing.
+    if (sender === quote.treasury || source?.owner === quote.treasury) failures.push('self_payment')
 
     if (failures.length === 0) return { ok: true, amount: amount.toString() }
     if (!closest || failures.length < closest.length) closest = failures

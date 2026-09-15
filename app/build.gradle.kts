@@ -18,6 +18,17 @@ val proxyUrl: String = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }.getProperty("heylana.proxyUrl").orEmpty().trim().trimEnd('/')
 
+/**
+ * Debug builds only: a stand-in for Deepgram's listening socket, so a refused or
+ * silent socket can be tested without calling Deepgram. Empty means Deepgram.
+ *
+ *     heylana.listenUrl=ws://127.0.0.1:8799/v1/listen
+ */
+val listenUrl: String = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}.getProperty("heylana.listenUrl").orEmpty().trim()
+
 android {
     namespace = "xyz.heylana.app"
     compileSdk {
@@ -34,6 +45,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "PROXY_URL", "\"$proxyUrl\"")
+        buildConfigField("String", "LISTEN_URL", "\"$listenUrl\"")
     }
 
     buildTypes {

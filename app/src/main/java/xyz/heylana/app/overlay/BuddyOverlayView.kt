@@ -267,12 +267,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     val isPanelOpen: Boolean get() = mode != Mode.DOCKED
 
     fun showThinking() {
-        sprite.expression = BuddySpriteView.Expression.THINKING
         panel.showThinking()
     }
 
     fun showAnswer(text: String) {
-        sprite.expression = BuddySpriteView.Expression.IDLE
         panel.showAnswer(text)
         // A typed answer melts the box down into the compact strip. A spoken one
         // has no box to melt, and a task keeps its HUD.
@@ -286,7 +284,6 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     }
 
     fun showNotice(text: String) {
-        sprite.expression = BuddySpriteView.Expression.IDLE
         // Spoken exchanges have no box of their own, and a problem still has to
         // be readable, so this is the one thing that opens one uninvited.
         ensurePanelOpen()
@@ -325,14 +322,33 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     fun lookAt(target: PointF) {
         sprite.pointDirection = if (target.x < spriteCenterOnScreen().x) -1 else 1
         sprite.pointTarget = target
-        sprite.expression = BuddySpriteView.Expression.POINTING
+        applyLook()
     }
 
     fun stopLooking() {
         sprite.pointTarget = null
-        if (sprite.expression == BuddySpriteView.Expression.POINTING) {
-            sprite.expression = BuddySpriteView.Expression.IDLE
+        applyLook()
+    }
+
+    /**
+     * What the exchange is doing now. The disc's look is derived from this and
+     * nothing else — see [DiscLook] — so no path can leave it thinking.
+     */
+    fun showPhase(next: Exchange.Phase) {
+        phase = next
+        applyLook()
+    }
+
+    private var phase: Exchange.Phase = Exchange.Phase.NONE
+
+    private fun applyLook() {
+        sprite.expression = when (DiscLook.of(phase, pointing = sprite.pointTarget != null)) {
+            DiscLook.IDLE -> BuddySpriteView.Expression.IDLE
+            DiscLook.LISTENING -> BuddySpriteView.Expression.LISTENING
+            DiscLook.THINKING -> BuddySpriteView.Expression.THINKING
+            DiscLook.POINTING -> BuddySpriteView.Expression.POINTING
         }
+        sprite.refreshState()
     }
 
     /** Shows the step counter with next and done while a task is running. */
@@ -363,7 +379,6 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      */
     fun startedListening() {
         panel.setVoiceMode(voice = true, showsText = voiceShowsText)
-        sprite.expression = BuddySpriteView.Expression.LISTENING
         sprite.micLevel = 0f
         sprite.refreshState()
         capsule.showTranscript("")
@@ -379,7 +394,6 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** Released: the capsule turns into the aurora while the answer is fetched. */
     fun showThinkingCapsule() {
-        sprite.expression = BuddySpriteView.Expression.THINKING
         sprite.micLevel = 0f
         sprite.refreshState()
         capsule.showThinking()
@@ -401,12 +415,6 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     fun showPartialSpeech(text: String) = panel.setSpokenText(text)
 
     fun spokenText(): String = panel.spokenText()
-
-    fun stoppedListening() {
-        if (sprite.expression == BuddySpriteView.Expression.LISTENING) {
-            sprite.expression = BuddySpriteView.Expression.IDLE
-        }
-    }
 
     // ----------------------------------------------------------------- mode
 

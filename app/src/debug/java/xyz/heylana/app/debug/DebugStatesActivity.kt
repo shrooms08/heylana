@@ -156,6 +156,8 @@ class DebugStatesActivity : Activity() {
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
         Triple("cycle", "voice full cycle", ::voiceFullCycle),
+        Triple("nothing", "nothing heard", ::nothingHeard),
+        Triple("error", "error", ::errorState),
         Triple("pointing", "pointing", ::pointing),
         Triple("task", "task 2 of 4", ::taskStep),
         Triple("done", "done", ::done)
@@ -259,6 +261,51 @@ class DebugStatesActivity : Activity() {
         }, released + THINKING_MS + SPEAKING_MS + SETTLE_MS)
     }
 
+    /**
+     * Held the buddy and said nothing: the capsule listens, turns to the aurora
+     * on release, then melts — and the disc is idle. No message, nothing left.
+     */
+    private fun nothingHeard() {
+        reset()
+        panel.setVoiceMode(voice = true, showsText = false)
+        capsule.visibility = View.VISIBLE
+        capsule.showTranscript("")
+        sprite.expression = BuddySpriteView.Expression.LISTENING
+        sprite.refreshState()
+
+        main.postDelayed({
+            caption.text = "nothing heard · waiting for words"
+            sprite.expression = BuddySpriteView.Expression.THINKING
+            sprite.refreshState()
+            capsule.showThinking()
+        }, HOLD_MS)
+
+        main.postDelayed({
+            caption.text = "nothing heard · idle"
+            capsule.melt { idle() }
+        }, HOLD_MS + THINKING_MS)
+    }
+
+    /**
+     * Something went wrong, or took too long: a short notice in the strip, and
+     * the disc is idle rather than thinking.
+     */
+    private fun errorState() {
+        reset()
+        panel.visibility = View.VISIBLE
+        sprite.expression = BuddySpriteView.Expression.THINKING
+        sprite.refreshState()
+        panel.showThinking()
+
+        main.postDelayed({
+            caption.text = "error · notice, disc idle"
+            sprite.expression = BuddySpriteView.Expression.IDLE
+            sprite.refreshState()
+            panel.showNotice(TOOK_TOO_LONG)
+            panel.morphTo(ChatPanelView.Shape.STRIP)
+        }, THINKING_MS)
+    }
+
     private fun pointing() {
         reset()
         fakeHighlight.visibility = View.VISIBLE
@@ -343,6 +390,12 @@ class DebugStatesActivity : Activity() {
         const val HEARD_STEP_MS = 260L
         const val THINKING_MS = 1_400L
         const val SPEAKING_MS = 1_600L
+
+        /** How long the silent hold lasts before the release. */
+        const val HOLD_MS = 1_800L
+
+        /** The notice the service shows when an exchange runs out of time. */
+        const val TOOK_TOO_LONG = "That took too long, try again."
 
         /** The same beat BuddyOverlayService waits before it settles. */
         const val SETTLE_MS = 1_000L

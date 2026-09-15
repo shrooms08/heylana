@@ -45,9 +45,8 @@ import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.voice.CartesiaVoice
 import xyz.heylana.app.voice.DeepgramEars
+import xyz.heylana.app.voice.EarsRace
 import xyz.heylana.app.voice.EarCallbacks
-import xyz.heylana.app.voice.Ears
-import xyz.heylana.app.voice.FallbackWindow
 import xyz.heylana.app.voice.Listener
 import xyz.heylana.app.voice.MicPermissionActivity
 import xyz.heylana.app.voice.Speaker
@@ -80,17 +79,9 @@ class BuddyOverlayService : Service() {
     /** The good ears, when the proxy can lend a key for them. */
     private var cloudEars: DeepgramEars? = null
 
-    /** Whichever pair is actually listening right now. */
-    private var ears: Ears? = null
-
-    /** How long the good ears have left to prove they are up. */
-    private var earsChoice: FallbackWindow? = null
-
     /** When the buddy was touched — everything about the ears is timed from here. */
     private var earsAskedAt = 0L
     private var earsKeyterms: List<String> = emptyList()
-    private val phoneEarsTakeOver = Runnable { fallBackToPhoneEars(timedOutReason()) }
-
     /** So the "voice unavailable" footnote is only ever shown once. */
     private var noteShown = false
 
@@ -101,7 +92,19 @@ class BuddyOverlayService : Service() {
     private val main = Handler(Looper.getMainLooper())
 
     /** What the user has going on, and therefore what may not be torn down. */
-    private val exchange = Exchange()
+    private val exchange = Exchange { SystemClock.uptimeMillis() }
+
+    /** Deciding whose words to use, from the long press until one is chosen. */
+    private var race: EarsRace? = null
+
+    /** When the user let go, for the log. */
+    private var releasedAt = 0L
+
+    /** Asks the race again once its windows may have closed. */
+    private val raceTick = Runnable { judge(race?.tick(SystemClock.uptimeMillis())) }
+
+    /** Nothing may be under way for longer than [Exchange.LIMIT_MS]. */
+    private val exchangeTimeout = Runnable { onExchangeTimeout() }
 
     /**
      * Puts everything back to rest a beat after an exchange finishes. A typed
@@ -150,46 +153,112 @@ class BuddyOverlayService : Service() {
             phone = Speaker(this) { speaking -> onSpeaking(speaking) },
             onSpeaking = onSpeaking
         )
-        phoneEars = Listener(this, earCallbacks)
+        phoneEars = Listener(this, phoneCallbacks)
+
+        // The disc follows the exchange, and the twenty-second limit starts with it.
+        exchange.onChange = { phase ->
+            HeylanaLog.state("exchange: $phase")
+            main.removeCallbacks(exchangeTimeout)
+            if (phase != Exchange.Phase.NONE) main.postDelayed(exchangeTimeout, exchange.remaining())
+            overlayView?.showPhase(phase)
+        }
     }
 
+    /** What the phone's own recogniser reports, marked as coming from it. */
+    private val phoneCallbacks: EarCallbacks by lazy { callbacksFor(EarsRace.Ear.ANDROID) }
+
+    /** What Deepgram reports, marked as coming from it. */
+    private val cloudCallbacks: EarCallbacks by lazy { callbacksFor(EarsRace.Ear.DEEPGRAM) }
+
+    /** True once Deepgram has put words in the capsule this hold. */
+    private var deepgramSpoke = false
+
     /**
-     * What the ears report back, whichever pair is listening. Written once so
-     * the two behave identically from here on.
+     * Both ears report into the race rather than acting on their own, so the
+     * two cannot each decide the exchange is over.
      */
-    private val earCallbacks: EarCallbacks by lazy {
-        EarCallbacks(
-            onPartial = { text -> overlayView?.showHeard(text) },
-            onFinal = { text ->
-                HeylanaLog.state("listen: heard something")
-                stopEarsTimer()
-                releaseEars()
-                ask(text)
-            },
-            onProblem = { message ->
-                HeylanaLog.state("listen: problem")
-                stopEarsTimer()
-                releaseEars()
-                exchange.over()
-                overlayView?.stoppedListening()
-                // Nothing will be asked, so the capsule has to go, or it sits
-                // there saying "listening" for ever.
-                overlayView?.endVoiceExchange()
-                overlayView?.showNotice(message)
-            },
-            onNothingHeard = {
-                HeylanaLog.state("listen: nothing heard")
-                stopEarsTimer()
-                releaseEars()
-                exchange.over()
+    private fun callbacksFor(ear: EarsRace.Ear) = EarCallbacks(
+        onPartial = { text ->
+            // Deepgram's words, once it has any, are the ones shown.
+            if (ear == EarsRace.Ear.DEEPGRAM) deepgramSpoke = true
+            if (ear == EarsRace.Ear.DEEPGRAM || !deepgramSpoke) overlayView?.showHeard(text)
+        },
+        onFinal = { text ->
+            HeylanaLog.state("ears: ${ear.name.lowercase()} final")
+            judge(race?.heard(ear, SystemClock.uptimeMillis(), text))
+        },
+        onProblem = { message ->
+            HeylanaLog.state("ears: ${ear.name.lowercase()} problem")
+            judge(race?.failed(ear, SystemClock.uptimeMillis(), message))
+        },
+        onNothingHeard = {
+            HeylanaLog.state("ears: ${ear.name.lowercase()} heard nothing")
+            judge(race?.nothing(ear, SystemClock.uptimeMillis()))
+        },
+        onLevel = { level -> overlayView?.showMicLevel(level) }
+    )
+
+    /** Acts on what the race decided, if it decided anything. */
+    private fun judge(verdict: EarsRace.Verdict?) {
+        when (verdict) {
+            null, EarsRace.Verdict.Wait, EarsRace.Verdict.Settled -> Unit
+
+            is EarsRace.Verdict.Use -> {
+                val deepgram = cloudEars
+                HeylanaLog.state(
+                    "ears=${verdict.ear.name.lowercase()} won reason=${verdict.reason} " +
+                        "after_release=${SystemClock.uptimeMillis() - releasedAt}ms " +
+                        "token_ms=${deepgram?.tokenMillis ?: -1} " +
+                        "socket_ms=${deepgram?.socketMillis ?: -1}"
+                )
+                endRace()
+                ask(verdict.text)
+            }
+
+            EarsRace.Verdict.NothingHeard -> {
+                HeylanaLog.state("ears: neither heard a word")
+                endRace()
                 // They held the buddy and said nothing. Nothing to answer and
-                // nothing to apologise for: melt the capsule and rest.
-                overlayView?.stoppedListening()
+                // nothing to apologise for: melt the capsule, and the disc rests
+                // because the exchange is over.
+                exchange.over()
                 overlayView?.endVoiceExchange()
                 overlayView?.setTalking(false)
-            },
-            onLevel = { level -> overlayView?.showMicLevel(level) }
-        )
+            }
+
+            is EarsRace.Verdict.Problem -> {
+                HeylanaLog.state("ears: problem reported")
+                endRace()
+                exchange.over()
+                overlayView?.endVoiceExchange()
+                overlayView?.showNotice(verdict.message)
+            }
+        }
+    }
+
+    /** The race is over: both ears stop and the socket closes. */
+    private fun endRace() {
+        main.removeCallbacks(raceTick)
+        race = null
+        deepgramSpoke = false
+        phoneEars?.cancel()
+        cloudEars?.cancel()
+        cloudEars = null
+    }
+
+    /** An exchange has run for twenty seconds: end it, whatever is stuck. */
+    private fun onExchangeTimeout() {
+        if (!exchange.overdue()) {
+            if (exchange.inProgress) main.postDelayed(exchangeTimeout, exchange.remaining())
+            return
+        }
+        HeylanaLog.state("exchange: timed out in ${exchange.phase}")
+        endRace()
+        inFlight?.cancel()
+        mouth?.stop()
+        exchange.timedOut()
+        overlayView?.endVoiceExchange()
+        overlayView?.showNotice(TOOK_TOO_LONG)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -222,7 +291,6 @@ class BuddyOverlayService : Service() {
         cloudEars = null
         phoneEars?.shutdown()
         phoneEars = null
-        ears = null
         mouth?.shutdown()
         mouth = null
         highlight?.removeFromWindow()
@@ -536,6 +604,7 @@ class BuddyOverlayService : Service() {
         }
 
         mouth?.stop()
+        exchange.asking()
         view.showThinking()
         view.hideKeyboard()
 
@@ -553,6 +622,7 @@ class BuddyOverlayService : Service() {
                 stepNumber = current.stepNumber + 1,
                 needPointerHint = current.lastStepHadNoPointer
             )
+            exchange.over()
 
             when (reply) {
                 is BrainReply.Say -> {
@@ -670,16 +740,10 @@ class BuddyOverlayService : Service() {
     }
 
     /**
-     * Starts getting the good ears ready, at the first touch of the disc.
-     *
-     * Deepgram needs a borrowed key and an open socket before it can hear
-     * anything, and doing that at the long press meant it was almost never ready
-     * in time — the phone's ears took over and "Kamino" came back as "come in
-     * oh". So it begins here, the moment the buddy is touched, and the clock
-     * that decides which ears win starts here too.
-     *
-     * If the touch turns out to be a tap or a drag, [discardEars] closes it
-     * again without a word.
+     * Starts getting Deepgram ready at the first touch of the disc: a borrowed
+     * key and an open socket take a round trip each, so they begin before anyone
+     * knows whether the touch will become a hold. A tap or a drag closes it again
+     * without a word — see [discardEars].
      */
     private fun prepareEars() {
         if (settings.forcePhoneEars) return
@@ -695,16 +759,20 @@ class BuddyOverlayService : Service() {
         }
 
         earsKeyterms = Keyterms.forEars(emptyList())
-        earsChoice = FallbackWindow(FallbackWindow.EARS_MS)
         earsAskedAt = SystemClock.uptimeMillis()
 
         // DeepgramEars hands every report back on the main thread itself.
         val deepgram = DeepgramEars(
             proxy = Proxy(settings),
             scope = scope,
-            heard = earCallbacks,
-            ready = { deepgramReady() },
-            unavailable = { reason -> fallBackToPhoneEars(reason) }
+            heard = cloudCallbacks,
+            ready = {
+                HeylanaLog.state(
+                    "ears: deepgram ready token_ms=${cloudEars?.tokenMillis ?: -1} " +
+                        "socket_ms=${cloudEars?.socketMillis ?: -1}"
+                )
+            },
+            unavailable = { reason -> deepgramUnavailable(reason) }
         )
         cloudEars = deepgram
         deepgram.prepare(earsKeyterms)
@@ -712,164 +780,96 @@ class BuddyOverlayService : Service() {
 
     /** The touch was not a hold: the socket goes, quietly and unused. */
     private fun discardEars() {
-        stopEarsTimer()
+        if (race != null) return
         cloudEars?.discard()
         cloudEars = null
-        earsChoice = null
     }
 
     /**
-     * The user is holding.
+     * The user is holding: **both ears start, every time.**
      *
-     * **Nothing is decided here.** The good ears are usually still borrowing a
-     * key at this point — that is a round trip to Deepgram and back — and
-     * treating "not ready yet" as "not working" was why they never got used. The
-     * microphone opens now either way, and what it records waits in hand until
-     * the socket answers.
-     *
-     * The one thing that is decided here is a failure already known: a key the
-     * proxy refused is not going to be accepted in two seconds' time, and
-     * standing in silence waiting for it would be worse than a plain
-     * transcription now.
+     * The phone's own recogniser listens from this moment whatever Deepgram is
+     * doing, and Deepgram records too — into its buffer until the socket is up.
+     * Whichever produces words is used, Deepgram's if they arrive within a
+     * second and a half of the release; see [EarsRace]. A Deepgram that cannot
+     * work at all is simply out of the race, not a reason to hear nothing.
      */
     private fun openEars() {
-        val deepgram = cloudEars
-        if (settings.forcePhoneEars) {
-            startPhoneEars(earsKeyterms.ifEmpty { Keyterms.forEars(emptyList()) }, "forced")
-            return
-        }
-        if (deepgram == null) {
-            startPhoneEars(Keyterms.forEars(emptyList()), "not_set_up")
-            return
-        }
-        if (deepgram.stage == DeepgramEars.Stage.FAILED) {
-            fallBackToPhoneEars(deepgram.failure ?: "failed")
-            return
-        }
+        val race = EarsRace()
+        this.race = race
+        deepgramSpoke = false
+        val now = SystemClock.uptimeMillis()
+        val keyterms = earsKeyterms.ifEmpty { Keyterms.forEars(emptyList()) }
 
-        // Recording starts now whether or not there is anywhere to send it yet.
-        deepgram.beginSpeaking()
-        ears = deepgram
-
-        if (deepgram.stage == DeepgramEars.Stage.READY) {
-            deepgramReady()
-            return
-        }
-
-        // Still getting ready: it has the rest of the window, measured from the
-        // touch that started all this, and the decision is made when it runs out.
-        val window = earsChoice ?: return
-        main.postDelayed(
-            phoneEarsTakeOver,
-            window.remaining(SystemClock.uptimeMillis() - earsAskedAt)
-        )
-    }
-
-    /** The socket is open — in time, or too late to matter. */
-    private fun deepgramReady() {
-        val window = earsChoice ?: return
-        val elapsed = SystemClock.uptimeMillis() - earsAskedAt
-        if (window.preferredReady(elapsed)) {
-            main.removeCallbacks(phoneEarsTakeOver)
-            ears = cloudEars
-            if (exchange.phase == Exchange.Phase.LISTENING) {
-                val deepgram = cloudEars
-                HeylanaLog.state(
-                    "ears=deepgram after=${elapsed}ms " +
-                        "token_ms=${deepgram?.tokenMillis ?: -1} " +
-                        "socket_ms=${deepgram?.socketMillis ?: -1} " +
-                        "keyterms=${earsKeyterms.size}"
-                )
-            }
+        val phone = phoneEars
+        if (phone != null) {
+            HeylanaLog.state("ears: android listening")
+            phone.start(keyterms)
         } else {
-            // The phone is already listening; two microphones is one too many.
-            cloudEars?.cancel()
-            cloudEars = null
+            race.failed(EarsRace.Ear.ANDROID, now, Listener.UNAVAILABLE)
+        }
+
+        val deepgram = cloudEars
+        when {
+            settings.forcePhoneEars -> deepgramOut(race, "forced")
+            deepgram == null -> deepgramOut(race, "not_set_up")
+            deepgram.stage == DeepgramEars.Stage.FAILED ->
+                deepgramOut(race, deepgram.failure ?: "failed")
+            else -> {
+                HeylanaLog.state("ears: deepgram listening stage=${deepgram.stage}")
+                deepgram.beginSpeaking()
+            }
         }
     }
 
-    /** Which half of getting ready ran out of time. */
-    private fun timedOutReason(): String = when (cloudEars?.stage) {
-        DeepgramEars.Stage.TOKEN -> "token_timeout"
-        DeepgramEars.Stage.SOCKET -> "socket_timeout"
-        else -> "timeout"
+    private fun deepgramOut(race: EarsRace, reason: String) {
+        HeylanaLog.state("ears: deepgram out of the race reason=$reason")
+        judge(race.failed(EarsRace.Ear.DEEPGRAM, SystemClock.uptimeMillis(), reason))
     }
 
-    /**
-     * The good ears were too slow, or cannot work at all.
-     *
-     * If nobody is holding the buddy yet this only records the verdict — the
-     * prepared ears are kept, failure and timings and all, so the long press
-     * that follows can say why it is using the phone's instead.
-     */
-    private fun fallBackToPhoneEars(reason: String) {
-        main.removeCallbacks(phoneEarsTakeOver)
-        val window = earsChoice ?: return
-        if (!window.useFallback()) return
-        if (exchange.phase != Exchange.Phase.LISTENING) return
-
-        startPhoneEars(earsKeyterms, reason)
-        cloudEars?.cancel()
-        cloudEars = null
-    }
-
-    private fun startPhoneEars(keyterms: List<String>, reason: String) {
-        val phone = phoneEars ?: return
+    /** Deepgram cannot deliver — before the hold or during it. */
+    private fun deepgramUnavailable(reason: String) {
         val deepgram = cloudEars
-        ears = phone
-        val elapsed = if (earsAskedAt == 0L) 0 else SystemClock.uptimeMillis() - earsAskedAt
         HeylanaLog.state(
-            "ears=android reason=$reason after=${elapsed}ms " +
-                "token_ms=${deepgram?.tokenMillis ?: -1} " +
-                "socket_ms=${deepgram?.socketMillis ?: -1}"
+            "ears: deepgram unavailable reason=$reason " +
+                "token_ms=${deepgram?.tokenMillis ?: -1} socket_ms=${deepgram?.socketMillis ?: -1}"
         )
-        phone.start(keyterms)
-    }
-
-    private fun stopEarsTimer() {
-        main.removeCallbacks(phoneEarsTakeOver)
-    }
-
-    /** This exchange is over: the socket closes and the next touch opens a new one. */
-    private fun releaseEars() {
-        cloudEars?.cancel()
-        cloudEars = null
-        earsChoice = null
-        ears = null
+        val running = race ?: return
+        judge(running.failed(EarsRace.Ear.DEEPGRAM, SystemClock.uptimeMillis(), reason))
     }
 
     private fun finishListening() {
         HeylanaLog.state("listen: released")
         exchange.released()
         val view = overlayView ?: return
-        view.stoppedListening()
-        stopEarsTimer()
-        earsChoice = null
-        val listening = ears ?: return
-        // Waiting on the final transcript: the capsule turns into the aurora.
-        if (listening.isListening) view.showThinkingCapsule()
-        if (listening.release()) return
-
-        // Nothing is coming — fall back to whatever ended up in the field, and
-        // if there is nothing there either, put everything back to rest.
-        val typed = view.spokenText()
-        if (typed.isNotEmpty()) {
-            ask(typed)
-        } else if (exchange.inProgress) {
+        val running = race
+        if (running == null) {
+            // No ears were ever started, so nothing is coming.
             exchange.over()
             view.endVoiceExchange()
+            return
+        }
+
+        // Waiting on the final words: the capsule turns into the aurora.
+        view.showThinkingCapsule()
+        releasedAt = SystemClock.uptimeMillis()
+        val phone = phoneEars
+        val deepgram = cloudEars
+        judge(running.released(releasedAt))
+        // Either may report straight away, and may end the race while doing so.
+        phone?.release()
+        deepgram?.release()
+
+        if (race != null) {
+            main.postDelayed(raceTick, EarsRace.PREFER_DEEPGRAM_MS)
+            main.postDelayed(raceTick, EarsRace.GIVE_UP_MS)
         }
     }
 
     private fun abandonListening() {
         HeylanaLog.state("listen: abandoned")
-        stopEarsTimer()
-        earsChoice = null
+        endRace()
         exchange.over()
-        cloudEars?.cancel()
-        cloudEars = null
-        phoneEars?.cancel()
-        overlayView?.stoppedListening()
     }
 
     private fun micGranted(): Boolean =
@@ -958,6 +958,9 @@ class BuddyOverlayService : Service() {
             "your tap only while it is pointing at something"
 
         private const val STOPPED_LINE = "Okay, stopping here."
+
+        /** Said when an exchange runs out of its twenty seconds. */
+        const val TOOK_TOO_LONG = "That took too long, try again."
 
         /** Only for a task step, and only when screen reading really is off. */
         private const val SCREEN_READING_OFF =

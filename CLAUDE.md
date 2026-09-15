@@ -43,7 +43,8 @@ xyz.heylana.app
 │   ├── PhoneVoice           which of the phone's voices to use — never the engine default
 │   ├── DeepgramEars         PCM16 over a websocket while the buddy is held, with keyterms
 │   ├── Listener             the phone's own recogniser, behind the same Ears interface
-│   ├── FallbackWindow       how long the good ears and the good voice get before the phone
+│   ├── EarsRace             both ears listen from the long press; this picks whose words win
+│   ├── FallbackWindow       how long the good voice gets before the phone's takes over
 │   └── MicPermissionActivity  invisible one-shot prompt for the microphone
 ├── ui/                      how everything looks
 │   ├── HeylanaTokens        every colour, size, radius, duration and typeface
@@ -105,13 +106,21 @@ because those keys are not the user's to hold.
 the whole app can be exercised without spending anything. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 
-**Falling back is normal, and it is silent.** Deepgram gets 2500ms from the first
-touch of the disc to produce a key, a socket and a microphone; Cartesia gets
-1500ms to produce a first byte.
-Miss that and the phone's own recogniser or voice takes over without the user
-being told, because a buddy that answers in a plain voice beats one that says
-nothing. `FallbackWindow` holds the rule; the trace says `ears=deepgram|android`
-and `voice=cartesia|android`.
+**Both ears listen, every time.** At the long press the phone's own recogniser
+starts, and so does Deepgram — whose key and socket were already being fetched
+from the first touch of the disc, and whose microphone buffers until the socket
+is up. On this Seeker the two share the microphone (`deepgram: microphone open
+silenced=false`). Once the user lets go, `voice/EarsRace` decides: Deepgram's
+words win if they arrive within 1.5 seconds of the release; otherwise the phone's
+are used as soon as Deepgram is known to have nothing, or when that window closes;
+neither is nothing heard; nothing waits past 4 seconds. A Deepgram that cannot
+work is simply out of the race — never a reason to hear nothing. The trace says
+`ears=deepgram|android won reason=…`.
+
+**The voice falls back silently.** Cartesia gets 1500ms to produce a first byte;
+miss that and the phone's own voice reads the answer, because an answer in a plain
+voice beats silence. `FallbackWindow` holds that rule; the trace says
+`voice=cartesia|android`.
 
 **What goes where, in the words the app uses.** Heylana reads the screen only
 when you ask, and watches for your tap only while it is pointing at something.
@@ -222,6 +231,20 @@ the gate — it runs from the microphone opening (or a typed question being sent
 until the answer lands, the user gives up, or nothing was heard — and both the
 booking and the running of a settle ask it first.
 
+**The disc's look comes from the exchange, in one place.** Every change of
+phase in `overlay/Exchange` is reported, and `DiscLook` turns it into the look:
+listening, thinking while the words or the answer are on their way, idle once it
+is over — pointing only if an answer has pointed at something. No path sets the
+disc's look itself. Before this, each way an exchange could end had to remember to
+put the disc back, and "nothing heard" forgot: the thinking ring turned for five
+minutes.
+
+**No exchange lives longer than twenty seconds.** The clock starts when the
+microphone opens or a question is sent, and moving from listening to asking does
+not reset it. When it runs out, both ears stop, any request is cancelled, the
+capsule melts, a short "That took too long, try again." appears, and the disc
+rests.
+
 **"Heard nothing" waits for the release.** The recogniser gives up on its own
 after a moment of quiet, which can easily happen before the user has started
 speaking, with their finger still down. `voice/NothingHeardGate` holds that
@@ -327,7 +350,14 @@ adb logcat -s HeylanaState
 
 Names of things that happened and nothing else — no screen contents, no
 transcript, no answer. It logs at info rather than debug because the Seeker drops
-app debug lines from logcat entirely. A hold can be simulated without a finger:
+app debug lines from logcat entirely.
+
+**The listening socket can be tested without Deepgram.** `scripts/stub-proxy.py`
+also answers Deepgram's socket: by default it accepts, takes the audio and replies
+with no words; with `--refuse-listen` it refuses with 401 and a JSON body, as a
+bad key would. Point a debug build at it with `heylana.listenUrl=ws://127.0.0.1:
+<port>/v1/listen` in `local.properties` — and take that line out again before
+building for a real test. A hold can be simulated without a finger:
 
 ```
 adb shell input swipe <disc_x> <disc_y> <disc_x> <disc_y> 3000

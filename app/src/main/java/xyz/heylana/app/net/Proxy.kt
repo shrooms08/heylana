@@ -114,6 +114,7 @@ class Proxy(private val settings: HeylanaSettings) {
 
         borrowed?.let { key ->
             if (SystemClock.elapsedRealtime() < borrowedUntil) {
+                HeylanaLog.state("proxy: stt-token from cache")
                 return@withContext Borrowed.Key(key, cached = true, millis = since())
             }
         }
@@ -138,6 +139,7 @@ class Proxy(private val settings: HeylanaSettings) {
 
                 borrowed = key
                 borrowedUntil = SystemClock.elapsedRealtime() + STT_KEY_KEEP_MS
+                HeylanaLog.state("proxy: stt-token ${response.code} token_ms=${since()}")
                 Borrowed.Key(key, cached = false, millis = since())
             }
         } catch (e: Exception) {

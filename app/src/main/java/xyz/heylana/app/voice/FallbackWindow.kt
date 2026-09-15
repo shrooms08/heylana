@@ -1,8 +1,8 @@
 package xyz.heylana.app.voice
 
 /**
- * How long the good ears — or the good voice — get before the phone's own take
- * over.
+ * How long the good voice gets before the phone's own takes over. (The ears no
+ * longer wait at all: both start together, and [EarsRace] picks the words.)
  *
  * Heylana would rather use Deepgram and Cartesia, but neither is worth waiting
  * on: a user holding the buddy down expects it to be listening *now*, and an
@@ -43,21 +43,6 @@ class FallbackWindow(val limitMs: Long) {
     }
 
     companion object {
-        /**
-         * All the patience there is for the good ears, measured from the moment
-         * the buddy is touched — not from the long press, because borrowing a
-         * key and opening a socket starts on the way down.
-         *
-         * Set from measurements in Lagos: borrowing a key is a round trip
-         * through the proxy to Deepgram and back, around 1.0 to 1.5 seconds, and
-         * opening the socket to Deepgram is another 1.1 seconds cold. Anything
-         * under two seconds is a window the good ears cannot reach.
-         *
-         * **This is the only place the number lives.** Every timer and every
-         * check measures against this one constant.
-         */
-        const val EARS_MS = 2_500L
-
         /** An answer is ready to be read out; silence past this is worse than a plain voice. */
         const val VOICE_MS = 1_500L
     }

@@ -1,93 +1,91 @@
-# SMOKE TEST — questions that don't need the screen
+# SMOKE TEST — both ears, and a disc that always comes back
 
-## Budget for this test: 2 chat, 2 tts
+## Budget for this test: 2 stt, 2 chat, 2 tts
 
-No stt: nothing here holds the buddy. I sent nothing to your worker's chat or
-voice routes, and nothing to Anthropic. Everything below was checked against the
-stub on my machine.
+I sent nothing to your worker and nothing to Deepgram or Anthropic. Everything
+below was checked against the stub on my machine, including a listening socket
+that accepts and one that refuses.
 
-## What was wrong, in one paragraph
+## What changed, in plain words
 
-Heylana wasn't refusing because of a stale build or an empty screen. **The app was
-crashing** — the new ears reported back from a network thread and started an
-animation there, which Android punishes by killing the app. The screen reader
-lives in the same app, so it died too, and Android then **stops starting it again
-while still showing it as switched on**. Onboarding looked only at the "switched
-on" part, so it ticked the row, and every question after that got "I can't read
-this screen yet". The crash is fixed, the tick now means running, and a plain
-question no longer needs the screen reader at all.
+- **Both ears listen from the moment you hold the buddy.** Your phone's own
+  recogniser and Deepgram start together, every time. If Deepgram has your words
+  within a second and a half of letting go, those are used; if not, your phone's
+  are. So a Deepgram problem no longer means Heylana hears nothing.
+- **The disc always comes back.** However a hold ends — words, nothing heard, an
+  error, running out of time — the disc returns to its resting look. The
+  thinking ring that turned for five minutes cannot happen any more.
+- **Twenty seconds, at most.** If anything gets stuck, after twenty seconds the
+  capsule melts, a short "That took too long, try again." appears, and the disc
+  rests.
+- **Failures say what they were.** Instead of `socket failed code=0` the log now
+  names the error, the HTTP status if there was one, and the start of the reply.
 
----
-
-**Before you start:**
-
-1. Install from Android Studio as usual, then from the project folder run:
+**Before you start:** install from Android Studio, run `./scripts/a11y.sh`
+(it should say screen reading is on and running), reopen Heylana, tap **Start
+buddy**. From the Mac, keep this running to watch:
 
 ```
-./scripts/a11y.sh
+adb logcat -s HeylanaState
 ```
 
-It now **waits until screen reading is really running** and says so. If it prints
-*"switched on, but Android has not started it"*, go to **Settings → Accessibility
-→ Heylana**, turn it off and on, and run the script again.
+---
 
-2. Close Heylana from recents and reopen it. The **Screen reading** row should be
-ticked. It is now only ticked when the reader is actually running — so if it ever
-shows a dot while the switch is on, that is the new check being honest; its row
-says to turn it off and on again.
+## 1. Wallet balance, by voice — 1 stt, 1 chat, 1 tts
 
-3. Read the grey paragraph at the top. The last sentences should now read exactly:
-*"Your voice goes to Deepgram to be transcribed while you hold the buddy. The
-spoken answer text goes to Cartesia to become speech. The screen never goes to
-either."* Same wording under **Settings → What leaves the phone**. No mention of
-button names anywhere.
+Open your **wallet**. **Press and hold the buddy**, say **"what is my balance"**,
+and let go.
 
-4. Tap **Start buddy**.
+You should see and hear:
+
+- the purple listening ring and the capsule while you hold;
+- the answer **spoken aloud**, about what is actually on screen, with no number
+  made up;
+- the disc **back to its resting look** afterwards — no ring still turning.
+
+In the log, find the line that starts **`ears=`**. It will say either:
+
+- `ears=deepgram won reason=deepgram_in_time …` — Deepgram heard you; or
+- `ears=android won reason=…` — your phone's recogniser was used, and the reason
+  says why Deepgram wasn't.
+
+**Send me that whole line either way.** If it says android, the lines just above
+it starting `deepgram:` now say exactly what went wrong — send those too.
 
 ---
 
-## 1. A general question over Heylana's own screen — 1 chat, 1 tts
+## 2. The Kamino test — 1 stt, 1 chat, 1 tts
 
-Stay on the Heylana onboarding screen. **Tap the buddy**, type **what is the
-capital of Nigeria** and tap **ask**.
+**Hold the buddy** and say **"what does the Kamino earn thing do"**.
 
-You should see **Abuja** in the strip, and hear it read out.
+Check two things:
 
-This is the exact question that was being refused. Heylana's own screen often
-gives the reader nothing to read, and that no longer matters for a question like
-this.
+- the **`ears=` line** again — deepgram or android, and the reason;
+- **how Kamino is spelled** in the capsule while you speak and in the answer.
+  Deepgram is told to expect "Kamino"; your phone's recogniser is not, and tends
+  to write "come in oh".
 
----
-
-## 2. A screen question over the wallet — 1 chat, 1 tts
-
-Open your **wallet**. **Tap the buddy**, type **what is my balance** and tap
-**ask**.
-
-You should hear an answer that **names what is actually on the screen** — the
-balance label, the token, where to look — and **does not make a number up**. If
-the balance is visible it may read it; if it isn't, it must say so rather than
-guess.
+If the ears line says **deepgram** but Kamino is still misspelled, tell me — that
+would mean the hint isn't reaching Deepgram. If it says **android**, the spelling
+is expected to be wrong and the `deepgram:` lines above it say why.
 
 ---
 
 ## If it goes wrong
 
-- **"I can't read this screen yet" on a typed question** — that line no longer
-  exists for typed questions. If you see it, the phone has an old build: reinstall.
-- **The answer says to switch on screen reading, over the wallet** — screen
-  reading isn't running. Run `./scripts/a11y.sh` and send me what it printed.
-- **The app closes itself** — send me the output of
-  `adb logcat -d -b crash | head -40`.
-- **The row shows a dot though the switch is on** — turn Heylana off and on in
-  Accessibility, then reopen the app.
+- **The disc is still turning after the answer, or after you let go without
+  speaking** — send me the last 30 lines of the log.
+- **"That took too long, try again."** — send the log from the hold onwards; the
+  line `exchange: timed out in …` says what was stuck.
+- **Nothing spoken, nothing on screen** — send the `ears:` lines.
+- **The app closes itself** — send `adb logcat -d -b crash | head -40`.
 
 ---
 
 ## Pass criteria
 
-- Abuja is answered and spoken over Heylana's own screen.
-- The wallet answer describes the screen and invents no number.
-- Onboarding and Settings carry the clean privacy sentence.
-- `./scripts/a11y.sh` reports screen reading as running.
-- Nothing crashes, and the test costs 2 chat and 2 tts.
+- Both questions are answered and spoken.
+- The disc is at rest after each one.
+- Each hold has an `ears=` line with a reason.
+- Kamino is spelled properly when the ears line says deepgram.
+- Nothing crashes, and the test costs 2 stt, 2 chat and 2 tts.

@@ -8,61 +8,52 @@ import org.junit.Test
 /** Whichever is ready first runs, and the choice is not revisited. */
 class FallbackWindowTest {
 
+    /** Any window will do for the rule; the voice's is the one in use. */
+    private val LIMIT = FallbackWindow.VOICE_MS
+
     @Test
-    fun `the ears get two and a half seconds, measured from the first touch`() {
-        // Borrowing a key is a round trip through the proxy to Deepgram (around
-        // 1.0 to 1.5s from Lagos) and the socket is another 1.1s cold. A window
-        // under two seconds cannot be reached, which is why it used to fail.
-        assertEquals(2_500L, FallbackWindow.EARS_MS)
+    fun `the voice gets a second and a half`() {
         assertEquals(1_500L, FallbackWindow.VOICE_MS)
     }
 
     @Test
-    fun `the window is one number, and what is left comes from it`() {
-        val window = FallbackWindow(FallbackWindow.EARS_MS)
-        assertEquals(FallbackWindow.EARS_MS, window.limitMs)
-        assertEquals(2_100L, window.remaining(400))
-        assertEquals(0L, window.remaining(FallbackWindow.EARS_MS))
-        assertEquals(0L, window.remaining(FallbackWindow.EARS_MS + 5_000))
-    }
-
-    @Test
-    fun `the ears are still ready at two and a half seconds and too late after`() {
-        assertTrue(FallbackWindow(FallbackWindow.EARS_MS).preferredReady(2_500))
-        assertFalse(FallbackWindow(FallbackWindow.EARS_MS).preferredReady(2_501))
+    fun `what is left of a window comes from its one number`() {
+        val window = FallbackWindow(LIMIT)
+        assertEquals(LIMIT - 400, window.remaining(400))
+        assertEquals(0L, window.remaining(LIMIT + 5_000))
     }
 
     @Test
     fun `ready in time and the good one runs`() {
-        val window = FallbackWindow(FallbackWindow.EARS_MS)
-        assertTrue(window.preferredReady(1_800))
+        val window = FallbackWindow(LIMIT)
+        assertTrue(window.preferredReady(LIMIT - 100))
         assertEquals(FallbackWindow.Choice.PREFERRED, window.choice)
     }
 
     @Test
     fun `ready exactly on the limit still counts`() {
-        val window = FallbackWindow(FallbackWindow.EARS_MS)
-        assertTrue(window.preferredReady(FallbackWindow.EARS_MS))
+        val window = FallbackWindow(LIMIT)
+        assertTrue(window.preferredReady(LIMIT))
     }
 
     @Test
     fun `too slow and the phone takes over`() {
-        val window = FallbackWindow(FallbackWindow.EARS_MS)
+        val window = FallbackWindow(LIMIT)
         assertTrue(window.useFallback())
         assertEquals(FallbackWindow.Choice.FALLBACK, window.choice)
     }
 
     @Test
     fun `a socket that opens late does not take over mid-sentence`() {
-        val window = FallbackWindow(FallbackWindow.EARS_MS)
+        val window = FallbackWindow(LIMIT)
         window.useFallback()
-        assertFalse(window.preferredReady(2_600))
+        assertFalse(window.preferredReady(LIMIT + 100))
         assertEquals(FallbackWindow.Choice.FALLBACK, window.choice)
     }
 
     @Test
     fun `the timer firing after the good one won changes nothing`() {
-        val window = FallbackWindow(FallbackWindow.EARS_MS)
+        val window = FallbackWindow(LIMIT)
         window.preferredReady(200)
         assertFalse(window.useFallback())
         assertEquals(FallbackWindow.Choice.PREFERRED, window.choice)
@@ -70,8 +61,8 @@ class FallbackWindowTest {
 
     @Test
     fun `ready past the limit is treated as too late even without the timer`() {
-        val window = FallbackWindow(FallbackWindow.EARS_MS)
-        assertFalse(window.preferredReady(FallbackWindow.EARS_MS + 1))
+        val window = FallbackWindow(LIMIT)
+        assertFalse(window.preferredReady(LIMIT + 1))
     }
 
     @Test

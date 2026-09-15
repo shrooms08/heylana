@@ -18,6 +18,7 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
+import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.net.Borrowed
 import xyz.heylana.app.net.Proxy
@@ -219,7 +220,7 @@ class DeepgramEars(
         HeylanaLog.state("deepgram: opening socket, keyterms=${keyterms.size}")
         socketAskedAt = SystemClock.elapsedRealtime()
         val request = Request.Builder()
-            .url(deepgramUrl(keyterms, SAMPLE_RATE))
+            .url(deepgramUrl(keyterms, SAMPLE_RATE, listenBase()))
             .addHeader("Authorization", "Token $key")
             .build()
 
@@ -246,7 +247,16 @@ class DeepgramEars(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 val refused = response?.code
-                HeylanaLog.state("deepgram: socket failed code=${refused ?: 0}")
+                // Say what actually happened. "code=0" meant there was no HTTP
+                // answer at all, and hid whether that was DNS, TLS or a reset.
+                val body = runCatching { response?.peekBody(BODY_PEEK_BYTES)?.string() }
+                    .getOrNull()
+                    ?.replace(Regex("\\s+"), " ")
+                    ?.take(BODY_PEEK_BYTES.toInt())
+                HeylanaLog.state(
+                    "deepgram: socket failed ${t::class.simpleName}: ${t.message?.take(160)} " +
+                        "http=${refused ?: "none"} stage=$stage body=${body ?: "none"}"
+                )
                 stopRecording()
                 if (abandoned) return
                 val wasReady = stage == Stage.READY
@@ -328,9 +338,19 @@ class DeepgramEars(
         record.startRecording()
         pump = scope.launch(Dispatchers.IO) {
             val frame = ByteArray(FRAME_BYTES)
+            var checked = false
             while (!abandoned && recorder != null) {
                 val read = record.read(frame, 0, frame.size)
                 if (read <= 0) break
+                if (!checked) {
+                    checked = true
+                    // Android may hand the microphone to the phone's own
+                    // recogniser and give this capture silence; say if it did.
+                    val silenced = runCatching {
+                        record.activeRecordingConfiguration?.isClientSilenced
+                    }.getOrNull()
+                    HeylanaLog.state("deepgram: microphone open silenced=${silenced ?: "unknown"}")
+                }
                 val piece = frame.copyOf(read)
                 val live = socket.takeIf { stage == Stage.READY }
                 if (live != null) {
@@ -475,6 +495,19 @@ class DeepgramEars(
         /** Four seconds of audio is more than any hold needs to survive. */
         const val MAX_EARLY_BYTES = BYTES_PER_MS * 4_000
 
+        /** How much of a refused socket's answer is worth writing down. */
+        const val BODY_PEEK_BYTES = 200L
+
+        /** Where the listening socket goes: Deepgram, or a debug build's stand-in. */
+        fun listenBase(): String =
+            if (BuildConfig.DEBUG && BuildConfig.LISTEN_URL.isNotEmpty()) {
+                BuildConfig.LISTEN_URL
+            } else {
+                DEEPGRAM_LISTEN
+            }
+
+        const val DEEPGRAM_LISTEN = "wss://api.deepgram.com/v1/listen"
+
         /** Why the phone's own ears had to take over. */
         const val REASON_TOKEN_SCOPE = "token_scope_keys_write"
         const val REASON_NOT_SET_UP = "not_set_up"
@@ -492,8 +525,12 @@ class DeepgramEars(
  * Keyterms are one repeated `keyterm=` parameter each, which is what nova-3
  * expects — a comma-joined list is read as one long term and boosts nothing.
  */
-internal fun deepgramUrl(keyterms: List<String>, sampleRate: Int): String = buildString {
-    append("wss://api.deepgram.com/v1/listen")
+internal fun deepgramUrl(
+    keyterms: List<String>,
+    sampleRate: Int,
+    base: String = "wss://api.deepgram.com/v1/listen"
+): String = buildString {
+    append(base)
     append("?model=nova-3")
     append("&interim_results=true")
     append("&endpointing=false")

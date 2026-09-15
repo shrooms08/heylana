@@ -9,18 +9,31 @@ Anthropic, Cartesia or Deepgram — that is the whole point.
     ./scripts/stub-proxy.py                 # serves on 127.0.0.1:8787
     adb reverse tcp:8787 tcp:8787           # the phone can now reach it
 
+For the listening socket, add to local.properties and rebuild:
+    heylana.listenUrl=ws://127.0.0.1:8787/v1/listen
+and run the stub with --refuse-listen to make it refuse, as a bad key would.
+
 Then set the address in the app: Settings -> Advanced -> Use this address
 instead -> http://127.0.0.1:8787
 """
 
+import base64
+import hashlib
 import json
 import math
 import re
 import struct
 import sys
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8787
+ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+PORT = int(ARGS[0]) if ARGS else 8787
+
+# The listening socket, standing in for Deepgram:
+#   default          accept it, take the audio, answer CloseStream with no words
+#   --refuse-listen  refuse the upgrade with 401 and a JSON body, as a bad key would
+REFUSE_LISTEN = "--refuse-listen" in sys.argv
+WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 # What the stub says back. Matches the JSON contract the app expects.
 ANSWER = {
@@ -50,6 +63,79 @@ TONE = tone()
 
 
 class Stub(BaseHTTPRequestHandler):
+    # Needed for the 101 upgrade; every other reply already sends content-length.
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self):
+        if not self.path.startswith("/v1/listen"):
+            return self.send_json(404, {"reason": "unknown_route"})
+
+        if REFUSE_LISTEN:
+            sys.stderr.write("  listen: refusing the upgrade on purpose\n")
+            return self.send_json(401, {
+                "err_code": "INVALID_AUTH",
+                "err_msg": "stub: refusing the listening socket on purpose",
+            })
+
+        key = self.headers.get("Sec-WebSocket-Key", "")
+        accept = base64.b64encode(hashlib.sha1((key + WS_GUID).encode()).digest()).decode()
+        self.send_response(101, "Switching Protocols")
+        self.send_header("Upgrade", "websocket")
+        self.send_header("Connection", "Upgrade")
+        self.send_header("Sec-WebSocket-Accept", accept)
+        self.end_headers()
+        self.wfile.flush()
+        sys.stderr.write("  listen: accepted\n")
+
+        audio = 0
+        while True:
+            frame = self.read_frame()
+            if frame is None:
+                break
+            opcode, payload = frame
+            if opcode == 2:
+                audio += len(payload)
+            elif opcode == 1 and b"CloseStream" in payload:
+                sys.stderr.write(f"  listen: CloseStream after {audio} bytes of audio\n")
+                empty = {"type": "Results", "is_final": True,
+                         "channel": {"alternatives": [{"transcript": ""}]}}
+                self.write_frame(1, json.dumps(empty).encode())
+                self.write_frame(8, struct.pack(">H", 1000))
+                break
+            elif opcode == 8:
+                self.write_frame(8, payload[:2] or struct.pack(">H", 1000))
+                break
+        self.close_connection = True
+
+    def read_frame(self):
+        head = self.rfile.read(2)
+        if len(head) < 2:
+            return None
+        opcode = head[0] & 0x0F
+        masked = head[1] & 0x80
+        length = head[1] & 0x7F
+        if length == 126:
+            length = struct.unpack(">H", self.rfile.read(2))[0]
+        elif length == 127:
+            length = struct.unpack(">Q", self.rfile.read(8))[0]
+        mask = self.rfile.read(4) if masked else b"\0\0\0\0"
+        data = bytearray(self.rfile.read(length))
+        for i in range(len(data)):
+            data[i] ^= mask[i % 4]
+        return opcode, bytes(data)
+
+    def write_frame(self, opcode, payload):
+        header = bytes([0x80 | opcode])
+        n = len(payload)
+        if n < 126:
+            header += bytes([n])
+        elif n < 65536:
+            header += bytes([126]) + struct.pack(">H", n)
+        else:
+            header += bytes([127]) + struct.pack(">Q", n)
+        self.wfile.write(header + payload)
+        self.wfile.flush()
+
     def log_message(self, fmt, *args):
         device = self.headers.get("X-Heylana-Device", "")[:8]
         sys.stderr.write(f"{self.path} device={device} {fmt % args}\n")
@@ -97,6 +183,7 @@ class Stub(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"stub proxy on http://127.0.0.1:{PORT} — chat, tts, stt-token")
+    mode = "refusing" if REFUSE_LISTEN else "accepting"
+    print(f"stub proxy on http://127.0.0.1:{PORT} — chat, tts, stt-token, listen ({mode})")
     print("run: adb reverse tcp:%d tcp:%d" % (PORT, PORT))
-    HTTPServer(("127.0.0.1", PORT), Stub).serve_forever()
+    ThreadingHTTPServer(("127.0.0.1", PORT), Stub).serve_forever()

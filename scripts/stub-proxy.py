@@ -33,6 +33,27 @@ PORT = int(ARGS[0]) if ARGS else 8787
 #   default          accept it, take the audio, answer CloseStream with no words
 #   --refuse-listen  refuse the upgrade with 401 and a JSON body, as a bad key would
 REFUSE_LISTEN = "--refuse-listen" in sys.argv
+
+# Plans and payments, standing in for the worker. Nothing here verifies a
+# signature or reads a chain: it only lets the app's screens be exercised.
+#   --talks-cap   /chat answers 429 talks_cap, as a used-up free month would
+TALKS_CAP = "--talks-cap" in sys.argv
+STUB_JUDGE_CODE = "stub-judge"
+STATE = {"plan": "free", "used": 0, "bonus": 20, "wallet": None, "pro_until": None, "judge_until": None}
+
+
+def standing():
+    plan = STATE["plan"]
+    return {
+        "plan": plan,
+        "used": STATE["used"],
+        "limit": None if plan != "free" else 30 + (STATE["bonus"] if STATE["wallet"] else 0),
+        "skills_cap": 3 if plan == "free" else 10,
+        "pro_until": STATE["pro_until"],
+        "judge_until": STATE["judge_until"],
+        "resets_at": "2026-10-01T00:00:00.000Z",
+        "wallet": STATE["wallet"],
+    }
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 # What the stub says back. Matches the JSON contract the app expects.
@@ -67,6 +88,8 @@ class Stub(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_GET(self):
+        if self.path.strip("/") == "me":
+            return self.send_json(200, standing())
         if not self.path.startswith("/v1/listen"):
             return self.send_json(404, {"reason": "unknown_route"})
 
@@ -148,7 +171,50 @@ class Stub(BaseHTTPRequestHandler):
         if not self.headers.get("X-Heylana-Device"):
             return self.send_json(400, {"reason": "no_device"})
 
+        route = self.path.strip("/")
+
+        if route == "wallet/challenge":
+            pubkey = body.get("pubkey", "")
+            return self.send_json(200, {"nonce": "stubnonce", "message": f"Heylana stub sign-in for {pubkey}"})
+
+        if route == "wallet/verify":
+            first = STATE["wallet"] is None
+            STATE["wallet"] = body.get("pubkey")
+            return self.send_json(200, {"session": "stub.session", "pubkey": STATE["wallet"],
+                                        "welcome_granted": first, "me": standing()})
+
+        if route == "judge":
+            if body.get("code") != STUB_JUDGE_CODE:
+                return self.send_json(403, {"reason": "bad_code"})
+            STATE["plan"], STATE["judge_until"] = "judge", "2026-11-09T23:59:59.000Z"
+            return self.send_json(200, standing())
+
+        if route == "pay/quote":
+            usdc = body.get("currency") == "usdc"
+            return self.send_json(200, {
+                "currency": body.get("currency"),
+                # Placeholders only: never approve a payment against the stub.
+                "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                "amount": "100000" if usdc else "3333334", "decimals": 6,
+                "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                "treasury": "11111111111111111111111111111111",
+                "reference": "4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T",
+                "expires_at": "2099-01-01T00:00:00.000Z", "price_usd": "0.10"})
+
+        if route == "pay/blockhash":
+            return self.send_json(200, {"blockhash": "EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k",
+                                        "last_valid_block_height": 1})
+
+        if route == "pay/confirm":
+            STATE["plan"], STATE["pro_until"] = "pro", "2026-10-15T12:00:00.000Z"
+            return self.send_json(200, standing())
+
+        if route == "chat" and TALKS_CAP:
+            return self.send_json(429, {"reason": "talks_cap", "plan": "free", "used": 30, "limit": 30,
+                                        "resets_at": "2026-10-01T00:00:00.000Z"})
+
         if self.path.strip("/") == "chat":
+            STATE["used"] += 1
             mode = body.get("mode")
             if mode not in ("quick", "task"):
                 return self.send_json(400, {"reason": "bad_mode"})
@@ -184,6 +250,7 @@ class Stub(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     mode = "refusing" if REFUSE_LISTEN else "accepting"
-    print(f"stub proxy on http://127.0.0.1:{PORT} — chat, tts, stt-token, listen ({mode})")
+    print(f"stub proxy on http://127.0.0.1:{PORT} — chat, tts, stt-token, listen ({mode}), "
+          f"wallet, me, judge (code: {STUB_JUDGE_CODE}), pay{' — talks capped' if TALKS_CAP else ''}")
     print("run: adb reverse tcp:%d tcp:%d" % (PORT, PORT))
     ThreadingHTTPServer(("127.0.0.1", PORT), Stub).serve_forever()

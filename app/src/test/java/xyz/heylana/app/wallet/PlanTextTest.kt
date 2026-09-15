@@ -3,7 +3,7 @@ package xyz.heylana.app.wallet
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
-import java.time.ZoneOffset
+import java.util.TimeZone
 
 class PlanTextTest {
 
@@ -25,7 +25,7 @@ class PlanTextTest {
         assertEquals("Free", PlanText.name(free.plan))
         assertEquals("1 of 50 talks this month", PlanText.talks(free))
         assertEquals("Up to 3 skills", PlanText.skills(free))
-        assertNull(PlanText.until(free, ZoneOffset.UTC))
+        assertNull(PlanText.until(free))
     }
 
     @Test
@@ -33,16 +33,28 @@ class PlanTextTest {
         val pro = standing(plan = "pro", limit = null, skills = 10, proUntil = "2026-10-15T12:00:00.000Z")
         assertEquals("Unlimited talks", PlanText.talks(pro))
         assertEquals("Up to 10 skills", PlanText.skills(pro))
-        assertEquals("Pro until Oct 15, 2026", PlanText.until(pro, ZoneOffset.UTC))
+        assertEquals("Pro until Oct 15, 2026", PlanText.until(pro))
 
         val judge = standing(plan = "judge", limit = null, skills = 10, judgeUntil = "2026-11-09T23:59:59.000Z")
         assertEquals("Judge", PlanText.name(judge.plan))
-        assertEquals("Judge until Nov 9, 2026", PlanText.until(judge, ZoneOffset.UTC))
+        assertEquals("Judge until Nov 9, 2026", PlanText.until(judge))
+    }
+
+    @Test
+    fun `a judge code ending Nov 9 says Nov 9 on a phone east of UTC`() {
+        val before = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("Africa/Lagos"))
+        try {
+            val judge = standing(plan = "judge", limit = null, skills = 10, judgeUntil = "2026-11-09T23:59:59.000Z")
+            assertEquals("Judge until Nov 9, 2026", PlanText.until(judge))
+        } finally {
+            TimeZone.setDefault(before)
+        }
     }
 
     @Test
     fun `an unreadable date still shows the day`() {
-        assertEquals("2026-10-15", PlanText.date("2026-10-15 soon", ZoneOffset.UTC))
+        assertEquals("2026-10-15", PlanText.date("2026-10-15 soon"))
     }
 
     @Test

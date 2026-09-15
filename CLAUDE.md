@@ -30,8 +30,17 @@ xyz.heylana.app
 │   ├── ScreenSnapshot       the element list + its text rendering for the model
 │   ├── Keyterms             the names the ears are told to expect
 │   └── TapWatch             the rule for noticing the user act on what is pointed at
+├── wallet/                  the user's wallet, their plan, and paying for Pro
+│   ├── SeedVault            Mobile Wallet Adapter: connect + sign-in message, sign-and-send the payment
+│   ├── WalletApi            /wallet/challenge, /wallet/verify, /me, /judge, /pay/*
+│   ├── WalletSession        the connected address and its worker session, stored encrypted
+│   ├── PaymentTransaction   the USDC/SKR transferChecked to the treasury, with the reference
+│   ├── ProPayment           blockhash → build → Seed Vault → ConfirmPoll (60s)
+│   ├── PlanText             every word the Plan card and Go Pro sheet say
+│   └── WalletProblem        whatever stopped a wallet trip, in plain words
 ├── brain/                   talking to the model
 │   ├── ProxyClient          POST /chat through the proxy; says quick or task, never a model
+│   ├── QuotaMessage         the words for talks_cap, daily_cap and an ended session
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
 │                            (plus Conversation, the short-term memory)
@@ -98,12 +107,50 @@ Every request carries `X-Heylana-Device`, and each device gets 150 questions,
 `429 daily_cap` and the app says so in plain words. That is budget protection,
 not a product tier.
 
+## Plans, wallets and payment
+
+**Plans key on the wallet.** Connecting a wallet (Seed Vault over Mobile Wallet
+Adapter) signs a plain sign-in message the worker made — never a transaction —
+and the worker hands back a 30-day session. Every request then carries
+`Authorization: Bearer <session>` and talks count against that wallet. With no
+wallet the phone's device id is the account: Free, and no welcome bonus.
+
+- **Free**: 30 talks a calendar month (UTC), 3 skills, plus 20 welcome talks
+  granted once, the first time a wallet connects.
+- **Pro**: unlimited talks, 10 skills, 30 days per payment, stacking.
+- **Judge**: Pro until `JUDGE_UNTIL`, by code.
+
+A talk is a `/chat` that succeeded upstream; a refused or failed one is not
+counted. Over the limit the worker answers `429 talks_cap` and the buddy says
+"That was your last free talk this month. Go Pro in Settings for unlimited."
+The skill cap is only stored and shown for now.
+
+**Payment is verified by the worker, never trusted from the phone.** The worker
+quotes an exact amount in base units (USDC at face value, SKR through Jupiter's
+price, rounded up) with a fresh random reference. The phone builds a
+`transferChecked` to the treasury's associated token account (creating it if it
+is missing, the payer covering the fee) with the reference as an extra read-only
+account, and Seed Vault signs and sends it. The worker then reads that signature
+from the chain (jsonParsed) and checks mint, destination owner, amount, sender
+and reference before extending Pro. A reference pays once; a signature pays for
+one reference. A payment that has not confirmed within 60s is remembered on the
+phone and claimed the next time Settings opens.
+
+**Version pins.** Mobile Wallet Adapter clientlib-ktx is 2.1.1 and sol4k 0.7.0:
+the newer releases are built with Kotlin 2.4 and this project's compiler cannot
+read them. The two MWA artifacts share a namespace, which AGP 9 refuses unless
+`android.uniquePackageNames=false` in `gradle.properties`.
+
 The one exception is the hidden "use my own key" setting: questions only, on a
 key the user typed in themselves. The voice and the ears keep using the proxy,
 because those keys are not the user's to hold.
 
 `scripts/stub-proxy.py` answers all three routes locally with fixed replies, so
-the whole app can be exercised without spending anything. Debug builds carry a
+the whole app can be exercised without spending anything. It also fakes the
+wallet, `/me`, `/judge` (code `stub-judge`) and `/pay/*` routes — without checking
+any signature or reading any chain — and `--talks-cap` makes `/chat` answer
+`429 talks_cap`. Never approve a Seed Vault payment against the stub: the wallet
+would send a real transaction to the stub's made-up treasury. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 
 **Both ears listen, every time.** At the long press the phone's own recogniser

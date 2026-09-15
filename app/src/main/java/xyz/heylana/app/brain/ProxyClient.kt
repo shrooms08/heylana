@@ -159,7 +159,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
     /** Short and readable, never a stack trace, and never a key. */
     private fun httpError(code: Int, body: String): String {
         val reason = runCatching { JSONObject(body).optString("reason") }.getOrDefault("")
-        if (reason == "daily_cap") return DAILY_CAP
+        QuotaMessage.forReason(reason)?.let { return it }
         val detail = runCatching {
             JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
         }.getOrDefault("")
@@ -240,8 +240,6 @@ class ProxyClient(private val settings: HeylanaSettings) {
             "Heylana is not set up yet. Whoever built this app needs to add the proxy address."
         private const val NO_KEY =
             "No API key yet. Add your key in Heylana \u2192 Settings, or switch off Use my own key."
-        private const val DAILY_CAP =
-            "That is all Heylana can do today. Try again tomorrow."
 
         private val JSON = "application/json".toMediaType()
     }

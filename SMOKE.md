@@ -1,91 +1,91 @@
-# SMOKE TEST — both ears, and a disc that always comes back
+# Smoke test — phase 3a: wallet, plans and Pro payment
 
-## Budget for this test: 2 stt, 2 chat, 2 tts
+For Minos, on the Seeker, with Seed Vault Wallet holding a little SOL for fees,
+at least 0.10 USDC, and some SKR.
 
-I sent nothing to your worker and nothing to Deepgram or Anthropic. Everything
-below was checked against the stub on my machine, including a listening socket
-that accepts and one that refuses.
+**Live calls this test spends: 1 question (`/chat`) and 1 spoken answer (`/tts`).**
+It also makes one real on-chain payment of **0.10 USDC** from your wallet to the
+treasury. Everything else (connecting, the plan, quotes, the judge code) costs
+no model calls.
 
-## What changed, in plain words
+## 1. Set the worker up (on the computer)
 
-- **Both ears listen from the moment you hold the buddy.** Your phone's own
-  recogniser and Deepgram start together, every time. If Deepgram has your words
-  within a second and a half of letting go, those are used; if not, your phone's
-  are. So a Deepgram problem no longer means Heylana hears nothing.
-- **The disc always comes back.** However a hold ends — words, nothing heard, an
-  error, running out of time — the disc returns to its resting look. The
-  thinking ring that turned for five minutes cannot happen any more.
-- **Twenty seconds, at most.** If anything gets stuck, after twenty seconds the
-  capsule melts, a short "That took too long, try again." appears, and the disc
-  rests.
-- **Failures say what they were.** Instead of `socket failed code=0` the log now
-  names the error, the HTTP status if there was one, and the start of the reply.
+1. Open `worker/wrangler.toml`. Set `TREASURY_ADDRESS` to the wallet that receives
+   payments, `SKR_MINT` to the SKR token's mint address, and `PRICE_USD` to `"0.10"`.
+2. In the `worker` folder run, one at a time, pasting each value when asked:
+   `npx wrangler secret put RPC_URL` (your Solana RPC address),
+   `npx wrangler secret put SESSION_SECRET` (paste the output of `openssl rand -base64 48`),
+   `npx wrangler secret put JUDGE_CODE` (any code you like; write it down).
+3. Run `npx wrangler deploy`.
 
-**Before you start:** install from Android Studio, run `./scripts/a11y.sh`
-(it should say screen reading is on and running), reopen Heylana, tap **Start
-buddy**. From the Mac, keep this running to watch:
+Expected: the deploy finishes and prints the worker address. **0 calls.**
 
-```
-adb logcat -s HeylanaState
-```
+## 2. Connect the wallet
 
----
+1. Open Heylana → **Settings**.
+2. On the **Wallet** card tap **Connect wallet**.
+3. Seed Vault opens and asks to connect Heylana. Approve.
+4. Seed Vault asks you to sign a message starting "Heylana wants you to sign in".
+   Approve. (It is a message, not a transaction.)
 
-## 1. Wallet balance, by voice — 1 stt, 1 chat, 1 tts
+Expected: back in Settings the Wallet card shows a short address like `9WzD…AWWM`
+and **Disconnect**, with the line **20 welcome talks added** under it. The **Plan**
+card shows **Free**, **0 of 50 talks this month**, **Up to 3 skills**, and a
+**Go Pro, $15/month** button. **0 chat calls.**
 
-Open your **wallet**. **Press and hold the buddy**, say **"what is my balance"**,
-and let go.
+## 3. One question
 
-You should see and hear:
+1. Open Chrome on any page. Tap the buddy, type `What is Solana?`, send.
 
-- the purple listening ring and the capsule while you hold;
-- the answer **spoken aloud**, about what is actually on screen, with no number
-  made up;
-- the disc **back to its resting look** afterwards — no ring still turning.
+Expected: an answer appears and is spoken. Back in Settings, the Plan card shows
+**1 of 50 talks this month**. **1 chat call, 1 tts call.**
 
-In the log, find the line that starts **`ears=`**. It will say either:
+## 4. Go Pro with USDC
 
-- `ears=deepgram won reason=deepgram_in_time …` — Deepgram heard you; or
-- `ears=android won reason=…` — your phone's recogniser was used, and the reason
-  says why Deepgram wasn't.
+1. Settings → Plan → **Go Pro, $15/month**. A glass sheet slides up.
+2. **USDC** is picked. The sheet shows **You'll send 0.10 USDC**.
+3. Tap **Pay**. Seed Vault asks to connect, then shows a transfer of 0.10 USDC.
+   Approve both.
+4. The sheet says "Sent. Waiting for Solana to confirm it…".
 
-**Send me that whole line either way.** If it says android, the lines just above
-it starting `deepgram:` now say exactly what went wrong — send those too.
+Expected: within 60 seconds the sheet closes and the Plan card shows **Pro**,
+**Unlimited talks**, **Up to 10 skills**, **Pro until <30 days from today>**. The
+Go Pro button is gone. **0 calls.**
 
----
+## 5. SKR quote, then cancel
 
-## 2. The Kamino test — 1 stt, 1 chat, 1 tts
+This needs a wallet still on Free: tap **Disconnect**, connect a *different*
+account in Seed Vault (or skip this step if you only have one).
 
-**Hold the buddy** and say **"what does the Kamino earn thing do"**.
+1. Settings → **Go Pro, $15/month** → tap **SKR**.
+2. The sheet shows **You'll send <some> SKR** and **About $0.10 at today's SKR price**.
+3. Tap **Cancel**.
 
-Check two things:
+Expected: the sheet closes, nothing opens in Seed Vault, nothing is paid. **0 calls.**
 
-- the **`ears=` line** again — deepgram or android, and the reason;
-- **how Kamino is spelled** in the capsule while you speak and in the answer.
-  Deepgram is told to expect "Kamino"; your phone's recogniser is not, and tends
-  to write "come in oh".
+## 6. Judge code
 
-If the ears line says **deepgram** but Kamino is still misspelled, tell me — that
-would mean the hint isn't reaching Deepgram. If it says **android**, the spelling
-is expected to be wrong and the `deepgram:` lines above it say why.
+1. Settings → **Advanced** → **Judge code** card. Type the code from step 1, tap **Use code**.
 
----
+Expected: the line **Judge until Nov 9, 2026** appears, and the Plan card at the
+top shows **Judge**, **Unlimited talks**, **Up to 10 skills**.
 
-## If it goes wrong
+2. Scroll up, tap **Disconnect**, then **Connect wallet** again with the same
+   account and approve both Seed Vault screens.
 
-- **The disc is still turning after the answer, or after you let go without
-  speaking** — send me the last 30 lines of the log.
-- **"That took too long, try again."** — send the log from the hold onwards; the
-  line `exchange: timed out in …` says what was stuck.
-- **Nothing spoken, nothing on screen** — send the `ears:` lines.
-- **The app closes itself** — send `adb logcat -d -b crash | head -40`.
+Expected: the short address comes back **without** "20 welcome talks added", and
+the Plan card still says **Judge**. **0 calls.**
 
----
+## 7. Put the price back
 
-## Pass criteria
+1. In `worker/wrangler.toml` set `PRICE_USD` back to `"15"`. Run `npx wrangler deploy`.
+2. On the phone, close Settings and open it again.
 
-- Both questions are answered and spoken.
-- The disc is at rest after each one.
-- Each hold has an `ears=` line with a reason.
-- Kamino is spelled properly when the ears line says deepgram.
-- Nothing crashes, and the test costs 2 stt, 2 chat and 2 tts.
+Expected: the Plan card still says **Judge until Nov 9, 2026**. **0 calls.**
+
+## If something goes wrong
+
+- "Cancelled in Seed Vault." — you declined; nothing was sent.
+- "Not enough in this wallet to pay, including the network fee." — top up USDC or SOL.
+- "That took too long…" — the payment may still land. Close and reopen Settings in
+  a minute; Heylana checks it again and Pro appears if it went through.

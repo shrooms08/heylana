@@ -50,7 +50,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
 import java.time.Instant
-import java.time.ZoneId
 import kotlinx.coroutines.launch
 import xyz.heylana.app.wallet.ConfirmPoll
 import xyz.heylana.app.wallet.PayOutcome
@@ -221,7 +220,7 @@ private fun SettingsScreen(
         }
 
         if (advanced) {
-            AdvancedSection(settings = settings)
+            AdvancedSection(settings = settings, api = api, onStanding = { standing = it })
         }
 
         if (BuildConfig.DEBUG) {
@@ -423,7 +422,7 @@ private fun PlanCard(standing: Standing?, problem: String, connected: Boolean, o
         val lines = listOfNotNull(
             PlanText.talks(standing),
             PlanText.skills(standing),
-            PlanText.until(standing, ZoneId.systemDefault())
+            PlanText.until(standing)
         )
         lines.forEach {
             Text(text = it, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
@@ -583,6 +582,61 @@ private const val CURRENCY_USDC = "usdc"
 private const val CURRENCY_SKR = "skr"
 private const val QUOTE_MARGIN_MS = 30_000L
 
+/** For hackathon judges: a code that makes this wallet (or phone) Judge until judging ends. */
+@Composable
+private fun JudgeCodeCard(api: WalletApi, onStanding: (Standing) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var code by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var line by remember { mutableStateOf("") }
+
+    GlassCard {
+        Text(text = "Judge code", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
+        Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
+        Text(
+            text = "Judging Heylana? Enter your code. Connect your wallet first to keep it with the wallet.",
+            style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
+        )
+        Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
+        OutlinedTextField(
+            value = code,
+            onValueChange = { code = it },
+            label = { Text(text = "Code") },
+            singleLine = true,
+            textStyle = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
+        GlassButton(
+            text = if (busy) "Checking\u2026" else "Use code",
+            primary = true,
+            enabled = !busy && code.isNotBlank(),
+            onClick = {
+                busy = true
+                line = ""
+                scope.launch {
+                    line = when (val answer = api.judge(code.trim())) {
+                        is Answer.Ok -> {
+                            onStanding(answer.value)
+                            code = ""
+                            PlanText.until(answer.value) ?: ""
+                        }
+                        is Answer.Refused ->
+                            if (answer.reason == "bad_code") "That code isn't right."
+                            else WalletProblem.fromWorker(answer.reason).words
+                        is Answer.Unreachable -> WalletProblem.UNREACHABLE.words
+                    }
+                    busy = false
+                }
+            }
+        )
+        if (line.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
+            Text(text = line, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+        }
+    }
+}
+
 /** The plain-words version of what goes where. Same sentences as onboarding. */
 @Composable
 private fun PrivacyCard() {
@@ -611,7 +665,13 @@ private fun PrivacyCard() {
  * paying for them yourself.
  */
 @Composable
-private fun AdvancedSection(settings: HeylanaSettings) {
+private fun AdvancedSection(
+    settings: HeylanaSettings,
+    api: WalletApi,
+    onStanding: (Standing) -> Unit
+) {
+    JudgeCodeCard(api = api, onStanding = onStanding)
+
     var proxyUrl by remember { mutableStateOf(settings.proxyUrlOverride) }
     var useOwnKey by remember { mutableStateOf(settings.useOwnKey) }
     var savedKeyMask by remember { mutableStateOf(settings.maskedApiKey()) }

@@ -2,7 +2,7 @@ package xyz.heylana.app.wallet
 
 import java.math.BigDecimal
 import java.time.Instant
-import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -28,14 +28,19 @@ object PlanText {
     fun skills(standing: Standing): String = "Up to ${standing.skillsCap} skills"
 
     /** "Pro until Oct 15, 2026", "Judge until Nov 9, 2026", or null on Free. */
-    fun until(standing: Standing, zone: ZoneId): String? = when (standing.plan) {
-        "judge" -> standing.judgeUntil?.let { "Judge until ${date(it, zone)}" }
-        "pro" -> standing.proUntil?.let { "Pro until ${date(it, zone)}" }
+    fun until(standing: Standing): String? = when (standing.plan) {
+        "judge" -> standing.judgeUntil?.let { "Judge until ${date(it)}" }
+        "pro" -> standing.proUntil?.let { "Pro until ${date(it)}" }
         else -> null
     }
 
-    fun date(iso: String, zone: ZoneId): String =
-        runCatching { DATE.format(Instant.parse(iso).atZone(zone)) }.getOrDefault(iso.take(DATE_ONLY))
+    /**
+     * The day on the worker's calendar, which is UTC. A judge code good until
+     * Nov 9 ends at 23:59:59 UTC that day — already Nov 10 on a phone east of
+     * Greenwich — so the phone's own timezone would show the wrong day.
+     */
+    fun date(iso: String): String =
+        runCatching { DATE.format(Instant.parse(iso).atZone(ZoneOffset.UTC)) }.getOrDefault(iso.take(DATE_ONLY))
 
     /**
      * A token amount from its base units, exactly: never fewer than two decimals,

@@ -495,8 +495,9 @@ async function payQuote(request: Request, env: Env, who: Who): Promise<Response>
   await env.CAPS.put(`quote:${quote.reference}`, JSON.stringify(quote), { expirationTtl: 3600 })
   log({ route: 'pay/quote', device: who.device, wallet: who.wallet.slice(0, 8), currency: quote.currency })
 
+  // The dollar price rides along so the app can say what a moving token is worth.
   const { pubkey: _owner, ...shown } = quote
-  return json(200, shown)
+  return json(200, { ...shown, price_usd: env.PRICE_USD })
 }
 
 /** A recent blockhash, fetched at the moment Pay is tapped so it is still fresh. */

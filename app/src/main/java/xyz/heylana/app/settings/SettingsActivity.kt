@@ -44,7 +44,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.graphics.Color
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.launch
+import xyz.heylana.app.wallet.ConfirmPoll
+import xyz.heylana.app.wallet.PayOutcome
+import xyz.heylana.app.wallet.PlanText
+import xyz.heylana.app.wallet.ProPayment
+import xyz.heylana.app.wallet.Quote
+import xyz.heylana.app.wallet.Standing
 import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.ui.GlassButton
 import xyz.heylana.app.ui.GlassCard
@@ -126,6 +139,25 @@ private fun SettingsScreen(
     var showSpokenText by remember { mutableStateOf(settings.showTextForVoice) }
     var advanced by remember { mutableStateOf(false) }
 
+    val api = remember { WalletApi(settings) }
+    var session by remember { mutableStateOf(settings.walletSession) }
+    var standing by remember { mutableStateOf<Standing?>(null) }
+    var planProblem by remember { mutableStateOf("") }
+    var goPro by remember { mutableStateOf(false) }
+
+    // Whenever the wallet changes: claim any payment still waiting, then ask where we stand.
+    LaunchedEffect(session) {
+        if (session != null) settlePendingPayment(settings, api)
+        when (val answer = api.me()) {
+            is Answer.Ok -> {
+                standing = answer.value
+                planProblem = ""
+            }
+            is Answer.Refused -> planProblem = WalletProblem.fromWorker(answer.reason).words
+            is Answer.Unreachable -> planProblem = WalletProblem.UNREACHABLE.words
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -135,7 +167,36 @@ private fun SettingsScreen(
     ) {
         Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
 
-        WalletCard(settings = settings, seedVault = seedVault)
+        WalletCard(
+            settings = settings,
+            seedVault = seedVault,
+            api = api,
+            session = session,
+            onSession = { session = it },
+            onStanding = { standing = it }
+        )
+
+        PlanCard(
+            standing = standing,
+            problem = planProblem,
+            connected = session != null,
+            onGoPro = { goPro = true }
+        )
+
+        val payer = session
+        if (goPro && payer != null) {
+            GoProSheet(
+                settings = settings,
+                api = api,
+                seedVault = seedVault,
+                session = payer,
+                onPaid = {
+                    standing = it
+                    goPro = false
+                },
+                onClose = { goPro = false }
+            )
+        }
 
         VoiceCard(settings = settings, onSample = onSample)
 
@@ -243,10 +304,15 @@ private fun ChoiceRow(
  * Never a transaction. Afterwards the short address and Disconnect.
  */
 @Composable
-private fun WalletCard(settings: HeylanaSettings, seedVault: SeedVault) {
+private fun WalletCard(
+    settings: HeylanaSettings,
+    seedVault: SeedVault,
+    api: WalletApi,
+    session: WalletSession?,
+    onSession: (WalletSession?) -> Unit,
+    onStanding: (Standing) -> Unit
+) {
     val scope = rememberCoroutineScope()
-    val api = remember { WalletApi(settings) }
-    var session by remember { mutableStateOf(settings.walletSession) }
     var busy by remember { mutableStateOf(false) }
     var line by remember { mutableStateOf("") }
 
@@ -254,8 +320,7 @@ private fun WalletCard(settings: HeylanaSettings, seedVault: SeedVault) {
         Text(text = "Wallet", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
         Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
 
-        val connected = session
-        if (connected == null) {
+        if (session == null) {
             Text(
                 text = "Connect with Seed Vault to keep your plan with your wallet. " +
                     "Connecting only signs a message; it never moves funds.",
@@ -263,21 +328,24 @@ private fun WalletCard(settings: HeylanaSettings, seedVault: SeedVault) {
             )
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
             GlassButton(
-                text = if (busy) "Waiting for Seed Vault…" else "Connect wallet",
+                text = if (busy) "Waiting for Seed Vault\u2026" else "Connect wallet",
                 primary = true,
                 enabled = !busy,
                 onClick = {
                     busy = true
                     line = ""
                     scope.launch {
-                        line = connect(settings, seedVault, api) { session = it }
+                        line = connect(settings, seedVault, api) { connected, standing ->
+                            onSession(connected)
+                            onStanding(standing)
+                        }
                         busy = false
                     }
                 }
             )
         } else {
             Text(
-                text = connected.shortAddress,
+                text = session.shortAddress,
                 style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary)
             )
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
@@ -285,7 +353,7 @@ private fun WalletCard(settings: HeylanaSettings, seedVault: SeedVault) {
                 text = "Disconnect",
                 onClick = {
                     settings.walletSession = null
-                    session = null
+                    onSession(null)
                     line = ""
                 }
             )
@@ -303,7 +371,7 @@ private suspend fun connect(
     settings: HeylanaSettings,
     seedVault: SeedVault,
     api: WalletApi,
-    onConnected: (WalletSession) -> Unit
+    onConnected: (WalletSession, Standing) -> Unit
 ): String {
     val signedIn = when (val trip = seedVault.connect(api)) {
         is SeedVault.Trip.Done -> trip.value
@@ -314,13 +382,206 @@ private suspend fun connect(
         is Answer.Ok -> {
             val session = WalletSession(signedIn.pubkey, verified.value.session)
             settings.walletSession = session
-            onConnected(session)
+            onConnected(session, verified.value.standing)
             if (verified.value.welcomeGranted) "20 welcome talks added" else ""
         }
         is Answer.Refused -> WalletProblem.fromWorker(verified.reason).words
         is Answer.Unreachable -> WalletProblem.UNREACHABLE.words
     }
 }
+
+/** A payment sent earlier that had not confirmed in time: ask once more, quietly. */
+private suspend fun settlePendingPayment(settings: HeylanaSettings, api: WalletApi) {
+    val (reference, signature) = settings.pendingPayment ?: return
+    when (val answer = api.confirm(reference, signature)) {
+        is Answer.Ok -> settings.pendingPayment = null
+        is Answer.Refused -> if (!ConfirmPoll.keepWaiting(answer)) settings.pendingPayment = null
+        is Answer.Unreachable -> Unit
+    }
+}
+
+/** Free, Pro or Judge; the talks this month; the skills cap; and how to go Pro. */
+@Composable
+private fun PlanCard(standing: Standing?, problem: String, connected: Boolean, onGoPro: () -> Unit) {
+    GlassCard {
+        Text(text = "Plan", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
+        Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
+
+        if (standing == null) {
+            Text(
+                text = problem.ifEmpty { "Checking your plan\u2026" },
+                style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
+            )
+            return@GlassCard
+        }
+
+        Text(
+            text = PlanText.name(standing.plan),
+            style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary)
+        )
+        Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_1_DP.dp))
+        val lines = listOfNotNull(
+            PlanText.talks(standing),
+            PlanText.skills(standing),
+            PlanText.until(standing, ZoneId.systemDefault())
+        )
+        lines.forEach {
+            Text(text = it, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+        }
+
+        if (standing.plan == "free") {
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+            if (connected) {
+                GlassButton(text = PlanText.GO_PRO, primary = true, onClick = onGoPro)
+            } else {
+                Text(
+                    text = "Connect a wallet above to go Pro.",
+                    style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Go Pro: pick USDC or SKR, see exactly what will be sent, Pay. Seed Vault shows
+ * the transfer for approval; then this waits up to a minute for it to land.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GoProSheet(
+    settings: HeylanaSettings,
+    api: WalletApi,
+    seedVault: SeedVault,
+    session: WalletSession,
+    onPaid: (Standing) -> Unit,
+    onClose: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val payment = remember { ProPayment(api, seedVault) }
+    var currency by remember { mutableStateOf(CURRENCY_USDC) }
+    var quote by remember { mutableStateOf<Quote?>(null) }
+    var line by remember { mutableStateOf("") }
+    var paying by remember { mutableStateOf(false) }
+    var refresh by remember { mutableStateOf(0) }
+
+    LaunchedEffect(currency, refresh) {
+        quote = null
+        line = "Getting the price\u2026"
+        when (val answer = api.quote(currency)) {
+            is Answer.Ok -> {
+                quote = answer.value
+                line = ""
+            }
+            is Answer.Refused -> line = WalletProblem.fromWorker(answer.reason).words
+            is Answer.Unreachable -> line = WalletProblem.UNREACHABLE.words
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { if (!paying) onClose() },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color.Transparent,
+        dragHandle = null
+    ) {
+        GlassCard(
+            modifier = Modifier.padding(
+                horizontal = HeylanaTokens.SPACE_4_DP.dp,
+                vertical = HeylanaTokens.SPACE_5_DP.dp
+            )
+        ) {
+            Text(text = "Go Pro", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
+            Text(
+                text = "Unlimited talks and up to 10 skills for 30 days. Paid once from your " +
+                    "wallet; nothing renews by itself.",
+                style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
+            )
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+
+            Row(horizontalArrangement = Arrangement.spacedBy(HeylanaTokens.SPACE_2_DP.dp)) {
+                GlassButton(
+                    text = "USDC",
+                    primary = currency == CURRENCY_USDC,
+                    enabled = !paying,
+                    onClick = { currency = CURRENCY_USDC }
+                )
+                GlassButton(
+                    text = "SKR",
+                    primary = currency == CURRENCY_SKR,
+                    enabled = !paying,
+                    onClick = { currency = CURRENCY_SKR }
+                )
+            }
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+
+            quote?.let { shown ->
+                Text(text = PlanText.send(shown), style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary))
+                PlanText.worth(shown)?.let {
+                    Text(text = it, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+                }
+                Text(
+                    text = "Plus a small network fee, paid in SOL.",
+                    style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
+                )
+                Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(HeylanaTokens.SPACE_2_DP.dp)) {
+                GlassButton(
+                    text = if (paying) "Paying\u2026" else "Pay",
+                    primary = true,
+                    enabled = quote != null && !paying,
+                    onClick = {
+                        val shown = quote ?: return@GlassButton
+                        if (quoteExpired(shown)) {
+                            refresh++
+                            line = "The price was refreshed. Check it and tap Pay again."
+                            return@GlassButton
+                        }
+                        paying = true
+                        line = "Approve the payment in Seed Vault."
+                        scope.launch {
+                            val outcome = payment.pay(session, shown) { reference, signature ->
+                                settings.pendingPayment = reference to signature
+                                line = "Sent. Waiting for Solana to confirm it\u2026"
+                            }
+                            paying = false
+                            when (outcome) {
+                                is PayOutcome.Paid -> {
+                                    settings.pendingPayment = null
+                                    onPaid(outcome.standing)
+                                }
+                                is PayOutcome.Stopped -> {
+                                    // A payment that is merely slow stays claimable later.
+                                    if (outcome.problem != WalletProblem.TOOK_TOO_LONG) {
+                                        settings.pendingPayment = null
+                                    }
+                                    line = outcome.problem.words
+                                }
+                            }
+                        }
+                    }
+                )
+                GlassButton(text = "Cancel", enabled = !paying, onClick = onClose)
+            }
+
+            if (line.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
+                Text(text = line, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+            }
+        }
+    }
+}
+
+/** A quote about to lapse is fetched again rather than paid. */
+private fun quoteExpired(quote: Quote): Boolean =
+    runCatching { Instant.parse(quote.expiresAt).toEpochMilli() - System.currentTimeMillis() < QUOTE_MARGIN_MS }
+        .getOrDefault(true)
+
+private const val CURRENCY_USDC = "usdc"
+private const val CURRENCY_SKR = "skr"
+private const val QUOTE_MARGIN_MS = 30_000L
 
 /** The plain-words version of what goes where. Same sentences as onboarding. */
 @Composable

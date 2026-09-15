@@ -29,7 +29,9 @@ data class Quote(
     val tokenProgram: String,
     val treasury: String,
     val reference: String,
-    val expiresAt: String
+    val expiresAt: String,
+    /** The dollar price this amount was worked out from, e.g. "15". */
+    val priceUsd: String? = null
 )
 
 /** A signed-in wallet, as the worker hands it back. */
@@ -86,7 +88,8 @@ class WalletApi(private val settings: HeylanaSettings) {
                 tokenProgram = it.getString("token_program"),
                 treasury = it.getString("treasury"),
                 reference = it.getString("reference"),
-                expiresAt = it.getString("expires_at")
+                expiresAt = it.getString("expires_at"),
+                priceUsd = it.optString("price_usd").ifEmpty { null }
             )
         }
 

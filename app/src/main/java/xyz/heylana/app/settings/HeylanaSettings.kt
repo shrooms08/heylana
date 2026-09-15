@@ -158,6 +158,21 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             if (value == null) walletStore.clear() else walletStore.save(value)
         }
 
+    /**
+     * A payment the wallet sent that the worker had not yet seen confirmed:
+     * (reference, signature). Settings asks about it again when it next opens,
+     * so a slow network cannot cost the user what they paid for.
+     */
+    var pendingPayment: Pair<String, String>?
+        get() = prefs.getString(KEY_PENDING_PAYMENT, null)
+            ?.split(' ')?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
+        set(value) {
+            prefs.edit().apply {
+                if (value == null) remove(KEY_PENDING_PAYMENT)
+                else putString(KEY_PENDING_PAYMENT, "${value.first} ${value.second}")
+            }.apply()
+        }
+
     val hasApiKey: Boolean get() = apiKey != null
 
     /** "sk-ant-…4f2a" — enough to recognise the key, never enough to use it. */
@@ -178,6 +193,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         val VOICES = listOf(VOICE_SKYLAR, VOICE_ARCHIE, VOICE_PHONE)
 
         private const val KEY_DEVICE_ID = "device_id"
+        private const val KEY_PENDING_PAYMENT = "pending_payment"
         private const val KEY_PROXY_URL = "proxy_url"
         private const val KEY_USE_OWN_KEY = "use_own_key"
         private const val KEY_VOICE = "voice"

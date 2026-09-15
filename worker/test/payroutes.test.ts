@@ -100,6 +100,8 @@ test('the smoke-test price of ten cents quotes 0.10 USDC', async () => {
   const { session } = await connected(e)
   const q = await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, session), e)).json()
   assert.equal(q.amount, '100000')
+  assert.equal(q.price_usd, '0.10', 'the app shows what an SKR amount is worth')
+  assert.equal(q.pubkey, undefined)
 })
 
 test('an SKR quote reads decimals from the chain and prices it through Jupiter, rounded up', async () => {

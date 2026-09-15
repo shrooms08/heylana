@@ -763,6 +763,7 @@ function toolContext(env: Env, who: Who) {
     skrMint: env.SKR_MINT,
     cluster: clusterOf(env),
     wallet: who.wallet,
+    treasury: env.TREASURY_ADDRESS,
     now: clock.now,
   }
 }

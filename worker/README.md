@@ -119,6 +119,12 @@ Optionally, `npx wrangler secret put JUPITER_API_KEY` with a free key from
 developers.jup.ag/portal. SKR pricing works without one, at Jupiter's keyless
 rate limit, which is plenty for Heylana.
 
+Optionally, `npx wrangler secret put MAINNET_RPC_URL` with a **mainnet** endpoint.
+Seeker IDs (.skr names) live on mainnet whatever `CLUSTER` says, so while the worker
+runs on devnet this is what lets Heylana resolve them; on mainnet `RPC_URL` is enough.
+If `RPC_URL` is a Helius endpoint, token names come from its DAS API too; any other
+RPC works without them.
+
 **6. Send it up.**
 
 ```

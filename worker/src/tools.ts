@@ -38,6 +38,8 @@ export interface ToolContext {
   cluster: 'mainnet-beta' | 'devnet'
   /** The connected wallet, if the question came with a session. */
   wallet: string | null
+  /** Heylana's own treasury, so it can be named when it turns up. */
+  treasury?: string
   signal?: AbortSignal
   now: () => number
 }
@@ -295,14 +297,17 @@ async function explainAddress(given: unknown, context: ToolContext) {
     const holdings = account ? await tokenHoldings(address, { ...context }) : new Map()
     tokensHeld = [...holdings.values()].filter((holding) => holding.units > 0n).length
   }
-  const label = known?.label ?? (kind === 'token mint' ? await dasName(address, context) : null)
+  const isTreasury = Boolean(context.treasury) && address === context.treasury
+  const label = known?.label ??
+    (isTreasury ? "Heylana's treasury, where Pro payments go" : null) ??
+    (kind === 'token mint' ? await dasName(address, context) : null)
   const parsed = account?.data?.parsed?.info
 
   return {
     address: short(address),
     kind,
     label,
-    well_known: Boolean(known),
+    well_known: Boolean(known) || isTreasury,
     transactions: complete ? list.length : `${SIGNATURE_PAGE} or more`,
     first_seen: oldest ? (complete ? isoDay(oldest) : `before ${isoDay(oldest)}`) : null,
     age_days: oldest && complete ? Math.floor((context.now() / 1000 - oldest) / 86400) : null,

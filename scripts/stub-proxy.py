@@ -42,6 +42,10 @@ REFUSE_LISTEN = "--refuse-listen" in sys.argv
 TALKS_CAP = "--talks-cap" in sys.argv
 #   --devnet      /me names devnet, so the app asks Seed Vault about devnet and greys out SKR
 DEVNET = "--devnet" in sys.argv
+#   --send-reply  /chat proposes sending 0.05 USDC to the stub treasury, and /send/* answer,
+#                 so the confirmation strip can be seen without a model or a wallet
+SEND_REPLY = "--send-reply" in sys.argv
+STUB_SEND_TO = "7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv"
 #   --skr-name N  the first sign-in's profile carries N as the wallet's .skr name
 SKR_NAME = sys.argv[sys.argv.index("--skr-name") + 1] if "--skr-name" in sys.argv else ""
 STUB_JUDGE_CODE = "stub-judge"
@@ -237,6 +241,27 @@ class Stub(BaseHTTPRequestHandler):
         if route == "chat" and TALKS_CAP:
             return self.send_json(429, {"reason": "talks_cap", "plan": "free", "used": 30, "limit": 30,
                                         "resets_at": "2026-10-01T00:00:00.000Z"})
+
+        if route == "chat" and SEND_REPLY:
+            STATE["used"] += 1
+            reply = {"say": "I'll prepare that send.", "point_at": None, "task": None,
+                     "action": {"type": "send", "to": STUB_SEND_TO, "amount": 0.05, "token": "USDC"}}
+            return self.send_json(200, {"content": [{"type": "text", "text": json.dumps(reply)}],
+                                        "usage": {"input_tokens": 0, "output_tokens": 0}})
+
+        if route == "send/prepare":
+            if not self.headers.get("Authorization"):
+                return self.send_json(401, {"reason": "session_required"})
+            return self.send_json(200, {
+                "id": "stubsend", "to_address": body.get("to", STUB_SEND_TO), "resolved_from": None,
+                "amount": str(body.get("amount")), "token": body.get("token", "USDC"),
+                "mint": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", "decimals": 6,
+                "token_program": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+                "fee_estimate": "0.000005", "account_rent": "0", "will_create_ata": False,
+                "balance": "5", "cluster": "devnet"})
+
+        if route == "send/confirm":
+            return self.send_json(200, {"confirmed": True, "signature": "5555…5555"})
 
         if self.path.strip("/") == "chat":
             STATE["used"] += 1

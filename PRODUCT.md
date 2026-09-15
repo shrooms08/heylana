@@ -49,6 +49,16 @@ Exactly what leaves the phone, and where it goes:
 5. **Payments** — Seed Vault signs and sends the transaction itself; Heylana's
    server reads it from the Solana chain to check it.
 6. **A random install id** — to Heylana's server, to count the daily budget.
+7. **Solana lookups, only for Solana questions** — Heylana's server looks things up
+   before answering: your connected wallet's address, and any address or .skr/.sol
+   name in your question or on a signing screen, go to the **Solana RPC provider
+   (Helius)**; token prices come from **Jupiter**; .sol names from **Bonfida's**
+   public resolver. Nothing else from the screen goes to them.
+
+**Heylana prepares, you sign. Always.** Heylana never signs and never sends: every
+transfer is shown in Seed Vault, and only you can approve it there. A recipient only
+ever comes from your own words, never from the screen, and more than a quarter of a
+balance has to be asked for twice.
 
 Never: the screen never goes to Deepgram or Cartesia. No API key is ever stored
 on the phone. What Heylana reads off the screen is used for one request and then
@@ -59,7 +69,7 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; Settings is Compose.
 2. An accessibility service reads the screen only on request and turns it into a numbered text listing.
-3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model and holds every key.
+3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model, holds every key, and for Solana questions runs lookups first (balances, prices, addresses, activity, names, send checks).
 4. The model replies with strict JSON: what to say, which element to point at, and whether this is a multi-step task.
 5. A separate, untouchable window draws the pointer; during a task each step re-reads the screen.
 6. Both Deepgram and the phone's recogniser listen from the long press and the better transcript wins; answers stream back as audio from Cartesia, falling back to the phone's voice.
@@ -88,6 +98,16 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 - **Some apps hand over an empty screen** (Chrome often does). Heylana then answers
   from general knowledge, or says to switch screen reading on.
 - **A payment that confirms after 60 seconds** unlocks Pro the next time Settings opens.
+- **Seed Vault may hide the buddy.** Not yet checked whether Seed Vault's own signing
+  screen allows other apps on top; if it does not, ask on the wallet's confirm screen.
+- **.sol names may not resolve.** Bonfida's public resolver stops answering .sol after a
+  chain milestone until its next release; Heylana says so plainly.
+- **.skr names need a mainnet connection** when the worker runs on devnet
+  (`MAINNET_RPC_URL`).
+- **Addresses are typed or pasted.** Saying a 44-character address aloud does not work;
+  names like bob.skr do.
+- **Task steps do not look things up.** Tools go with questions; a multi-step walk-through
+  uses the screen only.
 
 ## Mainnet switch before submission
 

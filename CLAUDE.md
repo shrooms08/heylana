@@ -39,11 +39,19 @@ xyz.heylana.app
 │   ├── ProPayment           blockhash → build → Seed Vault → ConfirmPoll (60s)
 │   ├── PlanText             every word the Plan card and Go Pro sheet say
 │   ├── WalletProblem        whatever stopped a wallet trip, in plain words
-│   └── Profile              what the wallet is called, what to call its owner, cleanName
+│   ├── Profile              what the wallet is called, what to call its owner, cleanName
+│   ├── SendTransaction      a SOL transfer, or token account + transferChecked, unsigned
+│   ├── SendQuote            a send the worker checked, and the confirmation strip's words
+│   └── SendActivity         invisible; hands a confirmed send to Seed Vault, waits for it to land
 ├── brain/                   talking to the model
 │   ├── ProxyClient          POST /chat through the proxy; says quick or task, never a model
 │   ├── QuotaMessage         the words for talks_cap, daily_cap and an ended session
 │   ├── Greeting             the user's name on the first answer after the buddy starts, never after
+│   ├── SolanaCore           the Solana knowledge block and rules, and when to load them
+│   ├── SolanaApps           Solana apps by package name, each checked against a primary source
+│   ├── Routing              quick or task, and whether Solana knowledge and tools go along
+│   ├── SigningScan          addresses and amounts on a signing screen; is this a signing screen
+│   ├── SendGuard            recipient and amount from the user's own words; the 25% rule
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
 │                            (plus Conversation, the short-term memory)
@@ -172,6 +180,54 @@ answered before any device check or cap, because Seed Vault fetches it with no
 headers. The Mobile Wallet Adapter identity is the built-in worker address with
 icon path `heylana-mark.png` (relative, no leading slash, as the spec asks).
 
+## The Solana brain
+
+**Heylana prepares; the user signs. Always.** Nothing in the app or the worker signs
+or sends a transaction. A send ends in Seed Vault, where only the user can approve it.
+
+**Tools run in the worker, never on the phone.** `/chat` with `tools: true` runs
+Anthropic tool use in `worker/src/brain.ts`: at most 4 lookups and 12 seconds per
+question, then one more round with tools switched off so the model answers with what
+it has. Usage is summed across rounds and logged with `model`, `rounds` and
+`tool_calls`. The tools (`worker/src/tools.ts`) are get_balances, get_price,
+explain_address, recent_activity, resolve_name and prepare_send; their results
+never carry the RPC address, and wallets are shortened to their ends.
+
+**Solana knowledge costs nothing when it is not needed.** `SolanaCore` (about 350
+tokens plus its rules) and the tool definitions go only when the app in front is a
+known Solana app, the question has Solana words, an address or a .skr/.sol name, or
+it routed as a send or explain question. Otherwise the request is byte-for-byte what
+it was: `brain: … solana-core not loaded tools=not sent`.
+
+**Money questions go to the task model.** Signing, wallet and swap screens, and send
+or "what am I signing" questions, route to `task`. "What does this button do" is
+deliberately not an explain question.
+
+**Explain before you sign.** On Seed Vault's screen, a wallet screen that says
+approve/confirm/sign next to an address or amount, or for "what am I signing"
+anywhere, `SigningScan` pulls the addresses (up to 3) and amounts off the screen
+text, the model runs explain_address on each, and answers what the request does,
+who receives what, whether the destination is known, and fine / check the amount /
+do not sign — never "safe". Only the counts are logged.
+
+**Sending.** The model may return `action: {type: "send", to, amount, token}`.
+`SendGuard` drops it unless the recipient and the amount are in the user's own words
+(an address exactly, a name case-free with "dot" allowed; "everything" becomes
+"all"). `/send/prepare` checks it and keeps it 15 minutes; over a quarter of the
+balance is refused until the user says "yes send it all" or the amount again (that
+second turn skips the model). Otherwise the strip reads it aloud with confirm and
+cancel, and nothing settles it away. Confirm opens `SendActivity` — no `noHistory`,
+or it would die when Seed Vault opens — which builds the transfer, has Seed Vault
+sign and send it, and polls `/send/confirm` until the worker sees it land. Send logs
+carry amounts and at most four characters of any address.
+
+**Names.** .skr names are AllDomains records on mainnet, resolved without an SDK in
+`worker/src/names.ts` (one account read), using `MAINNET_RPC_URL` when the worker is
+on devnet. Program-derived addresses need an ed25519 on-curve check, in
+`worker/src/pda.ts`, tested against the token-account vectors the app's payment test
+checked independently. .sol names go to `sdk-proxy-v2.sns.id`, which may report .sol
+as unsupported; Heylana says so rather than guessing.
+
 **Version pins.** Mobile Wallet Adapter clientlib-ktx is 2.1.1 and sol4k 0.7.0:
 the newer releases are built with Kotlin 2.4 and this project's compiler cannot
 read them. The two MWA artifacts share a namespace, which AGP 9 refuses unless
@@ -185,7 +241,7 @@ because those keys are not the user's to hold.
 the whole app can be exercised without spending anything. It also fakes the
 wallet, `/me`, `/judge` (code `stub-judge`) and `/pay/*` routes — without checking
 any signature or reading any chain — and `--talks-cap` makes `/chat` answer
-`429 talks_cap`; `--skr-name <name>` prefills the profile as a .skr lookup would. Never approve a Seed Vault payment against the stub: the wallet
+`429 talks_cap`; `--skr-name <name>` prefills the profile as a .skr lookup would; `--send-reply` makes `/chat` propose sending 0.05 USDC to a fixed treasury address and answers `/send/*`, so the strip can be checked without a model — never tap confirm against it. Never approve a Seed Vault payment against the stub: the wallet
 would send a real transaction to the stub's made-up treasury. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 
@@ -228,7 +284,9 @@ until the reply comes back so the id can be turned into real screen bounds.
 is something to *do*: `goal` restates it in one line and stays word-for-word
 identical across the whole task, `say` describes only the current step, and
 `point_at` is that step's element. `done` flips to true when the screen shows the
-goal is met. A malformed or goal-less task object degrades to an ordinary answer.
+goal is met. A malformed or goal-less task object degrades to an ordinary answer. With Solana
+loaded the reply may also carry `action` (a send); `SendGuard` decides whether
+anything happens.
 
 **Guidance sessions.** A task is stateful. `GuidanceSession` holds the goal, every
 step already given (its spoken text and the label of what it pointed at), and when

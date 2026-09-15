@@ -109,7 +109,9 @@ class MainActivity : ComponentActivity() {
     private fun refreshStatus() {
         checklist.value = Checklist(
             overlay = Settings.canDrawOverlays(this),
-            accessibility = HeylanaAccessibilityService.isEnabled(this),
+            // Ticked only when the service is really running, not merely listed:
+            // after a crash Android keeps it in the list and stops binding it.
+            accessibility = HeylanaAccessibilityService.isRunning(this),
             notifications = notificationsAllowed(),
             microphone = ContextCompat.checkSelfPermission(
                 this,
@@ -179,10 +181,8 @@ private fun SetupScreen(
                 "Heylana reads the screen only when you ask, and watches for your tap " +
                 "only while it is pointing at something.\n\n" +
                 "Your voice goes to Deepgram to be transcribed while you hold the " +
-                "buddy, along with the names of the buttons on your screen so it " +
-                "spells them right. The spoken answer text goes to Cartesia to become " +
-                "speech. Nothing else about your screen goes to either, and no " +
-                "picture of it ever does.",
+                "buddy. The spoken answer text goes to Cartesia to become speech. The " +
+                "screen never goes to either.",
             style = MaterialTheme.typography.bodyMedium
         )
 
@@ -203,7 +203,8 @@ private fun SetupScreen(
             instructions = listOf(
                 "1. Find Heylana under Downloaded apps or Installed apps.",
                 "2. Tap Heylana and turn the switch on.",
-                "3. Confirm the dialog, then come back here."
+                "3. Confirm the dialog, then come back here.",
+                "Already on but still not ticked? Turn it off and on again."
             )
         )
 

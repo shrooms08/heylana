@@ -305,15 +305,10 @@ class BuddyOverlayService : Service() {
         view.stopLooking()
         endSession(clearBox = false)
 
-        if (!HeylanaAccessibilityService.isConnected) {
-            exchange.over()
-            view.showNotice(
-                "I can't read this screen yet. Open Heylana and switch on its accessibility " +
-                    "service, then ask me again."
-            )
-            return
-        }
-
+        // A plain question is never refused for want of a screen. With screen
+        // reading off the question still goes, with an empty listing that says
+        // why, and the model answers from general knowledge — or, if the question
+        // really was about the screen, tells them to switch screen reading on.
         view.showThinking()
         // The keyboard squeezes the app underneath, which hides whatever sits at the
         // bottom of it — often the very button the answer is about. Drop it and let
@@ -329,7 +324,10 @@ class BuddyOverlayService : Service() {
             // something is subscribed to its events, which Heylana deliberately
             // is not. The model is told the screen was unreadable and answers
             // from general knowledge. A task step is different: see advance().
-            val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: ScreenSnapshot.empty()
+            val reading = HeylanaAccessibilityService.isConnected
+            HeylanaLog.state("ask: screen reading connected=$reading")
+            val snapshot = HeylanaAccessibilityService.snapshotOrNull()
+                ?: ScreenSnapshot.empty(readingOff = !reading)
 
             val screenText = snapshot.toPromptText()
             logScreenSize(snapshot, screenText)
@@ -400,6 +398,11 @@ class BuddyOverlayService : Service() {
     }
 
     private fun readScreen(view: BuddyOverlayView): ScreenSnapshot? {
+        if (!HeylanaAccessibilityService.isConnected) {
+            exchange.over()
+            view.showNotice(SCREEN_READING_OFF)
+            return null
+        }
         val snapshot = HeylanaAccessibilityService.snapshotOrNull()
         if (snapshot == null || snapshot.isEmpty) {
             exchange.over()
@@ -695,12 +698,13 @@ class BuddyOverlayService : Service() {
         earsChoice = FallbackWindow(FallbackWindow.EARS_MS)
         earsAskedAt = SystemClock.uptimeMillis()
 
+        // DeepgramEars hands every report back on the main thread itself.
         val deepgram = DeepgramEars(
             proxy = Proxy(settings),
             scope = scope,
-            callbacks = earCallbacks,
-            onReady = { main.post { deepgramReady() } },
-            onUnavailable = { reason -> main.post { fallBackToPhoneEars(reason) } }
+            heard = earCallbacks,
+            ready = { deepgramReady() },
+            unavailable = { reason -> fallBackToPhoneEars(reason) }
         )
         cloudEars = deepgram
         deepgram.prepare(earsKeyterms)
@@ -954,6 +958,11 @@ class BuddyOverlayService : Service() {
             "your tap only while it is pointing at something"
 
         private const val STOPPED_LINE = "Okay, stopping here."
+
+        /** Only for a task step, and only when screen reading really is off. */
+        private const val SCREEN_READING_OFF =
+            "I can't read this screen yet. Open Heylana and switch on its accessibility " +
+                "service, then ask me again."
 
         private const val STUCK_LINE =
             "Looks like that didn't work. Try tapping it again, or tell me what you see."

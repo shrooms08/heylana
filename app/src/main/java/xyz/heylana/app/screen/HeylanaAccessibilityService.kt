@@ -306,6 +306,21 @@ class HeylanaAccessibilityService : AccessibilityService() {
         /** True while anything at all is being listened for. */
         val isWatching: Boolean get() = watcher != null || tapWatcher != null
 
+        /**
+         * True only when screen reading actually works: listed, the master
+         * accessibility switch on, and the service bound into this process.
+         *
+         * Being listed is not enough. When the app crashes with the service
+         * bound, Android moves it to its crashed list and stops binding it, but
+         * leaves the name in the setting — so a check on the name alone says
+         * "on" while every screen read fails.
+         */
+        fun isRunning(context: Context): Boolean =
+            isEnabled(context) && masterSwitchOn(context) && isConnected
+
+        private fun masterSwitchOn(context: Context): Boolean =
+            Settings.Secure.getInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0) == 1
+
         /** True if the user has switched Heylana on in Accessibility settings. */
         fun isEnabled(context: Context): Boolean {
             val enabled = Settings.Secure.getString(

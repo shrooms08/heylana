@@ -44,10 +44,36 @@ import kotlin.math.min
 class DeepgramEars(
     private val proxy: Proxy,
     private val scope: CoroutineScope,
-    private val callbacks: EarCallbacks,
-    private val onReady: () -> Unit,
-    private val onUnavailable: (String) -> Unit
+    heard: EarCallbacks,
+    ready: () -> Unit,
+    unavailable: (String) -> Unit
 ) : Ears {
+
+    /**
+     * Every report goes back on the main thread, whoever produced it.
+     *
+     * The socket reads on OkHttp's thread and the microphone on an IO thread,
+     * and the callbacks end up in views. Calling them straight from there
+     * started an animation off the main thread, which Android answers by killing
+     * the whole app — and a crash with the accessibility service bound in the
+     * same process leaves Android refusing to bind it again, so the buddy then
+     * says it cannot read the screen with the setting still switched on.
+     */
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
+
+    private fun onMain(block: () -> Unit) {
+        if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper()) block() else main.post(block)
+    }
+
+    private val callbacks = EarCallbacks(
+        onPartial = { text -> onMain { heard.onPartial(text) } },
+        onFinal = { text -> onMain { heard.onFinal(text) } },
+        onProblem = { message -> onMain { heard.onProblem(message) } },
+        onNothingHeard = { onMain { heard.onNothingHeard() } },
+        onLevel = { level -> onMain { heard.onLevel(level) } }
+    )
+    private val onReady: () -> Unit = { onMain(ready) }
+    private val onUnavailable: (String) -> Unit = { reason -> onMain { unavailable(reason) } }
 
     /** How far along getting ready to listen has got. */
     enum class Stage { IDLE, TOKEN, SOCKET, READY, FAILED }

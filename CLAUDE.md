@@ -105,8 +105,9 @@ because those keys are not the user's to hold.
 the whole app can be exercised without spending anything. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 
-**Falling back is normal, and it is silent.** Deepgram gets 800ms to produce a
-key, a socket and a microphone; Cartesia gets 1500ms to produce a first byte.
+**Falling back is normal, and it is silent.** Deepgram gets 2500ms from the first
+touch of the disc to produce a key, a socket and a microphone; Cartesia gets
+1500ms to produce a first byte.
 Miss that and the phone's own recogniser or voice takes over without the user
 being told, because a buddy that answers in a plain voice beats one that says
 nothing. `FallbackWindow` holds the rule; the trace says `ears=deepgram|android`
@@ -114,11 +115,11 @@ and `voice=cartesia|android`.
 
 **What goes where, in the words the app uses.** Heylana reads the screen only
 when you ask, and watches for your tap only while it is pointing at something.
-Your voice goes to Deepgram while you hold the buddy, along with the names of the
-buttons on screen so it spells them right. The spoken answer text goes to
-Cartesia. Nothing else about the screen goes to either. **Keep that copy and the
-code saying the same thing** — if the keyterms ever carry more than labels, the
-sentence changes with them.
+Your voice goes to Deepgram to be transcribed while you hold the buddy. The
+spoken answer text goes to Cartesia to become speech. The screen never goes to
+either. **Keep that copy and the code saying the same thing** — the keyterms sent
+to Deepgram are the fixed word list only, and if screen labels are ever added to
+them the sentence has to change with them.
 
 ## How the pieces talk to each other
 
@@ -231,6 +232,28 @@ answer.
 docked, compose and HUD layouts detaches the view, which cancels any running
 cross-fade part way. The owner calls `refreshState()` after every re-parent
 rather than trusting the attach callbacks to have fired in a useful order.
+
+**A plain question is never refused for want of a screen.** If screen reading is
+off, or the tree comes back empty (Chrome, and Heylana's own screens, often hand
+over nothing), the question still goes with an empty listing. When the service is
+genuinely off that listing says so, and the model answers from general knowledge
+or tells the user to switch screen reading on if the question needed the screen.
+Only a task step — which cannot work without a screen — refuses outright, and only
+when the service really is not running.
+
+**Enabled is not running.** Android keeps a service's name in the accessibility
+setting after the app crashes with that service bound, and simply stops binding
+it. So "is Heylana in the list" is the wrong question: onboarding ticks the row
+only when the name is listed, the master switch is on and the service is bound,
+and `scripts/a11y.sh` empties the list before writing it back — writing the same
+value changes nothing — then waits until the service is actually bound.
+
+**Nothing that touches a view runs off the main thread.** The socket reads on
+OkHttp's thread and the microphone on an IO thread. Anything they report is handed
+back to the main thread before it reaches the overlay. Starting an animation from
+the wrong thread does not glitch — Android kills the app, and because the
+accessibility service lives in the same process, it takes screen reading down with
+it until someone switches it off and on again.
 
 **Reading the screen.** The snapshot is taken after the keyboard is dismissed and
 the app underneath has been given a moment to lay itself out again. With the

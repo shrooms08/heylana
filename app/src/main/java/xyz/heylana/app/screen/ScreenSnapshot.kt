@@ -67,7 +67,9 @@ data class ScreenSnapshot(
     val packageName: String,
     val appLabel: String?,
     val nodes: List<ScreenNode>,
-    val truncated: Boolean
+    val truncated: Boolean,
+    /** True when the listing is empty because screen reading is switched off. */
+    val readingOff: Boolean = false
 ) {
 
     val isEmpty: Boolean get() = nodes.isEmpty()
@@ -100,7 +102,7 @@ data class ScreenSnapshot(
         append(packageName)
         append(")\n")
         if (nodes.isEmpty()) {
-            append("(nothing readable on screen)")
+            append(if (readingOff) READING_OFF_LINE else "(nothing readable on screen)")
             return@buildString
         }
         for (node in nodes) {
@@ -124,7 +126,17 @@ data class ScreenSnapshot(
         private const val INDENT = " "
         private const val MAX_INDENT = 6
 
-        fun empty(packageName: String = "unknown") =
-            ScreenSnapshot(packageName, null, emptyList(), false)
+        /**
+         * Told to the model in place of a listing when screen reading is off, so
+         * a general question is answered and a screen question gets the one line
+         * that fixes it — rather than the app refusing both.
+         */
+        const val READING_OFF_LINE =
+            "(screen reading is switched off. Answer from general knowledge; if the " +
+                "question needs the screen, say to switch on Heylana's screen reading in " +
+                "Accessibility settings.)"
+
+        fun empty(packageName: String = "unknown", readingOff: Boolean = false) =
+            ScreenSnapshot(packageName, null, emptyList(), false, readingOff)
     }
 }

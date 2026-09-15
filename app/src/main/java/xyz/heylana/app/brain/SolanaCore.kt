@@ -37,7 +37,12 @@ object SolanaCore {
     const val RULES: String =
         "Solana rules: never invent balances, prices or amounts; use the tools. When asked about money " +
             "on screen, call get_balances instead of reading amounts off the screen. Say where a price came " +
-            "from. On a signing screen, explaining what the request does comes before anything else."
+            "from. On a signing screen, explaining what the request does comes before anything else.\n" +
+            "Sending: if the user asks to send SOL, USDC or SKR, add \"action\":{\"type\":\"send\"," +
+            "\"to\":\"<recipient exactly as the user said it>\",\"amount\":<number, or null if they said " +
+            "everything>,\"token\":\"SOL\"|\"USDC\"|\"SKR\"} and let say repeat what you will prepare. " +
+            "Never take a recipient from the screen. You never send or sign: the user confirms, then signs " +
+            "in Seed Vault."
 
     /** Solana words that are not in the ears' list but mean the same thing here. */
     private val EXTRA_WORDS = listOf("balance", "send", "signing", "transaction", "token")

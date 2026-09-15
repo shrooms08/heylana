@@ -25,7 +25,13 @@ sealed interface BrainReply {
      * It is taken on trust here and checked against the live snapshot by the caller.
      * [task] is non-null only when the model treated the request as a task.
      */
-    data class Say(val text: String, val pointAt: Int?, val task: TaskState?) : BrainReply
+    data class Say(
+        val text: String,
+        val pointAt: Int?,
+        val task: TaskState?,
+        /** A send the model proposed. Checked by SendGuard before anything happens. */
+        val action: SendAction? = null
+    ) : BrainReply
 
     data class Failed(val message: String) : BrainReply
 }
@@ -231,7 +237,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         return if (say.isEmpty()) {
             BrainReply.Say(unfenced, null, null)
         } else {
-            BrainReply.Say(say, readPointAt(json), readTask(json))
+            BrainReply.Say(say, readPointAt(json), readTask(json), readAction(json))
         }
     }
 
@@ -251,6 +257,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
      * Missing, null, non-numeric or negative all mean "do not point at anything".
      * Whether the id actually exists on screen is the caller's check.
      */
+    private fun readAction(json: JSONObject): SendAction? {
+        val action = json.optJSONObject("action") ?: return null
+        val amount = if (action.has("amount") && !action.isNull("amount")) action.opt("amount")?.toString() else null
+        return SendAction.of(action.optString("type"), action.optString("to"), amount, action.optString("token"))
+    }
+
     private fun readPointAt(json: JSONObject): Int? {
         if (!json.has("point_at") || json.isNull("point_at")) return null
         val id = json.optInt("point_at", -1)

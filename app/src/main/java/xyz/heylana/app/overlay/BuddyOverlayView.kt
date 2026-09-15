@@ -91,6 +91,12 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     /** The user ended a task early. */
     var onDone: (() -> Unit)? = null
 
+    /** The user confirmed the send on the strip. */
+    var onConfirmSend: (() -> Unit)? = null
+
+    /** The user cancelled the send on the strip. */
+    var onCancelSend: (() -> Unit)? = null
+
     /**
      * The full-screen layer the disc flies across. Moving a window every frame
      * is not GPU animated and stutters; a view translation on a layer that is
@@ -202,6 +208,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         panel.onMuteToggled = { muted -> onMuteToggled?.invoke(muted) }
         panel.onNext = { onNext?.invoke() }
         panel.onDone = { onDone?.invoke() }
+        panel.onConfirm = { onConfirmSend?.invoke() }
+        panel.onCancel = { onCancelSend?.invoke() }
         panel.onInputTapped = { takeFocusForTyping() }
         panel.onStripTapped = {
             panel.morphTo(ChatPanelView.Shape.BOX) {
@@ -361,6 +369,26 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     fun hideSession() {
         panel.hideSession()
+        applyPosition()
+    }
+
+    /**
+     * The confirmation strip for a send: what will be sent, to whom, the fee, and
+     * confirm or cancel. It stays until one of them is tapped.
+     */
+    fun showSendConfirm(text: String) {
+        panel.showNotice(text)
+        ensurePanelOpen()
+        if (mode == Mode.COMPOSE && panel.shape == ChatPanelView.Shape.BOX) {
+            panel.releaseInput()
+            panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
+        }
+        panel.showConfirm()
+        applyPosition()
+    }
+
+    fun hideSendConfirm() {
+        panel.hideConfirm()
         applyPosition()
     }
 

@@ -141,6 +141,12 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     /** Called when the user ends a task early. */
     var onDone: (() -> Unit)? = null
 
+    /** Called when the user confirms the send on the strip. */
+    var onConfirm: (() -> Unit)? = null
+
+    /** Called when the user cancels the send on the strip. */
+    var onCancel: (() -> Unit)? = null
+
     /** Called when the user taps the question field, so the window can take focus. */
     var onInputTapped: (() -> Unit)? = null
 
@@ -160,6 +166,10 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     private val stepChip = TextView(context)
     private val next = TextView(context)
     private val done = TextView(context)
+
+    private val confirmRow = LinearLayout(context)
+    private val confirm = TextView(context)
+    private val cancel = TextView(context)
 
     /** The width the box takes when it rides beside the buddy as a task HUD. */
     val hudWidth = dp(264f)
@@ -246,6 +256,29 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         )
         addView(
             sessionRow,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(HeylanaTokens.SPACE_3_DP)
+            }
+        )
+
+        // ---------------------------------------------------- send confirm
+        // Outside the shapes on purpose: it stays until confirm or cancel is tapped.
+        confirmRow.apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            visibility = View.GONE
+        }
+        stylePill(cancel, "cancel", HeylanaTokens.textSecondary) { onCancel?.invoke() }
+        confirmRow.addView(cancel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+        stylePill(confirm, "confirm", HeylanaTokens.textPrimary) { onConfirm?.invoke() }
+        confirmRow.addView(
+            confirm,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(HeylanaTokens.SPACE_2_DP)
+            }
+        )
+        addView(
+            confirmRow,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(HeylanaTokens.SPACE_3_DP)
             }
@@ -360,6 +393,14 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             HeylanaTokens.bandPrimary
         )
         done.background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
+            HeylanaTokens.purpleBand
+        )
+        confirm.background = GlassDrawable(
+            context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
+            HeylanaTokens.bandPrimary
+        )
+        cancel.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
             HeylanaTokens.purpleBand
         )
@@ -504,6 +545,8 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         ask.alpha = if (enabled) 1f else 0.5f
         next.isEnabled = enabled
         next.alpha = if (enabled) 1f else 0.5f
+        confirm.isEnabled = enabled
+        confirm.alpha = if (enabled) 1f else 0.5f
         input.isEnabled = enabled
     }
 
@@ -573,6 +616,16 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     fun hideSession() {
         morphTo(Shape.STRIP)
+    }
+
+    /** Shows confirm and cancel under whatever the answer line says. */
+    fun showConfirm() {
+        confirmRow.visibility = View.VISIBLE
+        enable(true)
+    }
+
+    fun hideConfirm() {
+        confirmRow.visibility = View.GONE
     }
 
     /**

@@ -44,7 +44,7 @@ sealed interface Answer<out T> {
     data class Ok<T>(val value: T) : Answer<T>
 
     /** The worker answered, and the answer was no. [reason] is its one-word code. */
-    data class Refused(val code: Int, val reason: String) : Answer<Nothing>
+    data class Refused(val code: Int, val reason: String, val detail: String = "") : Answer<Nothing>
 
     /** The worker could not be reached. */
     data class Unreachable(val cause: String) : Answer<Nothing>
@@ -122,7 +122,7 @@ class WalletApi(private val settings: HeylanaSettings) {
                     val text = response.body.string()
                     val json = runCatching { JSONObject(text) }.getOrNull() ?: JSONObject()
                     if (!response.isSuccessful) {
-                        Answer.Refused(response.code, json.optString("reason").ifEmpty { "error" })
+                        Answer.Refused(response.code, json.optString("reason").ifEmpty { "error" }, json.optString("detail"))
                     } else {
                         Answer.Ok(read(json))
                     }
@@ -133,6 +133,30 @@ class WalletApi(private val settings: HeylanaSettings) {
                 Answer.Unreachable("bad_reply")
             }
         }
+
+    /** Has the worker check a send; [amount] is a plain decimal, or "all". Nothing is built or signed. */
+    suspend fun prepareSend(to: String, amount: String, token: String): Answer<SendQuote> =
+        post("send/prepare", JSONObject().put("to", to).put("amount", amount).put("token", token)) {
+            SendQuote(
+                id = it.getString("id"),
+                toAddress = it.getString("to_address"),
+                resolvedFrom = it.optString("resolved_from").takeIf { name -> name.isNotEmpty() && name != "null" },
+                amount = it.getString("amount"),
+                token = it.getString("token"),
+                mint = it.optString("mint").takeIf { mint -> mint.isNotEmpty() && mint != "null" },
+                decimals = it.getInt("decimals"),
+                tokenProgram = it.optString("token_program").takeIf { p -> p.isNotEmpty() && p != "null" },
+                feeEstimate = it.optString("fee_estimate"),
+                accountRent = it.optString("account_rent", "0"),
+                willCreateAta = it.optBoolean("will_create_ata"),
+                balance = it.optString("balance").takeIf { b -> b.isNotEmpty() && b != "null" },
+                cluster = Cluster.fromWorker(it.optString("cluster").ifEmpty { null })
+            )
+        }
+
+    /** Answers Refused(409, "not_confirmed") until the send has landed; then its short signature. */
+    suspend fun confirmSend(id: String, signature: String): Answer<String> =
+        post("send/confirm", JSONObject().put("id", id).put("signature", signature)) { it.optString("signature") }
 
     private fun profileOf(json: JSONObject) = Profile(
         name = json.optString("name"),

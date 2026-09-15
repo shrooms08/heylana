@@ -17,6 +17,9 @@ import { isAddress } from './base58.ts'
 import { challengeMessage, randomNonce, readSession, signSession, verifySignature } from './session.ts'
 import { MARK_PATH, markResponse } from './mark.ts'
 import { answerWithTools } from './brain.ts'
+import { prepareSend } from './tools.ts'
+import { checkSend, type PreparedSend } from './send.ts'
+import { short } from './solana.ts'
 import {
   type Account, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, spendTalk, standing,
 } from './plans.ts'
@@ -94,6 +97,9 @@ const DAILY_CAPS: Record<string, number> = {
   // Confirming polls for up to a minute, so it is allowed plenty.
   'pay/confirm': 300,
   profile: 200,
+  'send/prepare': 50,
+  // Confirming polls while the chain catches up.
+  'send/confirm': 200,
 }
 
 /** Every route the worker answers, and the methods each takes. */
@@ -109,6 +115,8 @@ const ROUTES: Record<string, readonly string[]> = {
   'pay/blockhash': ['POST'],
   'pay/confirm': ['POST'],
   profile: ['GET', 'PUT'],
+  'send/prepare': ['POST'],
+  'send/confirm': ['POST'],
 }
 
 /** Who is asking: always a device, and a wallet once one has been connected. */
@@ -201,6 +209,8 @@ export default {
       if (route === 'pay/blockhash') return await payBlockhash(request, env, who)
       if (route === 'pay/confirm') return await payConfirm(request, env, who)
       if (route === 'profile') return await profile(request, env, who)
+      if (route === 'send/prepare') return await sendPrepare(request, env, who)
+      if (route === 'send/confirm') return await sendConfirm(request, env, who)
       return await me(env, who)
     } catch (error) {
       // Whatever went wrong, the reply is a shape the app understands and
@@ -681,6 +691,66 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
 /** Which Solana payments are taken on. Mainnet unless the var says devnet. */
 export function clusterOf(env: Env): 'mainnet-beta' | 'devnet' {
   return env.CLUSTER === 'devnet' ? 'devnet' : 'mainnet-beta'
+}
+
+// -------------------------------------------------------------------- sending
+
+/** A prepared send is good for fifteen minutes: long enough to read, confirm and sign. */
+const SEND_TTL_SECONDS = 900
+
+/**
+ * Checks a send the user asked for. Builds and signs nothing: the phone builds
+ * the transfer and the user signs it in Seed Vault. Logs amounts, never more
+ * than the first four characters of an address.
+ */
+async function sendPrepare(request: Request, env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
+  if (!env.RPC_URL) return fail(503, 'not_configured', 'Sending is not set up.')
+  const body = await readJson(request)
+  const token = String(body.token ?? '').toUpperCase()
+  const quote = await prepareSend({ to: body.to, amount: body.amount, token: body.token }, toolContext(env, who))
+  if ('error' in quote) {
+    log({ route: 'send/prepare', device: who.device, wallet: who.wallet.slice(0, 4), token, amount: String(body.amount ?? ''), refused: quote.error })
+    return json(422, { reason: quote.error, detail: quote.detail ?? '' })
+  }
+  const id = newReference()
+  const prepared: PreparedSend = { ...quote, from: who.wallet }
+  await env.CAPS.put(`send:${id}`, JSON.stringify(prepared), { expirationTtl: SEND_TTL_SECONDS })
+  log({
+    route: 'send/prepare', device: who.device, wallet: who.wallet.slice(0, 4), to: quote.to_address.slice(0, 4),
+    token: quote.token, amount: quote.amount, new_account: quote.will_create_ata,
+  })
+  return json(200, { id, ...quote })
+}
+
+/** The user signed; did it land as prepared? 409 while it is not confirmed yet. */
+async function sendConfirm(request: Request, env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
+  const body = await readJson(request)
+  const id = String(body.id ?? '')
+  const signature = String(body.signature ?? '')
+  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) return fail(400, 'bad_signature', 'That is not a transaction signature.')
+
+  const stored = await env.CAPS.get(`send:${id}`)
+  if (!stored) return fail(404, 'unknown_send', 'That send has expired. Ask again.')
+  const sent = JSON.parse(stored) as PreparedSend
+  if (sent.from !== who.wallet) return fail(403, 'not_yours', 'That send belongs to another wallet.')
+  if (await env.CAPS.get(`sent:${id}`)) return json(200, { confirmed: true, signature: short(signature), already_confirmed: true })
+
+  const tx = await rpc(env.RPC_URL, 'getTransaction', [
+    signature,
+    { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+  ])
+  const verdict = checkSend(tx, sent)
+  const logged = { route: 'send/confirm', device: who.device, wallet: who.wallet.slice(0, 4), to: sent.to_address.slice(0, 4), token: sent.token, amount: sent.amount }
+  if (!verdict.ok) {
+    log({ ...logged, confirmed: false, reason: verdict.reason })
+    if (verdict.reason === 'not_confirmed') return json(409, { reason: 'not_confirmed' })
+    return json(402, { reason: verdict.reason })
+  }
+  await env.CAPS.put(`sent:${id}`, signature, { expirationTtl: SEND_TTL_SECONDS })
+  log({ ...logged, confirmed: true })
+  return json(200, { confirmed: true, signature: short(signature) })
 }
 
 /** What the tools may use: the cluster's RPC, prices, the mints, and whose wallet. */

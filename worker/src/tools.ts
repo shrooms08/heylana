@@ -468,8 +468,13 @@ export async function prepareSend(input: any, context: ToolContext): Promise<Sen
   if (token !== 'SOL' && token !== 'USDC' && token !== 'SKR') {
     return { error: 'bad_token', detail: 'Heylana can send SOL, USDC or SKR.' }
   }
-  const asked = Number(input?.amount)
-  if (!Number.isFinite(asked) || asked <= 0) return { error: 'bad_amount', detail: 'The amount has to be more than zero.' }
+  // "all" comes only from the app's send route, when the user said everything.
+  const all = input?.amount === 'all'
+  const asked = all ? 0 : Number(input?.amount)
+  if (!all && (!Number.isFinite(asked) || asked <= 0)) return { error: 'bad_amount', detail: 'The amount has to be more than zero.' }
+  if (all && token === 'SOL') {
+    return { error: 'sol_all', detail: 'Some SOL has to stay behind to pay the fee, so say an amount.' }
+  }
 
   const target = String(input?.to ?? '').trim()
   let toAddress: string
@@ -500,12 +505,21 @@ export async function prepareSend(input: any, context: ToolContext): Promise<Sen
     program = info.program
   }
 
-  const units = decimalToUnits(asked.toFixed(decimals), decimals)
-  if (units <= 0n) return { error: 'bad_amount', detail: 'That amount is smaller than the token allows.' }
+  let known: string | null = null
+  let units: bigint
+  if (all) {
+    if (!context.wallet) return { error: 'no_wallet', detail: 'No wallet is connected. Connect one in Heylana Settings.' }
+    known = await balanceOf(context.wallet, mint, decimals, context)
+    units = decimalToUnits(known, decimals)
+    if (units <= 0n) return { error: 'bad_amount', detail: `There is no ${token} to send.` }
+  } else {
+    units = decimalToUnits(asked.toFixed(decimals), decimals)
+    if (units <= 0n) return { error: 'bad_amount', detail: 'That amount is smaller than the token allows.' }
+  }
 
   const [recipientAccounts, balance, rent] = await Promise.all([
     mint ? rpcCall(context.rpcUrl, 'getTokenAccountsByOwner', [toAddress, { mint }, { encoding: 'jsonParsed' }], context.signal) : null,
-    context.wallet ? balanceOf(context.wallet, mint, decimals, context) : null,
+    known ?? (context.wallet ? balanceOf(context.wallet, mint, decimals, context) : null),
     mint
       ? rpcCall(context.rpcUrl, 'getMinimumBalanceForRentExemption', [program === TOKEN_2022_PROGRAM ? TOKEN_2022_ACCOUNT_SIZE : TOKEN_ACCOUNT_SIZE], context.signal)
       : null,

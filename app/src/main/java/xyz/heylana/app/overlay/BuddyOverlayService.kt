@@ -35,6 +35,16 @@ import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.Greeting
 import xyz.heylana.app.brain.Routing
+import xyz.heylana.app.brain.SendAction
+import xyz.heylana.app.brain.SendGuard
+import xyz.heylana.app.wallet.Answer
+import xyz.heylana.app.wallet.SendActivity
+import xyz.heylana.app.wallet.SendQuote
+import xyz.heylana.app.wallet.SendRelay
+import xyz.heylana.app.wallet.SendResult
+import xyz.heylana.app.wallet.SendText
+import xyz.heylana.app.wallet.WalletApi
+import xyz.heylana.app.wallet.WalletProblem
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
@@ -94,6 +104,16 @@ class BuddyOverlayService : Service() {
     /** Says their name on the first answer; a new buddy is a new one of these. */
     private val greeting = Greeting()
 
+    /** A send on the confirmation strip, waiting for confirm or cancel. Nothing settles it away. */
+    private var awaitingConfirm: SendQuote? = null
+
+    /** A send over a quarter of the balance, waiting for the user to say it again. */
+    private var overLimit: PendingSend? = null
+
+    private data class PendingSend(val quote: SendQuote, val at: Long)
+
+    private val walletApi by lazy { WalletApi(settings) }
+
     private val main = Handler(Looper.getMainLooper())
 
     /** What the user has going on, and therefore what may not be torn down. */
@@ -121,6 +141,10 @@ class BuddyOverlayService : Service() {
         // Whatever booked this, the user has since started something else.
         if (!exchange.maySettle) {
             HeylanaLog.state("settle: skipped, ${exchange.phase}")
+            return@Runnable
+        }
+        if (awaitingConfirm != null) {
+            HeylanaLog.state("settle: skipped, a send is waiting to be confirmed")
             return@Runnable
         }
         HeylanaLog.state("settle: run")
@@ -340,8 +364,14 @@ class BuddyOverlayService : Service() {
             }
             view.onNext = { advance(userAsked = true) }
             view.onDone = { stopSessionOnRequest() }
+            view.onConfirmSend = { confirmSend() }
+            view.onCancelSend = { cancelSend() }
             view.onPanelClosed = {
                 HeylanaLog.state("panel: closed")
+                if (awaitingConfirm != null) {
+                    awaitingConfirm = null
+                    HeylanaLog.state("send: cancelled, panel closed")
+                }
                 mouth?.stop()
                 stopTapWatch()
                 highlight?.hide()
@@ -377,6 +407,11 @@ class BuddyOverlayService : Service() {
         highlight?.hide()
         view.stopLooking()
         endSession(clearBox = false)
+        if (awaitingConfirm != null) {
+            awaitingConfirm = null
+            view.hideSendConfirm()
+            HeylanaLog.state("send: dropped, a new question came")
+        }
 
         // A plain question is never refused for want of a screen. With screen
         // reading off the question still goes, with an empty listing that says
@@ -406,6 +441,20 @@ class BuddyOverlayService : Service() {
             logScreenSize(snapshot, screenText)
 
             val memory = conversation.asPromptText(snapshot.packageName)
+            // The second turn of a send over a quarter of the balance: said again, it
+            // goes to the strip without asking the model anything.
+            val waiting = overLimit
+            overLimit = null
+            if (waiting != null && System.currentTimeMillis() - waiting.at < SendGuard.PENDING_MS &&
+                SendGuard.confirmsPending(question, waiting.quote.amount)
+            ) {
+                exchange.over()
+                view.endVoiceExchange()
+                HeylanaLog.state("send: over a quarter, said again amount=${waiting.quote.amount}")
+                showSendStrip(waiting.quote)
+                return@launch
+            }
+
             val route = Routing.forQuestion(snapshot.packageName, question, screenText)
             val reply = brain.ask(question, screenText, memory, greeting.lineFor(settings.callMe), route)
             // The answer is here: from now on settling back to idle is allowed.
@@ -416,6 +465,12 @@ class BuddyOverlayService : Service() {
                     // The capsule goes as the answer lands, whichever way it
                     // was asked for.
                     view.endVoiceExchange()
+                    val action = reply.action
+                    if (action != null) {
+                        conversation.record(question, reply.text, snapshot.packageName)
+                        handleSend(action, question)
+                        return@launch
+                    }
                     val task = reply.task
                     if (task != null && !task.done) {
                         startSession(task.goal, reply, snapshot)
@@ -431,6 +486,103 @@ class BuddyOverlayService : Service() {
                 }
             }
         }
+    }
+
+    // ------------------------------------------------------------------ sending
+
+    /**
+     * The model proposed a send. Heylana prepares it; the user signs it — always.
+     * The recipient and the amount must be in the user's own words, the worker
+     * checks the rest, and the strip says what will happen before anything does.
+     */
+    private fun handleSend(action: SendAction, question: String) {
+        HeylanaLog.state(
+            "send: attempt token=${action.token} amount=${action.amount?.toPlainString() ?: "all"} " +
+                "to=${action.to.take(4)}"
+        )
+        val verdict = SendGuard.check(action, question)
+        if (verdict is SendGuard.Verdict.Refused) {
+            HeylanaLog.state("send: dropped reason=${verdict.reason}")
+            sayLine(verdict.line)
+            return
+        }
+        val allowed = verdict as SendGuard.Verdict.Allowed
+        if (settings.walletSession == null) {
+            sayLine(SendText.NO_WALLET)
+            return
+        }
+        scope.launch {
+            when (val answer = walletApi.prepareSend(allowed.to, allowed.amount, allowed.token)) {
+                is Answer.Ok -> {
+                    val quote = answer.value
+                    if (SendGuard.overLimit(quote.amount, quote.balance)) {
+                        HeylanaLog.state("send: over a quarter of the balance amount=${quote.amount}")
+                        overLimit = PendingSend(quote, System.currentTimeMillis())
+                        sayLine(SendGuard.overLimitLine(quote.token))
+                    } else {
+                        showSendStrip(quote)
+                    }
+                }
+                is Answer.Refused -> {
+                    HeylanaLog.state("send: not prepared reason=${answer.reason}")
+                    sayLine(answer.detail.ifBlank { WalletProblem.fromWorker(answer.reason).words })
+                }
+                is Answer.Unreachable -> sayLine(WalletProblem.UNREACHABLE.words)
+            }
+        }
+    }
+
+    /** "Send 5 USDC to bob.skr (7c2y…ab12). Fee ~0.000005 SOL." — shown, read aloud, and held. */
+    private fun showSendStrip(quote: SendQuote) {
+        val view = overlayView ?: return
+        val text = SendText.strip(quote)
+        awaitingConfirm = quote
+        HeylanaLog.state("send: strip token=${quote.token} amount=${quote.amount} to=${quote.toAddress.take(4)}")
+        view.showSendConfirm(text)
+        speak(text)
+    }
+
+    private fun confirmSend() {
+        val quote = awaitingConfirm ?: return
+        awaitingConfirm = null
+        mouth?.stop()
+        overlayView?.hideSendConfirm()
+        overlayView?.showNotice("Approve it in Seed Vault.")
+        HeylanaLog.state("send: confirmed, opening Seed Vault")
+        SendRelay.listener = { result -> main.post { onSendResult(result) } }
+        startActivity(
+            SendActivity.intentFor(this, quote)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        )
+    }
+
+    private fun cancelSend() {
+        if (awaitingConfirm == null) return
+        awaitingConfirm = null
+        overlayView?.hideSendConfirm()
+        HeylanaLog.state("send: cancelled")
+        sayLine(SendText.CANCELLED)
+    }
+
+    private fun onSendResult(result: SendResult) {
+        SendRelay.listener = null
+        when (result) {
+            is SendResult.Sent -> {
+                HeylanaLog.state("send: landed")
+                sayLine(SendText.sent(result.shortSignature))
+            }
+            is SendResult.Stopped -> {
+                HeylanaLog.state("send: stopped")
+                sayLine(result.line)
+            }
+        }
+    }
+
+    /** One of Heylana's own lines: shown, spoken, then back to rest. */
+    private fun sayLine(line: String) {
+        val view = overlayView ?: return
+        view.showNotice(line)
+        if (!speak(line)) settleSoon()
     }
 
     /** An ordinary answer: say it, point once, let the box time out by itself. */

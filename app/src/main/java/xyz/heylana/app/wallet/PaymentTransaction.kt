@@ -75,7 +75,7 @@ object PaymentTransaction {
         owner: PublicKey,
         amount: Long,
         decimals: Int,
-        reference: PublicKey,
+        reference: PublicKey?,
         tokenProgram: PublicKey
     ): Instruction {
         require(amount > 0) { "amount must be positive" }
@@ -91,9 +91,8 @@ object PaymentTransaction {
                 AccountMeta(source, signer = false, writable = true),
                 AccountMeta(mint, signer = false, writable = false),
                 AccountMeta(destination, signer = false, writable = true),
-                AccountMeta(owner, signer = true, writable = false),
-                AccountMeta(reference, signer = false, writable = false)
-            ),
+                AccountMeta(owner, signer = true, writable = false)
+            ) + listOfNotNull(reference?.let { AccountMeta(it, signer = false, writable = false) }),
             tokenProgram
         )
     }

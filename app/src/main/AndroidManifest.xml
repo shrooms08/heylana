@@ -57,6 +57,14 @@
             android:noHistory="true"
             android:theme="@style/Theme.Heylana.Invisible" />
 
+        <!-- Opens Seed Vault for a send the user confirmed. No noHistory: it has to
+             stay alive while Seed Vault is in front, to get the signature back. -->
+        <activity
+            android:name=".wallet.SendActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.Heylana.Invisible" />
+
         <service
             android:name=".screen.HeylanaAccessibilityService"
             android:exported="true"

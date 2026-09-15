@@ -89,20 +89,22 @@ const DAILY_CAPS: Record<string, number> = {
   'pay/blockhash': 200,
   // Confirming polls for up to a minute, so it is allowed plenty.
   'pay/confirm': 300,
+  profile: 200,
 }
 
-/** Every route the worker answers, and the one method each takes. */
-const ROUTES: Record<string, 'GET' | 'POST'> = {
-  chat: 'POST',
-  tts: 'POST',
-  'stt-token': 'POST',
-  'wallet/challenge': 'POST',
-  'wallet/verify': 'POST',
-  judge: 'POST',
-  me: 'GET',
-  'pay/quote': 'POST',
-  'pay/blockhash': 'POST',
-  'pay/confirm': 'POST',
+/** Every route the worker answers, and the methods each takes. */
+const ROUTES: Record<string, readonly string[]> = {
+  chat: ['POST'],
+  tts: ['POST'],
+  'stt-token': ['POST'],
+  'wallet/challenge': ['POST'],
+  'wallet/verify': ['POST'],
+  judge: ['POST'],
+  me: ['GET'],
+  'pay/quote': ['POST'],
+  'pay/blockhash': ['POST'],
+  'pay/confirm': ['POST'],
+  profile: ['GET', 'PUT'],
 }
 
 /** Who is asking: always a device, and a wallet once one has been connected. */
@@ -150,12 +152,12 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const route = new URL(request.url).pathname.replace(/^\/+|\/+$/g, '')
 
-    const method = ROUTES[route]
-    if (!method) {
+    const methods = ROUTES[route]
+    if (!methods) {
       return fail(404, 'unknown_route', 'No such route.')
     }
-    if (request.method !== method) {
-      return fail(405, 'method', `${method} to this.`)
+    if (!methods.includes(request.method)) {
+      return fail(405, 'method', `${methods.join(' or ')} to this.`)
     }
 
     const device = deviceOf(request)
@@ -186,6 +188,7 @@ export default {
       if (route === 'pay/quote') return await payQuote(request, env, who)
       if (route === 'pay/blockhash') return await payBlockhash(request, env, who)
       if (route === 'pay/confirm') return await payConfirm(request, env, who)
+      if (route === 'profile') return await profile(request, env, who)
       return await me(env, who)
     } catch (error) {
       // Whatever went wrong, the reply is a shape the app understands and
@@ -413,6 +416,11 @@ async function walletVerify(request: Request, env: Env, who: Who): Promise<Respo
   const welcome = grantWelcome(await loadAccount(env, key))
   if (welcome.granted) await saveAccount(env, key, welcome.account)
 
+  // First sign-in starts a profile. Its name would be the wallet's Seeker ID
+  // (.skr), but Solana Mobile documents no public reverse-lookup API — .skr names
+  // are AllDomains accounts read on mainnet — so it starts empty for the user.
+  if (!(await loadProfile(env, pubkey))) await saveProfile(env, pubkey, { name: '', call_me: '' })
+
   const now = new Date(clock.now())
   const session = await signSession(pubkey, env.SESSION_SECRET, now.getTime())
   log({ route: 'wallet/verify', device: who.device, wallet: pubkey.slice(0, 8), welcome: welcome.granted })
@@ -436,6 +444,46 @@ async function judge(request: Request, env: Env, who: Who): Promise<Response> {
   await saveAccount(env, who.key, account)
   log({ route: 'judge', device: who.device, wallet: who.wallet?.slice(0, 8), accepted: true })
   return me(env, who)
+}
+
+/** What a wallet is called, and what Heylana calls its owner. */
+interface Profile {
+  name: string
+  call_me: string
+}
+
+const MAX_NAME = 40
+
+/** One short line of plain text: the name goes into what the model is told. */
+export function cleanName(raw: unknown): string {
+  return String(raw ?? '')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, MAX_NAME)
+    .trim()
+}
+
+async function loadProfile(env: Env, pubkey: string): Promise<Profile | null> {
+  const stored = await env.CAPS.get(`profile:${pubkey}`)
+  return stored ? (JSON.parse(stored) as Profile) : null
+}
+
+async function saveProfile(env: Env, pubkey: string, value: Profile): Promise<void> {
+  await env.CAPS.put(`profile:${pubkey}`, JSON.stringify(value))
+}
+
+/** GET what the wallet is called; PUT what to call them. Never logs the name. */
+async function profile(request: Request, env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
+  const current = (await loadProfile(env, who.wallet)) ?? { name: '', call_me: '' }
+  if (request.method === 'GET') return json(200, current)
+
+  const body = await readJson(request)
+  const updated: Profile = { name: current.name, call_me: cleanName(body.call_me) }
+  await saveProfile(env, who.wallet, updated)
+  log({ route: 'profile', device: who.device, wallet: who.wallet.slice(0, 8), saved: true })
+  return json(200, updated)
 }
 
 /** Where this wallet (or this bare device) stands right now. */

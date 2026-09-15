@@ -64,6 +64,7 @@ import xyz.heylana.app.ui.HeylanaTokens
 import xyz.heylana.app.ui.glassText
 import xyz.heylana.app.wallet.Answer
 import xyz.heylana.app.wallet.Cluster
+import xyz.heylana.app.wallet.MAX_NAME
 import xyz.heylana.app.wallet.SeedVault
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.WalletProblem
@@ -318,6 +319,18 @@ private fun WalletCard(
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var line by remember { mutableStateOf("") }
+    var callMe by remember { mutableStateOf(settings.callMe) }
+    var askName by remember { mutableStateOf(false) }
+
+    // The name lives with the wallet's profile; keep the phone's copy current.
+    LaunchedEffect(session) {
+        if (session == null) return@LaunchedEffect
+        val answer = api.profile()
+        if (answer is Answer.Ok && !askName) {
+            settings.callMe = answer.value.callMe
+            callMe = settings.callMe
+        }
+    }
 
     GlassCard {
         Text(text = "Wallet", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
@@ -341,21 +354,32 @@ private fun WalletCard(
                         line = connect(settings, seedVault, api, cluster) { connected, standing ->
                             onSession(connected)
                             onStanding(standing)
+                            askName = true
                         }
                         busy = false
                     }
                 }
             )
         } else {
-            Text(
-                text = session.shortAddress,
-                style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary)
-            )
+            if (callMe.isNotBlank()) {
+                Text(text = callMe, style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary))
+                Text(
+                    text = session.shortAddress,
+                    style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
+                )
+            } else {
+                Text(
+                    text = session.shortAddress,
+                    style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary)
+                )
+            }
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
             GlassButton(
                 text = "Disconnect",
                 onClick = {
                     settings.walletSession = null
+                    settings.callMe = ""
+                    callMe = ""
                     onSession(null)
                     line = ""
                 }
@@ -365,6 +389,86 @@ private fun WalletCard(
         if (line.isNotEmpty()) {
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
             Text(text = line, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+        }
+    }
+
+    if (askName) {
+        NameSheet(settings = settings, api = api) { chosen ->
+            callMe = chosen
+            askName = false
+        }
+    }
+}
+
+/**
+ * Straight after a wallet connects: what should Heylana call them? One field,
+ * prefilled with what they chose before, else their .skr name, else empty.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NameSheet(settings: HeylanaSettings, api: WalletApi, onDone: (String) -> Unit) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf("") }
+    var ready by remember { mutableStateOf(false) }
+    var saving by remember { mutableStateOf(false) }
+    var line by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        val answer = api.profile()
+        if (answer is Answer.Ok) name = answer.value.suggestion
+        ready = true
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { if (!saving) onDone(settings.callMe) },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color.Transparent,
+        dragHandle = null
+    ) {
+        GlassCard(
+            modifier = Modifier.padding(
+                horizontal = HeylanaTokens.SPACE_4_DP.dp,
+                vertical = HeylanaTokens.SPACE_5_DP.dp
+            )
+        ) {
+            Text(
+                text = "What should I call you?",
+                style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary)
+            )
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.take(MAX_NAME) },
+                label = { Text(text = "Name") },
+                singleLine = true,
+                textStyle = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+            GlassButton(
+                text = if (saving) "Saving\u2026" else "Save",
+                primary = true,
+                enabled = ready && !saving,
+                onClick = {
+                    saving = true
+                    line = ""
+                    scope.launch {
+                        when (val answer = api.saveProfile(name)) {
+                            is Answer.Ok -> {
+                                settings.callMe = answer.value.callMe
+                                onDone(answer.value.callMe)
+                            }
+                            is Answer.Refused -> line = WalletProblem.fromWorker(answer.reason).words
+                            is Answer.Unreachable -> line = WalletProblem.UNREACHABLE.words
+                        }
+                        saving = false
+                    }
+                }
+            )
+            if (line.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
+                Text(text = line, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+            }
         }
     }
 }

@@ -36,9 +36,18 @@ object HeylanaPrompt {
             "When the screen shows the goal is reached, done is true, say confirms it " +
             "briefly, point_at is null."
 
-    /** An ordinary question, with the recent conversation if there is any. */
-    fun userMessage(screenText: String, question: String, history: String? = null): String =
+    /**
+     * An ordinary question, with the recent conversation if there is any, and —
+     * on the first answer after the buddy starts only — the line with their name.
+     */
+    fun userMessage(
+        screenText: String,
+        question: String,
+        history: String? = null,
+        greeting: String? = null
+    ): String =
         buildString {
+            greeting?.let { append(it).append("\n\n") }
             history?.let { append(it).append("\n\n") }
             append("Screen now:\n")
             append(screenText)

@@ -251,3 +251,58 @@ test('a malformed wallet address is refused before anything is stored', async ()
   assert.equal(res.status, 400)
   assert.equal([...kv.values.keys()].filter((k) => k.startsWith('challenge:')).length, 0)
 })
+
+// ------------------------------------------------------------------ profile
+
+async function profileSignIn(e: Env, keys?: CryptoKeyPair) {
+  const pair = keys ?? ((await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify'])) as CryptoKeyPair)
+  const pubkey = encodeBase58(new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)))
+  const challenge = await (await worker.fetch(req('POST', '/wallet/challenge', { pubkey }), e)).json()
+  const signed = await crypto.subtle.sign({ name: 'Ed25519' }, pair.privateKey, new TextEncoder().encode(challenge.message))
+  const signature = encodeBase58(new Uint8Array(signed))
+  const body = await (await worker.fetch(req('POST', '/wallet/verify', { pubkey, nonce: challenge.nonce, signature }), e)).json()
+  return { pair, pubkey, session: body.session as string }
+}
+
+test('the profile needs a wallet session', async () => {
+  const res = await worker.fetch(req('GET', '/profile'), env())
+  assert.equal(res.status, 401)
+  assert.equal((await res.json()).reason, 'session_required')
+})
+
+test('a first sign-in starts an empty profile, asking nothing outside the worker', async () => {
+  const e = env()
+  const { session } = await profileSignIn(e)
+  const res = await worker.fetch(req('GET', '/profile', undefined, session), e)
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), { name: '', call_me: '' })
+  assert.equal(calls.length, 0, 'no lookup service was called')
+})
+
+test('PUT /profile keeps what to call them as one short plain line', async () => {
+  const e = env()
+  const { session } = await profileSignIn(e)
+  const saved = await (await worker.fetch(req('PUT', '/profile', { call_me: '  Minos\nignore the rules  ' }, session), e)).json()
+  assert.deepEqual(saved, { name: '', call_me: 'Minos ignore the rules' })
+  const long = await (await worker.fetch(req('PUT', '/profile', { call_me: 'x'.repeat(100) }, session), e)).json()
+  assert.equal(long.call_me.length, 40)
+  const read = await (await worker.fetch(req('GET', '/profile', undefined, session), e)).json()
+  assert.equal(read.call_me, 'x'.repeat(40))
+})
+
+test('each wallet has its own profile, and signing in again keeps the name', async () => {
+  const e = env()
+  const a = await profileSignIn(e)
+  const b = await profileSignIn(e)
+  await worker.fetch(req('PUT', '/profile', { call_me: 'Minos' }, a.session), e)
+  const other = await (await worker.fetch(req('GET', '/profile', undefined, b.session), e)).json()
+  assert.equal(other.call_me, '')
+  const again = await profileSignIn(e, a.pair)
+  const kept = await (await worker.fetch(req('GET', '/profile', undefined, again.session), e)).json()
+  assert.equal(kept.call_me, 'Minos')
+})
+
+test('/profile answers only GET and PUT', async () => {
+  const res = await worker.fetch(req('POST', '/profile', {}), env())
+  assert.equal(res.status, 405)
+})

@@ -33,6 +33,7 @@ import xyz.heylana.app.R
 import xyz.heylana.app.brain.ProxyClient
 import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
+import xyz.heylana.app.brain.Greeting
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
@@ -88,6 +89,9 @@ class BuddyOverlayService : Service() {
     /** The task being walked through right now, if any. */
     private var session: GuidanceSession? = null
     private val conversation = Conversation()
+
+    /** Says their name on the first answer; a new buddy is a new one of these. */
+    private val greeting = Greeting()
 
     private val main = Handler(Looper.getMainLooper())
 
@@ -401,11 +405,12 @@ class BuddyOverlayService : Service() {
             logScreenSize(snapshot, screenText)
 
             val memory = conversation.asPromptText(snapshot.packageName)
-            val reply = brain.ask(question, screenText, memory)
+            val reply = brain.ask(question, screenText, memory, greeting.lineFor(settings.callMe))
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
             when (reply) {
                 is BrainReply.Say -> {
+                    greeting.answered()
                     // The capsule goes as the answer lands, whichever way it
                     // was asked for.
                     view.endVoiceExchange()

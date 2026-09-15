@@ -71,6 +71,13 @@ class Proxy(private val settings: HeylanaSettings) {
         .get()
         .build()
 
+    /** A PUT, carrying the same id and session. */
+    fun put(path: String, json: String): Request = signed(Request.Builder())
+        .url("$url/${path.trimStart('/')}")
+        .addHeader("content-type", "application/json")
+        .put(json.toRequestBody(JSON))
+        .build()
+
     private fun signed(builder: Request.Builder): Request.Builder {
         builder.addHeader(DEVICE_HEADER, settings.deviceId)
         settings.walletSession?.let { builder.addHeader("Authorization", "Bearer ${it.token}") }

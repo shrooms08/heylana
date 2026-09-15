@@ -57,8 +57,13 @@ class ProxyClient(private val settings: HeylanaSettings) {
      * first turn of a task, since nothing knows it is a task until the reply
      * comes back.
      */
-    suspend fun ask(question: String, screenText: String, history: String? = null): BrainReply =
-        send(HeylanaPrompt.userMessage(screenText, question, history), MODE_QUICK)
+    suspend fun ask(
+        question: String,
+        screenText: String,
+        history: String? = null,
+        greeting: String? = null
+    ): BrainReply =
+        send(HeylanaPrompt.userMessage(screenText, question, history, greeting), MODE_QUICK)
 
     /** The next step of a task already under way. The proxy uses the stronger model. */
     suspend fun nextStep(

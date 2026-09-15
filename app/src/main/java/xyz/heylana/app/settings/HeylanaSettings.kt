@@ -173,6 +173,20 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             }.apply()
         }
 
+    /**
+     * What Heylana calls the user, copied here from their wallet's profile so the
+     * buddy can greet them without asking the worker first. Empty when unset or
+     * when no wallet is connected.
+     */
+    var callMe: String
+        get() = prefs.getString(KEY_CALL_ME, null).orEmpty()
+        set(value) {
+            val cleaned = xyz.heylana.app.wallet.cleanName(value)
+            prefs.edit().apply {
+                if (cleaned.isEmpty()) remove(KEY_CALL_ME) else putString(KEY_CALL_ME, cleaned)
+            }.apply()
+        }
+
     val hasApiKey: Boolean get() = apiKey != null
 
     /** "sk-ant-…4f2a" — enough to recognise the key, never enough to use it. */
@@ -194,6 +208,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
 
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_PENDING_PAYMENT = "pending_payment"
+        private const val KEY_CALL_ME = "call_me"
         private const val KEY_PROXY_URL = "proxy_url"
         private const val KEY_USE_OWN_KEY = "use_own_key"
         private const val KEY_VOICE = "voice"

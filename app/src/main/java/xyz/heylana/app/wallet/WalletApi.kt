@@ -77,6 +77,12 @@ class WalletApi(private val settings: HeylanaSettings) {
 
     suspend fun me(): Answer<Standing> = call(proxy.get("me")) { standingOf(it) }
 
+    /** What the connected wallet is called, and what Heylana calls its owner. */
+    suspend fun profile(): Answer<Profile> = call(proxy.get("profile")) { profileOf(it) }
+
+    suspend fun saveProfile(callMe: String): Answer<Profile> =
+        call(proxy.put("profile", JSONObject().put("call_me", cleanName(callMe)).toString())) { profileOf(it) }
+
     suspend fun judge(code: String): Answer<Standing> =
         post("judge", JSONObject().put("code", code)) { standingOf(it) }
 
@@ -127,6 +133,11 @@ class WalletApi(private val settings: HeylanaSettings) {
                 Answer.Unreachable("bad_reply")
             }
         }
+
+    private fun profileOf(json: JSONObject) = Profile(
+        name = json.optString("name"),
+        callMe = json.optString("call_me")
+    )
 
     private fun standingOf(json: JSONObject) = Standing(
         plan = json.optString("plan", "free"),

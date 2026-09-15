@@ -26,7 +26,9 @@ import struct
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ARGS = [a for a in sys.argv[1:] if not a.startswith("--")]
+# Plain arguments only: flags, and the value that follows --skr-name, are not the port.
+_FLAG_VALUES = {i + 1 for i, a in enumerate(sys.argv) if a == "--skr-name"}
+ARGS = [a for i, a in enumerate(sys.argv) if i > 0 and i not in _FLAG_VALUES and not a.startswith("--")]
 PORT = int(ARGS[0]) if ARGS else 8787
 
 # The listening socket, standing in for Deepgram:
@@ -40,8 +42,11 @@ REFUSE_LISTEN = "--refuse-listen" in sys.argv
 TALKS_CAP = "--talks-cap" in sys.argv
 #   --devnet      /me names devnet, so the app asks Seed Vault about devnet and greys out SKR
 DEVNET = "--devnet" in sys.argv
+#   --skr-name N  the first sign-in's profile carries N as the wallet's .skr name
+SKR_NAME = sys.argv[sys.argv.index("--skr-name") + 1] if "--skr-name" in sys.argv else ""
 STUB_JUDGE_CODE = "stub-judge"
-STATE = {"plan": "free", "used": 0, "bonus": 20, "wallet": None, "pro_until": None, "judge_until": None}
+STATE = {"plan": "free", "used": 0, "bonus": 20, "wallet": None, "pro_until": None, "judge_until": None,
+         "profile": {"name": SKR_NAME, "call_me": ""}}
 
 
 def standing():
@@ -93,6 +98,10 @@ class Stub(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.strip("/") == "me":
             return self.send_json(200, standing())
+        if self.path.strip("/") == "profile":
+            if not self.headers.get("Authorization"):
+                return self.send_json(401, {"reason": "session_required"})
+            return self.send_json(200, STATE["profile"])
         if not self.path.startswith("/v1/listen"):
             return self.send_json(404, {"reason": "unknown_route"})
 
@@ -165,6 +174,16 @@ class Stub(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         device = self.headers.get("X-Heylana-Device", "")[:8]
         sys.stderr.write(f"{self.path} device={device} {fmt % args}\n")
+
+    def do_PUT(self):
+        length = int(self.headers.get("content-length") or 0)
+        body = json.loads(self.rfile.read(length) if length else b"{}")
+        if self.path.strip("/") != "profile":
+            return self.send_json(404, {"reason": "unknown_route"})
+        if not self.headers.get("Authorization"):
+            return self.send_json(401, {"reason": "session_required"})
+        STATE["profile"]["call_me"] = " ".join(str(body.get("call_me", "")).split())[:40]
+        return self.send_json(200, STATE["profile"])
 
     def do_POST(self):
         length = int(self.headers.get("content-length") or 0)

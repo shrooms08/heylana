@@ -22,6 +22,9 @@ function capStore(seed: Record<string, string> = {}) {
     async put(key: string, value: string) {
       values.set(key, value)
     },
+    async delete(key: string) {
+      values.delete(key)
+    },
   }
 }
 

@@ -10,6 +10,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import xyz.heylana.app.BuildConfig
+import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.settings.HeylanaSettings
 import java.io.IOException
@@ -61,9 +62,22 @@ class ProxyClient(private val settings: HeylanaSettings) {
         question: String,
         screenText: String,
         history: String? = null,
-        greeting: String? = null
-    ): BrainReply =
-        send(HeylanaPrompt.userMessage(screenText, question, history, greeting), MODE_QUICK)
+        greeting: String? = null,
+        route: Routing.Route = Routing.PLAIN
+    ): BrainReply {
+        val tools = route.toolsWanted && !settings.useOwnKey
+        HeylanaLog.state(
+            "brain: mode=${route.mode} why=${route.why.log} " +
+                (route.solana?.let { "solana-core loaded reason=${it.log}" } ?: "solana-core not loaded") +
+                " tools=${if (tools) "sent" else "not sent"}"
+        )
+        return send(
+            HeylanaPrompt.userMessage(screenText, question, history, greeting),
+            route.mode,
+            solana = route.solana != null,
+            tools = tools
+        )
+    }
 
     /** The next step of a task already under way. The proxy uses the stronger model. */
     suspend fun nextStep(
@@ -77,9 +91,18 @@ class ProxyClient(private val settings: HeylanaSettings) {
         MODE_TASK
     )
 
-    private suspend fun send(userMessage: String, mode: String): BrainReply = withContext(Dispatchers.IO) {
+    private suspend fun send(
+        userMessage: String,
+        mode: String,
+        solana: Boolean = false,
+        tools: Boolean = false
+    ): BrainReply = withContext(Dispatchers.IO) {
         val ownKey = settings.useOwnKey
-        val request = if (ownKey) ownKeyRequest(userMessage, mode) else proxyRequest(userMessage, mode)
+        val request = if (ownKey) {
+            ownKeyRequest(userMessage, mode, solana)
+        } else {
+            proxyRequest(userMessage, mode, solana, tools)
+        }
         if (request == null) {
             return@withContext BrainReply.Failed(if (ownKey) NO_KEY else NO_PROXY)
         }
@@ -107,13 +130,16 @@ class ProxyClient(private val settings: HeylanaSettings) {
     }
 
     /** What the app sends: the kind of work, not the model. */
-    private fun proxyRequest(userMessage: String, mode: String): Request? {
+    private fun proxyRequest(userMessage: String, mode: String, solana: Boolean, tools: Boolean): Request? {
         if (!proxy.isConfigured) return null
-        return proxy.post("chat", payload(userMessage).put("mode", mode).toString())
+        // The worker owns the tool definitions; the app only says whether to send them.
+        val body = payload(userMessage, solana).put("mode", mode)
+        if (tools) body.put("tools", true)
+        return proxy.post("chat", body.toString())
     }
 
     /** The hidden way round: straight to Anthropic with the user's own key. */
-    private fun ownKeyRequest(userMessage: String, mode: String): Request? {
+    private fun ownKeyRequest(userMessage: String, mode: String, solana: Boolean): Request? {
         val key = settings.apiKey ?: return null
         val model = if (mode == MODE_TASK) {
             HeylanaSettings.DEFAULT_TASK_MODEL
@@ -125,13 +151,13 @@ class ProxyClient(private val settings: HeylanaSettings) {
             .addHeader("x-api-key", key)
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .addHeader("content-type", "application/json")
-            .post(payload(userMessage).put("model", model).toString().toRequestBody(JSON))
+            .post(payload(userMessage, solana).put("model", model).toString().toRequestBody(JSON))
             .build()
     }
 
-    private fun payload(userMessage: String): JSONObject = JSONObject()
+    private fun payload(userMessage: String, solana: Boolean): JSONObject = JSONObject()
         .put("max_tokens", MAX_TOKENS)
-        .put("system", HeylanaPrompt.SYSTEM)
+        .put("system", HeylanaPrompt.system(solana))
         .put(
             "messages",
             JSONArray().put(JSONObject().put("role", "user").put("content", userMessage))
@@ -154,9 +180,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
     private fun logUsage(mode: String, body: String) {
         if (!BuildConfig.DEBUG) return
         val usage = runCatching { JSONObject(body).optJSONObject("usage") }.getOrNull() ?: return
-        Log.d(
-            Proxy.USAGE_TAG,
-            "mode=$mode input_tokens=${usage.optInt("input_tokens", -1)} " +
+        // Summed across every tool round by the worker, so this is the whole question.
+        HeylanaLog.state(
+            "usage: mode=$mode input_tokens=${usage.optInt("input_tokens", -1)} " +
                 "output_tokens=${usage.optInt("output_tokens", -1)}"
         )
     }

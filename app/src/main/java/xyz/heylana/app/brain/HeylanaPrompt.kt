@@ -37,6 +37,14 @@ object HeylanaPrompt {
             "briefly, point_at is null."
 
     /**
+     * Everything the model is told for one request. The Solana block and its rules
+     * go only with questions routed as Solana ones; everything else gets [SYSTEM]
+     * alone, exactly as before.
+     */
+    fun system(solana: Boolean): String =
+        if (solana) "$SYSTEM\n\n${SolanaCore.KNOWLEDGE}\n\n${SolanaCore.RULES}" else SYSTEM
+
+    /**
      * An ordinary question, with the recent conversation if there is any, and —
      * on the first answer after the buddy starts only — the line with their name.
      */

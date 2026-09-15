@@ -34,6 +34,7 @@ import xyz.heylana.app.brain.ProxyClient
 import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.Greeting
+import xyz.heylana.app.brain.Routing
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
@@ -405,7 +406,8 @@ class BuddyOverlayService : Service() {
             logScreenSize(snapshot, screenText)
 
             val memory = conversation.asPromptText(snapshot.packageName)
-            val reply = brain.ask(question, screenText, memory, greeting.lineFor(settings.callMe))
+            val route = Routing.forQuestion(snapshot.packageName, question)
+            val reply = brain.ask(question, screenText, memory, greeting.lineFor(settings.callMe), route)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
             when (reply) {

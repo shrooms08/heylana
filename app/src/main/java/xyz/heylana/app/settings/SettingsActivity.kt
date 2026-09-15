@@ -63,6 +63,7 @@ import xyz.heylana.app.ui.GlassCard
 import xyz.heylana.app.ui.HeylanaTokens
 import xyz.heylana.app.ui.glassText
 import xyz.heylana.app.wallet.Answer
+import xyz.heylana.app.wallet.Cluster
 import xyz.heylana.app.wallet.SeedVault
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.WalletProblem
@@ -171,6 +172,7 @@ private fun SettingsScreen(
             seedVault = seedVault,
             api = api,
             session = session,
+            cluster = standing?.cluster ?: Cluster.MAINNET,
             onSession = { session = it },
             onStanding = { standing = it }
         )
@@ -189,6 +191,7 @@ private fun SettingsScreen(
                 api = api,
                 seedVault = seedVault,
                 session = payer,
+                cluster = standing?.cluster ?: Cluster.MAINNET,
                 onPaid = {
                     standing = it
                     goPro = false
@@ -308,6 +311,7 @@ private fun WalletCard(
     seedVault: SeedVault,
     api: WalletApi,
     session: WalletSession?,
+    cluster: Cluster,
     onSession: (WalletSession?) -> Unit,
     onStanding: (Standing) -> Unit
 ) {
@@ -334,7 +338,7 @@ private fun WalletCard(
                     busy = true
                     line = ""
                     scope.launch {
-                        line = connect(settings, seedVault, api) { connected, standing ->
+                        line = connect(settings, seedVault, api, cluster) { connected, standing ->
                             onSession(connected)
                             onStanding(standing)
                         }
@@ -370,9 +374,10 @@ private suspend fun connect(
     settings: HeylanaSettings,
     seedVault: SeedVault,
     api: WalletApi,
+    cluster: Cluster,
     onConnected: (WalletSession, Standing) -> Unit
 ): String {
-    val signedIn = when (val trip = seedVault.connect(api)) {
+    val signedIn = when (val trip = seedVault.connect(api, cluster)) {
         is SeedVault.Trip.Done -> trip.value
         SeedVault.Trip.NoWallet -> return WalletProblem.NO_WALLET.words
         is SeedVault.Trip.Stopped -> return trip.problem.words
@@ -453,6 +458,7 @@ private fun GoProSheet(
     api: WalletApi,
     seedVault: SeedVault,
     session: WalletSession,
+    cluster: Cluster,
     onPaid: (Standing) -> Unit,
     onClose: () -> Unit
 ) {
@@ -508,9 +514,13 @@ private fun GoProSheet(
                 GlassButton(
                     text = "SKR",
                     primary = currency == CURRENCY_SKR,
-                    enabled = !paying,
-                    onClick = { currency = CURRENCY_SKR }
+                    enabled = !paying && cluster.hasSkr,
+                    onClick = { if (cluster.hasSkr) currency = CURRENCY_SKR }
                 )
+            }
+            PlanText.skrMissing(cluster)?.let {
+                Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
+                Text(text = it, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
             }
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
 
@@ -541,7 +551,7 @@ private fun GoProSheet(
                         paying = true
                         line = "Approve the payment in Seed Vault."
                         scope.launch {
-                            val outcome = payment.pay(session, shown) { reference, signature ->
+                            val outcome = payment.pay(session, shown, cluster) { reference, signature ->
                                 settings.pendingPayment = reference to signature
                                 line = "Sent. Waiting for Solana to confirm it\u2026"
                             }

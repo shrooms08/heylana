@@ -135,6 +135,29 @@ test('a blockhash is handed out fresh at pay time', async () => {
   assert.equal(b.last_valid_block_height, 42)
 })
 
+test('on devnet SKR is refused in plain words, with no chain call, and USDC still quotes', async () => {
+  const e = env({ CLUSTER: 'devnet' })
+  const { session } = await connected(e)
+  const skr = await worker.fetch(req('/pay/quote', { currency: 'skr' }, session), e)
+  assert.equal(skr.status, 503)
+  assert.equal((await skr.json()).reason, 'not_on_devnet')
+  assert.equal(rpcCalls.length, 0)
+  const usdc = await worker.fetch(req('/pay/quote', { currency: 'usdc' }, session), e)
+  assert.equal(usdc.status, 200)
+})
+
+test('a blockhash is only handed out for the cluster the worker takes payments on', async () => {
+  const e = env({ CLUSTER: 'devnet' })
+  const { session } = await connected(e)
+  const wrong = await worker.fetch(req('/pay/blockhash', { cluster: 'mainnet-beta' }, session), e)
+  assert.equal(wrong.status, 409)
+  assert.equal((await wrong.json()).reason, 'wrong_cluster')
+  assert.equal(rpcCalls.length, 0, 'refused before asking the chain')
+  const right = await (await worker.fetch(req('/pay/blockhash', { cluster: 'devnet' }, session), e)).json()
+  assert.equal(right.cluster, 'devnet')
+  assert.equal(right.blockhash, 'EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k')
+})
+
 async function quoted(e: Env, over: Record<string, unknown> = {}) {
   const who = await connected(e)
   const q = await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, who.session), e)).json()

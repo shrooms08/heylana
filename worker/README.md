@@ -88,6 +88,12 @@ In `wrangler.toml`, under `[vars]`:
 - `SKR_MINT` — copy the SKR mint address from Solscan. **Do not guess it.** Until
   it is a real address, SKR quotes say "not set up" and USDC still works.
 - `PRICE_USD` — the price of 30 days of Pro. `"15"` normally.
+- `CLUSTER` — `"mainnet-beta"`. To test with play money instead, set it to
+  `"devnet"`, put a **devnet** endpoint in `RPC_URL`, and set `USDC_MINT` to
+  Circle's devnet USDC, `4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU`. The app
+  follows the worker, so Seed Vault is asked about devnet too. There is no SKR on
+  devnet: the Go Pro sheet greys SKR out and says so. Put all three back before
+  submission.
 - `USDC_MINT`, `PRO_DAYS` and `JUDGE_UNTIL` are already filled in; leave them.
 
 Then the secrets. Each asks for the value and does not echo it.

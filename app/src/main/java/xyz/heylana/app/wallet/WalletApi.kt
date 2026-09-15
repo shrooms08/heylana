@@ -17,7 +17,9 @@ data class Standing(
     val skillsCap: Int,
     val proUntil: String?,
     val judgeUntil: String?,
-    val wallet: String?
+    val wallet: String?,
+    /** The Solana the worker takes payments on. */
+    val cluster: Cluster = Cluster.MAINNET
 )
 
 /** What the worker says to send for Pro. [amount] is in the token's base units. */
@@ -93,8 +95,9 @@ class WalletApi(private val settings: HeylanaSettings) {
             )
         }
 
-    suspend fun blockhash(): Answer<String> =
-        post("pay/blockhash", JSONObject()) { it.getString("blockhash") }
+    /** Refused 409 wrong_cluster if the worker takes payments on another cluster. */
+    suspend fun blockhash(cluster: Cluster): Answer<String> =
+        post("pay/blockhash", JSONObject().put("cluster", cluster.id)) { it.getString("blockhash") }
 
     /** Answers Refused(409, "not_confirmed") until the chain has confirmed it. */
     suspend fun confirm(reference: String, signature: String): Answer<Standing> =
@@ -132,6 +135,7 @@ class WalletApi(private val settings: HeylanaSettings) {
         skillsCap = json.optInt("skills_cap", 3),
         proUntil = json.optString("pro_until").takeIf { it.isNotEmpty() && it != "null" },
         judgeUntil = json.optString("judge_until").takeIf { it.isNotEmpty() && it != "null" },
-        wallet = json.optString("wallet").takeIf { it.isNotEmpty() && it != "null" }
+        wallet = json.optString("wallet").takeIf { it.isNotEmpty() && it != "null" },
+        cluster = Cluster.fromWorker(json.optString("cluster").ifEmpty { null })
     )
 }

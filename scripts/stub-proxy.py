@@ -38,6 +38,8 @@ REFUSE_LISTEN = "--refuse-listen" in sys.argv
 # signature or reads a chain: it only lets the app's screens be exercised.
 #   --talks-cap   /chat answers 429 talks_cap, as a used-up free month would
 TALKS_CAP = "--talks-cap" in sys.argv
+#   --devnet      /me names devnet, so the app asks Seed Vault about devnet and greys out SKR
+DEVNET = "--devnet" in sys.argv
 STUB_JUDGE_CODE = "stub-judge"
 STATE = {"plan": "free", "used": 0, "bonus": 20, "wallet": None, "pro_until": None, "judge_until": None}
 
@@ -53,6 +55,7 @@ def standing():
         "judge_until": STATE["judge_until"],
         "resets_at": "2026-10-01T00:00:00.000Z",
         "wallet": STATE["wallet"],
+        "cluster": "devnet" if DEVNET else "mainnet-beta",
     }
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -202,8 +205,11 @@ class Stub(BaseHTTPRequestHandler):
                 "expires_at": "2099-01-01T00:00:00.000Z", "price_usd": "0.10"})
 
         if route == "pay/blockhash":
+            cluster = "devnet" if DEVNET else "mainnet-beta"
+            if body.get("cluster", cluster) != cluster:
+                return self.send_json(409, {"reason": "wrong_cluster"})
             return self.send_json(200, {"blockhash": "EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k",
-                                        "last_valid_block_height": 1})
+                                        "last_valid_block_height": 1, "cluster": cluster})
 
         if route == "pay/confirm":
             STATE["plan"], STATE["pro_until"] = "pro", "2026-10-15T12:00:00.000Z"

@@ -34,6 +34,7 @@ xyz.heylana.app
 │   ├── SeedVault            Mobile Wallet Adapter: connect + sign-in message, sign-and-send the payment
 │   ├── WalletApi            /wallet/challenge, /wallet/verify, /me, /judge, /pay/*
 │   ├── WalletSession        the connected address and its worker session, stored encrypted
+│   ├── Cluster              mainnet-beta or devnet, as the worker's /me says
 │   ├── PaymentTransaction   the USDC/SKR transferChecked to the treasury, with the reference
 │   ├── ProPayment           blockhash → build → Seed Vault → ConfirmPoll (60s)
 │   ├── PlanText             every word the Plan card and Go Pro sheet say
@@ -135,6 +136,14 @@ from the chain (jsonParsed) and checks mint, destination owner, amount, sender
 and reference before extending Pro. A reference pays once; a signature pays for
 one reference. A payment that has not confirmed within 60s is remembered on the
 phone and claimed the next time Settings opens.
+
+**The worker names the cluster; the app follows.** `CLUSTER` in `wrangler.toml` is
+`"mainnet-beta"`, or `"devnet"` to test with play money (with a devnet `RPC_URL`
+and devnet `USDC_MINT` to match). `/me` returns it, and the app hands that same
+cluster to Mobile Wallet Adapter's authorize and to the `/pay/blockhash` request,
+which refuses `409 wrong_cluster` if the two disagree. There is no SKR on devnet:
+the worker refuses the quote with `not_on_devnet` and the Go Pro sheet greys SKR
+out with "SKR is not on devnet." The stub's `--devnet` flag does the same.
 
 **Version pins.** Mobile Wallet Adapter clientlib-ktx is 2.1.1 and sol4k 0.7.0:
 the newer releases are built with Kotlin 2.4 and this project's compiler cannot

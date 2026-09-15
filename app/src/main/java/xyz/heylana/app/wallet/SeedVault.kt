@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
-import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import org.sol4k.Base58
 import xyz.heylana.app.HeylanaLog
@@ -34,7 +33,7 @@ class SeedVault(activity: ComponentActivity) {
             iconUri = Uri.parse(ICON_PATH),
             identityName = IDENTITY_NAME
         )
-    ).apply { blockchain = Solana.Mainnet }
+    )
 
     /** How a trip to the wallet ended. */
     sealed interface Trip<out T> {
@@ -55,8 +54,9 @@ class SeedVault(activity: ComponentActivity) {
      * wallet sign it — all in one visit to the wallet, so the user approves once
      * for the connection and once for the signature.
      */
-    suspend fun connect(api: WalletApi): Trip<SignedIn> {
-        HeylanaLog.state("wallet: connecting")
+    suspend fun connect(api: WalletApi, cluster: Cluster): Trip<SignedIn> {
+        HeylanaLog.state("wallet: connecting on ${cluster.id}")
+        adapter.blockchain = cluster.blockchain
         val result = adapter.transact(sender) { auth ->
             val account = auth.accounts.firstOrNull()?.publicKey
                 ?: throw WalletStop(WalletProblem.UNKNOWN)
@@ -79,8 +79,9 @@ class SeedVault(activity: ComponentActivity) {
     }
 
     /** Hands the unsigned payment to the wallet to sign and send; returns its signature. */
-    suspend fun pay(unsignedTransaction: ByteArray): Trip<String> {
-        HeylanaLog.state("wallet: asking to sign and send the payment")
+    suspend fun pay(unsignedTransaction: ByteArray, cluster: Cluster): Trip<String> {
+        HeylanaLog.state("wallet: asking to sign and send the payment on ${cluster.id}")
+        adapter.blockchain = cluster.blockchain
         val result = adapter.transact(sender) {
             val sent = signAndSendTransactions(arrayOf(unsignedTransaction))
             Base58.encode(sent.signatures.first())

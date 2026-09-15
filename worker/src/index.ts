@@ -61,6 +61,8 @@ export interface Env {
   /** The price of 30 days of Pro in US dollars, as text: "15", or "0.10" to test. */
   PRICE_USD: string
   PRO_DAYS: string
+  /** "mainnet-beta", or "devnet" to test with play money. Anything else is mainnet. */
+  CLUSTER?: string
 
   CAPS: CapStore
 }
@@ -182,7 +184,7 @@ export default {
       if (route === 'wallet/verify') return await walletVerify(request, env, who)
       if (route === 'judge') return await judge(request, env, who)
       if (route === 'pay/quote') return await payQuote(request, env, who)
-      if (route === 'pay/blockhash') return await payBlockhash(env, who)
+      if (route === 'pay/blockhash') return await payBlockhash(request, env, who)
       if (route === 'pay/confirm') return await payConfirm(request, env, who)
       return await me(env, who)
     } catch (error) {
@@ -418,7 +420,7 @@ async function walletVerify(request: Request, env: Env, who: Who): Promise<Respo
     session,
     pubkey,
     welcome_granted: welcome.granted,
-    me: { ...standing(welcome.account, await talksUsed(env, key, now), now), wallet: pubkey },
+    me: { ...standing(welcome.account, await talksUsed(env, key, now), now), wallet: pubkey, cluster: clusterOf(env) },
   })
 }
 
@@ -441,7 +443,7 @@ async function me(env: Env, who: Who): Promise<Response> {
   const now = new Date(clock.now())
   const account = await loadAccount(env, who.key)
   const used = await talksUsed(env, who.key, now)
-  return json(200, { ...standing(account, used, now), wallet: who.wallet })
+  return json(200, { ...standing(account, used, now), wallet: who.wallet, cluster: clusterOf(env) })
 }
 
 // ------------------------------------------------------------------- paying
@@ -465,6 +467,7 @@ async function payQuote(request: Request, env: Env, who: Who): Promise<Response>
     program = TOKEN_PROGRAM
     amount = decimalToUnits(env.PRICE_USD, decimals)
   } else if (body.currency === 'skr') {
+    if (clusterOf(env) === 'devnet') return fail(503, 'not_on_devnet', 'There is no SKR on devnet.')
     if (!isAddress(env.SKR_MINT)) return fail(503, 'not_configured', 'SKR payments are not set up.')
     mint = env.SKR_MINT
     // Decimals and token program come from the chain, not from a guess.
@@ -501,13 +504,20 @@ async function payQuote(request: Request, env: Env, who: Who): Promise<Response>
 }
 
 /** A recent blockhash, fetched at the moment Pay is tapped so it is still fresh. */
-async function payBlockhash(env: Env, who: Who): Promise<Response> {
+async function payBlockhash(request: Request, env: Env, who: Who): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   if (!env.RPC_URL) return fail(503, 'not_configured', 'Payments are not set up.')
+  // A blockhash from one cluster makes a transaction the other cannot land.
+  const body = await readJson(request)
+  const cluster = clusterOf(env)
+  if (body.cluster !== undefined && body.cluster !== cluster) {
+    return fail(409, 'wrong_cluster', `Payments are on ${cluster}.`)
+  }
   const result = await rpc(env.RPC_URL, 'getLatestBlockhash', [{ commitment: 'confirmed' }])
   return json(200, {
     blockhash: result?.value?.blockhash,
     last_valid_block_height: result?.value?.lastValidBlockHeight,
+    cluster,
   })
 }
 
@@ -538,6 +548,7 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
     return json(200, {
       ...standing(account, await talksUsed(env, who.key, now), now),
       wallet: who.wallet,
+      cluster: clusterOf(env),
       confirmed: true,
       already_confirmed: true,
     })
@@ -570,8 +581,14 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
   return json(200, {
     ...standing(account, await talksUsed(env, who.key, now), now),
     wallet: who.wallet,
+    cluster: clusterOf(env),
     confirmed: true,
   })
+}
+
+/** Which Solana payments are taken on. Mainnet unless the var says devnet. */
+export function clusterOf(env: Env): 'mainnet-beta' | 'devnet' {
+  return env.CLUSTER === 'devnet' ? 'devnet' : 'mainnet-beta'
 }
 
 function payConfigured(env: Env): boolean {

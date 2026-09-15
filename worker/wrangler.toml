@@ -32,6 +32,10 @@ SKR_MINT = "replace-me"
 PRICE_USD = "15"
 PRO_DAYS = "30"
 
+# Which Solana payments are taken on: "mainnet-beta", or "devnet" to test with
+# play money (then RPC_URL and USDC_MINT must be devnet too). See README.md.
+CLUSTER = "mainnet-beta"
+
 # The last day of judging. A judge code gives Pro until the end of this day (UTC).
 JUDGE_UNTIL = "2026-11-09"
 

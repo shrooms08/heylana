@@ -51,6 +51,9 @@ object PlanText {
         return (if (value.scale() < MIN_DECIMALS) value.setScale(MIN_DECIMALS) else value).toPlainString()
     }
 
+    /** "SKR is not on devnet.", or null where SKR exists. */
+    fun skrMissing(cluster: Cluster): String? = if (cluster.hasSkr) null else "SKR is not on ${cluster.id}."
+
     /** "You'll send 0.10 USDC". */
     fun send(quote: Quote): String =
         "You'll send ${amount(quote.amount, quote.decimals)} ${quote.currency.uppercase(Locale.US)}"

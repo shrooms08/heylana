@@ -16,9 +16,21 @@ sealed interface PayOutcome {
  * asked until it has seen the payment on chain.
  *
  * Heylana never holds a key and never sends the transaction itself; the wallet
- * does both, after the user approves it there.
+ * does both, after the user approves it there. The cluster goes to both the
+ * blockhash and the wallet, so the transaction is made for the chain it lands on.
  */
-class ProPayment(private val api: WalletApi, private val seedVault: SeedVault) {
+class ProPayment(
+    private val blockhash: suspend (Cluster) -> Answer<String>,
+    private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<String>,
+    private val confirm: suspend (reference: String, signature: String) -> Answer<Standing>,
+    private val log: (String) -> Unit = { HeylanaLog.state(it) }
+) {
+
+    constructor(api: WalletApi, seedVault: SeedVault) : this(
+        blockhash = { cluster -> api.blockhash(cluster) },
+        signAndSend = { transaction, cluster -> seedVault.pay(transaction, cluster) },
+        confirm = { reference, signature -> api.confirm(reference, signature) }
+    )
 
     /**
      * [onSent] is called the moment the wallet hands back a signature, before
@@ -27,9 +39,10 @@ class ProPayment(private val api: WalletApi, private val seedVault: SeedVault) {
     suspend fun pay(
         session: WalletSession,
         quote: Quote,
+        cluster: Cluster,
         onSent: (reference: String, signature: String) -> Unit
     ): PayOutcome {
-        val blockhash = when (val answer = api.blockhash()) {
+        val recent = when (val answer = blockhash(cluster)) {
             is Answer.Ok -> answer.value
             is Answer.Refused -> return PayOutcome.Stopped(WalletProblem.fromWorker(answer.reason))
             is Answer.Unreachable -> return PayOutcome.Stopped(WalletProblem.UNREACHABLE)
@@ -45,23 +58,23 @@ class ProPayment(private val api: WalletApi, private val seedVault: SeedVault) {
                     amount = quote.amount,
                     decimals = quote.decimals,
                     reference = PublicKey(quote.reference),
-                    recentBlockhash = blockhash
+                    recentBlockhash = recent
                 )
             )
         }.getOrElse {
-            HeylanaLog.state("pay: could not build the transfer")
+            log("pay: could not build the transfer")
             return PayOutcome.Stopped(WalletProblem.UNKNOWN)
         }
 
-        val signature = when (val trip = seedVault.pay(unsigned)) {
+        val signature = when (val trip = signAndSend(unsigned, cluster)) {
             is SeedVault.Trip.Done -> trip.value
             SeedVault.Trip.NoWallet -> return PayOutcome.Stopped(WalletProblem.NO_WALLET)
             is SeedVault.Trip.Stopped -> return PayOutcome.Stopped(trip.problem)
         }
         onSent(quote.reference, signature)
-        HeylanaLog.state("pay: sent, waiting for confirmation")
+        log("pay: sent on ${cluster.id}, waiting for confirmation")
 
-        return ConfirmPoll.await(check = { api.confirm(quote.reference, signature) })
+        return ConfirmPoll.await(check = { confirm(quote.reference, signature) })
     }
 }
 

@@ -232,6 +232,15 @@ test('a forged or expired session is refused, not ignored', async () => {
   assert.equal((await expired.json()).reason, 'bad_session')
 })
 
+test('/me names the cluster: mainnet-beta unless CLUSTER is devnet', async () => {
+  const main = await (await worker.fetch(req('GET', '/me'), env())).json()
+  assert.equal(main.cluster, 'mainnet-beta', 'unset means mainnet')
+  const dev = await (await worker.fetch(req('GET', '/me'), { ...env(), CLUSTER: 'devnet' })).json()
+  assert.equal(dev.cluster, 'devnet')
+  const typo = await (await worker.fetch(req('GET', '/me'), { ...env(), CLUSTER: 'mainnet' })).json()
+  assert.equal(typo.cluster, 'mainnet-beta', 'anything but devnet is mainnet')
+})
+
 test('/me only answers GET', async () => {
   assert.equal((await worker.fetch(req('POST', '/me', {}), env())).status, 405)
 })

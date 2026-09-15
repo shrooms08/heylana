@@ -21,6 +21,9 @@ object Routing {
 
     data class Route(val mode: String, val why: Why, val solana: SolanaCore.Load?) {
         val toolsWanted: Boolean get() = solana != null
+
+        /** Explain before you sign: a signing screen, or "what am I signing" anywhere. */
+        val explainsSigning: Boolean get() = why == Why.SIGNING_SCREEN || why == Why.EXPLAIN_QUESTION
     }
 
     val PLAIN = Route(ProxyClient.MODE_QUICK, Why.PLAIN, null)
@@ -43,10 +46,10 @@ object Routing {
 
     fun isExplainQuestion(question: String): Boolean = EXPLAIN.containsMatchIn(question)
 
-    fun forQuestion(packageName: String?, question: String): Route {
+    fun forQuestion(packageName: String?, question: String, screenText: String = ""): Route {
         val app = SolanaApps.of(packageName)
         val why = when {
-            app?.kind == SolanaApps.Kind.SIGNING -> Why.SIGNING_SCREEN
+            SigningScan.looksLikeSigning(packageName, screenText) -> Why.SIGNING_SCREEN
             isExplainQuestion(question) -> Why.EXPLAIN_QUESTION
             isSendQuestion(question) -> Why.SEND_QUESTION
             app?.kind == SolanaApps.Kind.WALLET -> Why.WALLET_SCREEN

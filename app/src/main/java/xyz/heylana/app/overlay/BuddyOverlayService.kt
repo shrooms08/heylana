@@ -406,7 +406,7 @@ class BuddyOverlayService : Service() {
             logScreenSize(snapshot, screenText)
 
             val memory = conversation.asPromptText(snapshot.packageName)
-            val route = Routing.forQuestion(snapshot.packageName, question)
+            val route = Routing.forQuestion(snapshot.packageName, question, screenText)
             val reply = brain.ask(question, screenText, memory, greeting.lineFor(settings.callMe), route)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()

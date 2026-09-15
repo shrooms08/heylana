@@ -62,6 +62,37 @@ object HeylanaPrompt {
             append("\n\nUser asks: ").append(question)
         }
 
+    const val SIGNING_INSTRUCTIONS: String =
+        "Call explain_address on each address first. Then say in plain words what this request does, " +
+            "who receives what, and whether the destination is known. End with one line of advice: " +
+            "fine, check the amount, or do not sign. Never call it safe; say what you found. If nothing " +
+            "could be read, say so and tell them to read the request in Seed Vault before approving."
+
+    /**
+     * Explain before you sign: the screen, what was found on it, and how to answer.
+     * The recent conversation is left out so the answer is about this request only.
+     */
+    fun signingMessage(
+        screenText: String,
+        question: String,
+        addresses: List<String>,
+        amounts: List<String>,
+        greeting: String? = null
+    ): String = buildString {
+        greeting?.let { append(it).append("\n\n") }
+        append("Screen now:\n")
+        append(screenText)
+        append("\n\nSigning check. ")
+        if (addresses.isEmpty() && amounts.isEmpty()) {
+            append("No addresses or amounts could be read from this screen. ")
+        } else {
+            if (addresses.isNotEmpty()) append("Addresses on screen: ").append(addresses.joinToString(", ")).append(". ")
+            if (amounts.isNotEmpty()) append("Amounts on screen: ").append(amounts.joinToString(", ")).append(". ")
+        }
+        append(SIGNING_INSTRUCTIONS)
+        append("\n\nUser asks: ").append(question)
+    }
+
     /**
      * The next step of a task already under way, against a freshly read screen.
      * Only the goal, the one-line step summaries and the new screen go over.

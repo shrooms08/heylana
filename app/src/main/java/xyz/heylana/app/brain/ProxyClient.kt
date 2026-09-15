@@ -71,8 +71,16 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 (route.solana?.let { "solana-core loaded reason=${it.log}" } ?: "solana-core not loaded") +
                 " tools=${if (tools) "sent" else "not sent"}"
         )
+        val message = if (route.explainsSigning) {
+            val found = SigningScan.of(screenText)
+            // Counts only: what is on a signing screen is never written to the log.
+            HeylanaLog.state("sign-check: addresses=${found.addresses.size} amounts=${found.amounts.size}")
+            HeylanaPrompt.signingMessage(screenText, question, found.addresses, found.amounts, greeting)
+        } else {
+            HeylanaPrompt.userMessage(screenText, question, history, greeting)
+        }
         return send(
-            HeylanaPrompt.userMessage(screenText, question, history, greeting),
+            message,
             route.mode,
             solana = route.solana != null,
             tools = tools

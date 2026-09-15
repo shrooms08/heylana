@@ -19,3 +19,6 @@ design/*.html
 
 # a captured spoken answer, for looking at a stream that sounded wrong
 design/refs/tts_capture.pcm
+
+# Python bytecode from running the stub proxy
+scripts/__pycache__/

@@ -7,6 +7,7 @@ import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import org.sol4k.Base58
+import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
 
 /**
@@ -29,7 +30,7 @@ class SeedVault(activity: ComponentActivity) {
 
     private val adapter = MobileWalletAdapter(
         connectionIdentity = ConnectionIdentity(
-            identityUri = Uri.parse(IDENTITY_URI),
+            identityUri = Uri.parse(BuildConfig.PROXY_URL.trimEnd('/').ifEmpty { FALLBACK_IDENTITY_URI }),
             iconUri = Uri.parse(ICON_PATH),
             identityName = IDENTITY_NAME
         )
@@ -105,7 +106,12 @@ class SeedVault(activity: ComponentActivity) {
     private class WalletStop(val problem: WalletProblem) : Exception(problem.name)
 
     private companion object {
-        const val IDENTITY_URI = "https://heylana.xyz"
+        /**
+         * Seed Vault shows who is asking and fetches the icon from this address.
+         * heylana.xyz does not exist yet, so it is Heylana's worker, which serves
+         * the mark; this is only used if a build has no worker address at all.
+         */
+        const val FALLBACK_IDENTITY_URI = "https://heylana.xyz"
 
         /** Relative to the identity address: the wallet shows the mark from there. */
         const val ICON_PATH = "heylana-mark.png"

@@ -15,6 +15,7 @@
 
 import { isAddress } from './base58.ts'
 import { challengeMessage, randomNonce, readSession, signSession, verifySignature } from './session.ts'
+import { MARK_PATH, markResponse } from './mark.ts'
 import {
   type Account, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, spendTalk, standing,
 } from './plans.ts'
@@ -151,6 +152,14 @@ const CAP_KEY_TTL_SECONDS = 172800
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const route = new URL(request.url).pathname.replace(/^\/+|\/+$/g, '')
+
+    // The mark is public: Seed Vault fetches it for its approval screen with no
+    // device header, so it is answered before anything is counted or checked.
+    if (route === MARK_PATH) {
+      if (request.method === 'GET') return markResponse()
+      if (request.method === 'HEAD') return new Response(null, { headers: markResponse().headers })
+      return fail(405, 'method', 'GET or HEAD to this.')
+    }
 
     const methods = ROUTES[route]
     if (!methods) {

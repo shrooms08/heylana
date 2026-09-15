@@ -38,10 +38,12 @@ xyz.heylana.app
 │   ├── PaymentTransaction   the USDC/SKR transferChecked to the treasury, with the reference
 │   ├── ProPayment           blockhash → build → Seed Vault → ConfirmPoll (60s)
 │   ├── PlanText             every word the Plan card and Go Pro sheet say
-│   └── WalletProblem        whatever stopped a wallet trip, in plain words
+│   ├── WalletProblem        whatever stopped a wallet trip, in plain words
+│   └── Profile              what the wallet is called, what to call its owner, cleanName
 ├── brain/                   talking to the model
 │   ├── ProxyClient          POST /chat through the proxy; says quick or task, never a model
 │   ├── QuotaMessage         the words for talks_cap, daily_cap and an ended session
+│   ├── Greeting             the user's name on the first answer after the buddy starts, never after
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
 │                            (plus Conversation, the short-term memory)
@@ -145,6 +147,31 @@ which refuses `409 wrong_cluster` if the two disagree. There is no SKR on devnet
 the worker refuses the quote with `not_on_devnet` and the Go Pro sheet greys SKR
 out with "SKR is not on devnet." The stub's `--devnet` flag does the same.
 
+**The treasury cannot buy Pro from itself.** `/pay/confirm` refuses a transfer
+whose sender is `TREASURY_ADDRESS` with `402 self_payment`: it moves nothing.
+
+**Identity.** `GET`/`PUT /profile` (session required) keeps `{name, call_me}` in KV
+against the wallet. `name` would be the wallet's Seeker ID (.skr), but Solana
+Mobile documents no public reverse-lookup API — .skr names are AllDomains records
+read on mainnet — so a first sign-in starts it empty, and nothing outside the
+worker is asked. After connecting, Settings shows "What should I call you?",
+prefilled with `call_me`, else `name`, else nothing. The chosen name is cleaned
+to one plain line of at most 40 characters on both sides, because it goes into
+what the model is told, and it is never logged. The phone keeps a copy in
+EncryptedSharedPreferences so the buddy never has to ask the worker for it.
+
+**The name is said once.** `brain/Greeting` belongs to one run of the buddy. Only
+the first question after Start buddy carries "The user's name is X. Start this
+answer with their name."; once an answer lands, no later question carries the
+name at all — the surest way the model will not use it again, and one line fewer
+to pay for. A failed first question keeps the greeting for the next.
+
+**The mark is served by the worker** until heylana.xyz exists. `GET
+/heylana-mark.png` returns the 256px mark embedded in `worker/src/mark.ts`,
+answered before any device check or cap, because Seed Vault fetches it with no
+headers. The Mobile Wallet Adapter identity is the built-in worker address with
+icon path `heylana-mark.png` (relative, no leading slash, as the spec asks).
+
 **Version pins.** Mobile Wallet Adapter clientlib-ktx is 2.1.1 and sol4k 0.7.0:
 the newer releases are built with Kotlin 2.4 and this project's compiler cannot
 read them. The two MWA artifacts share a namespace, which AGP 9 refuses unless
@@ -158,7 +185,7 @@ because those keys are not the user's to hold.
 the whole app can be exercised without spending anything. It also fakes the
 wallet, `/me`, `/judge` (code `stub-judge`) and `/pay/*` routes — without checking
 any signature or reading any chain — and `--talks-cap` makes `/chat` answer
-`429 talks_cap`. Never approve a Seed Vault payment against the stub: the wallet
+`429 talks_cap`; `--skr-name <name>` prefills the profile as a .skr lookup would. Never approve a Seed Vault payment against the stub: the wallet
 would send a real transaction to the stub's made-up treasury. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 

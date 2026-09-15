@@ -1,91 +1,50 @@
-# Smoke test — phase 3a: wallet, plans and Pro payment
+# Smoke test — phase 3a.1: your name, the greeting, and the mark in Seed Vault
 
-For Minos, on the Seeker, with Seed Vault Wallet holding a little SOL for fees,
-at least 0.10 USDC, and some SKR.
+For Minos, on the Seeker, on **devnet** (the worker's `CLUSTER = "devnet"`, a devnet
+`RPC_URL`, and devnet `USDC_MINT`).
 
-**Live calls this test spends: 1 question (`/chat`) and 1 spoken answer (`/tts`).**
-It also makes one real on-chain payment of **0.10 USDC** from your wallet to the
-treasury. Everything else (connecting, the plan, quotes, the judge code) costs
-no model calls.
+**Live calls this test spends: 2 questions (`/chat`) and 2 spoken answers (`/tts`).**
+Connecting the wallet, the name sheet and the mark cost no model calls.
 
-## 1. Set the worker up (on the computer)
+## 0. Send the new worker up (on the computer)
 
-1. Open `worker/wrangler.toml`. Set `TREASURY_ADDRESS` to the wallet that receives
-   payments, `SKR_MINT` to the SKR token's mint address, and `PRICE_USD` to `"0.10"`.
-2. In the `worker` folder run, one at a time, pasting each value when asked:
-   `npx wrangler secret put RPC_URL` (your Solana RPC address),
-   `npx wrangler secret put SESSION_SECRET` (paste the output of `openssl rand -base64 48`),
-   `npx wrangler secret put JUDGE_CODE` (any code you like; write it down).
-3. Run `npx wrangler deploy`.
+1. In the `worker` folder run `npx wrangler deploy`.
+2. Open `https://heylana-proxy.heylana.workers.dev/heylana-mark.png` in a browser.
 
-Expected: the deploy finishes and prints the worker address. **0 calls.**
+Expected: the deploy finishes, and the browser shows Heylana's white mark on black.
+**0 calls.**
 
-## 2. Connect the wallet
+Then install this build on the phone and run `./scripts/a11y.sh`.
 
-1. Open Heylana → **Settings**.
-2. On the **Wallet** card tap **Connect wallet**.
-3. Seed Vault opens and asks to connect Heylana. Approve.
-4. Seed Vault asks you to sign a message starting "Heylana wants you to sign in".
-   Approve. (It is a message, not a transaction.)
+## 1. Your name
 
-Expected: back in Settings the Wallet card shows a short address like `9WzD…AWWM`
-and **Disconnect**, with the line **20 welcome talks added** under it. The **Plan**
-card shows **Free**, **0 of 50 talks this month**, **Up to 3 skills**, and a
-**Go Pro, $15/month** button. **0 chat calls.**
+1. Open Heylana → **Settings**. On the **Wallet** card tap **Disconnect**.
+2. Tap **Connect wallet**. Approve both screens in Seed Vault.
+3. A glass sheet slides up: **What should I call you?** with one field and **Save**.
 
-## 3. One question
+Expected: the field is **empty**. (Heylana cannot look up your .skr name yet — there
+is no public way to — so it never guesses.) Type `Minos`, tap **Save**.
 
-1. Open Chrome on any page. Tap the buddy, type `What is Solana?`, send.
+Expected: the sheet closes, and the Wallet card shows **Minos** with the short
+address under it. **0 calls.**
 
-Expected: an answer appears and is spoken. Back in Settings, the Plan card shows
-**1 of 50 talks this month**. **1 chat call, 1 tts call.**
+## 2. The greeting, once
 
-## 4. Go Pro with USDC
+1. Back on the main screen tap **Stop buddy**, then **Start buddy**.
+2. Open Chrome on any page. Tap the buddy, type `what is on this screen`, send.
 
-1. Settings → Plan → **Go Pro, $15/month**. A glass sheet slides up.
-2. **USDC** is picked. The sheet shows **You'll send 0.10 USDC**.
-3. Tap **Pay**. Seed Vault asks to connect, then shows a transfer of 0.10 USDC.
-   Approve both.
-4. The sheet says "Sent. Waiting for Solana to confirm it…".
+Expected: the answer **starts with "Minos"** and is spoken. **1 chat, 1 tts.**
 
-Expected: within 60 seconds the sheet closes and the Plan card shows **Pro**,
-**Unlimited talks**, **Up to 10 skills**, **Pro until <30 days from today>**. The
-Go Pro button is gone. **0 calls.**
+3. Tap the buddy again and send `what is on this screen` again.
 
-## 5. SKR quote, then cancel
+Expected: an answer with **no name** in it. **1 chat, 1 tts.**
 
-This needs a wallet still on Free: tap **Disconnect**, connect a *different*
-account in Seed Vault (or skip this step if you only have one).
+## 3. The mark in Seed Vault
 
-1. Settings → **Go Pro, $15/month** → tap **SKR**.
-2. The sheet shows **You'll send <some> SKR** and **About $0.10 at today's SKR price**.
-3. Tap **Cancel**.
+1. Settings → Wallet → **Disconnect**, then **Connect wallet**.
 
-Expected: the sheet closes, nothing opens in Seed Vault, nothing is paid. **0 calls.**
+Expected: Seed Vault's approval screen shows **Heylana** with the white-on-black
+mark, not a blank icon. Approve, and **Save** the name sheet again (it is
+prefilled with `Minos` this time). **0 calls.**
 
-## 6. Judge code
-
-1. Settings → **Advanced** → **Judge code** card. Type the code from step 1, tap **Use code**.
-
-Expected: the line **Judge until Nov 9, 2026** appears, and the Plan card at the
-top shows **Judge**, **Unlimited talks**, **Up to 10 skills**.
-
-2. Scroll up, tap **Disconnect**, then **Connect wallet** again with the same
-   account and approve both Seed Vault screens.
-
-Expected: the short address comes back **without** "20 welcome talks added", and
-the Plan card still says **Judge**. **0 calls.**
-
-## 7. Put the price back
-
-1. In `worker/wrangler.toml` set `PRICE_USD` back to `"15"`. Run `npx wrangler deploy`.
-2. On the phone, close Settings and open it again.
-
-Expected: the Plan card still says **Judge until Nov 9, 2026**. **0 calls.**
-
-## If something goes wrong
-
-- "Cancelled in Seed Vault." — you declined; nothing was sent.
-- "Not enough in this wallet to pay, including the network fee." — top up USDC or SOL.
-- "That took too long…" — the payment may still land. Close and reopen Settings in
-  a minute; Heylana checks it again and Pro appears if it went through.
+Total: **2 chat, 2 tts.**

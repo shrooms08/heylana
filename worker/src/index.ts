@@ -16,6 +16,7 @@
 import { isAddress } from './base58.ts'
 import { challengeMessage, randomNonce, readSession, signSession, verifySignature } from './session.ts'
 import { MARK_PATH, markResponse } from './mark.ts'
+import { answerWithTools } from './brain.ts'
 import {
   type Account, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, spendTalk, standing,
 } from './plans.ts'
@@ -47,6 +48,8 @@ export interface Env {
   RPC_URL: string
   /** Optional: raises Jupiter's rate limit above the keyless one. */
   JUPITER_API_KEY?: string
+  /** Optional: a mainnet RPC for .skr names, which live on mainnet whatever CLUSTER is. */
+  MAINNET_RPC_URL?: string
 
   /** Plain configuration. */
   DEEPGRAM_PROJECT_ID: string
@@ -238,24 +241,52 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     })
   }
 
-  const upstream = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY,
-      'anthropic-version': ANTHROPIC_VERSION,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: clampTokens(body.max_tokens),
-      system: typeof body.system === 'string' ? body.system : undefined,
-      messages: body.messages,
-    }),
-  })
+  const base = {
+    model,
+    max_tokens: clampTokens(body.max_tokens),
+    system: typeof body.system === 'string' ? body.system : undefined,
+    messages: body.messages,
+  }
+  const callModel = (payload: unknown) =>
+    fetch(ANTHROPIC_URL, {
+      method: 'POST',
+      headers: {
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': ANTHROPIC_VERSION,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
 
-  const text = await upstream.text()
-  const usage = usageOf(text)
-  if (upstream.ok) {
+  // Tools go only with the questions the app marked as Solana ones. Everything
+  // else is sent exactly as it always was, at exactly the size it always was.
+  const withTools = body.tools === true
+  let status: number
+  let text: string
+  let tokensIn: number
+  let tokensOut: number
+  let rounds = 1
+  let toolCalls: string[] = []
+  let toolTimeout = false
+  if (withTools) {
+    const result = await answerWithTools({ callModel, base, context: toolContext(env, who), now: clock.now })
+    status = result.status
+    text = result.body
+    tokensIn = result.input
+    tokensOut = result.output
+    rounds = result.rounds
+    toolCalls = result.toolCalls
+    toolTimeout = result.timedOut
+  } else {
+    const upstream = await callModel(base)
+    status = upstream.status
+    text = await upstream.text()
+    const usage = usageOf(text)
+    tokensIn = usage.input
+    tokensOut = usage.output
+  }
+
+  if (status >= 200 && status < 300) {
     await saveAccount(env, who.key, spent.account)
     await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
   }
@@ -265,13 +296,17 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     wallet: who.wallet?.slice(0, 8),
     ms: clock.now() - started,
     model,
-    status: upstream.status,
-    tokens_in: usage.input,
-    tokens_out: usage.output,
+    tools: withTools,
+    rounds,
+    tool_calls: toolCalls,
+    ...(toolTimeout ? { tool_timeout: true } : {}),
+    status,
+    tokens_in: tokensIn,
+    tokens_out: tokensOut,
   })
 
   return new Response(scrub(text, env), {
-    status: upstream.status,
+    status,
     headers: { 'content-type': 'application/json' },
   })
 }
@@ -648,6 +683,20 @@ export function clusterOf(env: Env): 'mainnet-beta' | 'devnet' {
   return env.CLUSTER === 'devnet' ? 'devnet' : 'mainnet-beta'
 }
 
+/** What the tools may use: the cluster's RPC, prices, the mints, and whose wallet. */
+function toolContext(env: Env, who: Who) {
+  return {
+    rpcUrl: env.RPC_URL,
+    mainnetRpcUrl: env.MAINNET_RPC_URL,
+    jupiterKey: env.JUPITER_API_KEY,
+    usdcMint: env.USDC_MINT,
+    skrMint: env.SKR_MINT,
+    cluster: clusterOf(env),
+    wallet: who.wallet,
+    now: clock.now,
+  }
+}
+
 function payConfigured(env: Env): boolean {
   return (
     isAddress(env.TREASURY_ADDRESS) &&
@@ -776,6 +825,7 @@ export function scrub(text: string, env: Env): string {
     env.JUDGE_CODE,
     env.RPC_URL,
     env.JUPITER_API_KEY,
+    env.MAINNET_RPC_URL,
   ]
   let safe = text
   for (const secret of secrets) {

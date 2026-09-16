@@ -62,3 +62,22 @@ class SkillIndexTest {
         assertEquals("Built in", SkillsText.note(row.copy(state = SkillCap.State.ACTIVE), 3))
     }
 }
+
+class GetMoreListingTest {
+
+    private fun entry(id: String) = SkillIndex.Entry(id, id, "s", "1", "https://example.com/$id.md")
+
+    @Test
+    fun `installed entries stay on the list, marked`() {
+        val listing = SkillsText.listing(listOf(entry("chrome"), entry("phantom")), setOf("chrome", "jupiter"))
+        assertEquals(listOf("chrome" to true, "phantom" to false), listing.entries.map { it.first.id to it.second })
+        assertFalse(listing.everythingInstalled)
+    }
+
+    @Test
+    fun `when every entry is here it says so, and an empty index does not`() {
+        assertTrue(SkillsText.listing(listOf(entry("chrome")), setOf("chrome")).everythingInstalled)
+        assertEquals("Everything in the index is installed", SkillsText.ALL_INSTALLED)
+        assertFalse(SkillsText.listing(emptyList(), setOf("chrome")).everythingInstalled)
+    }
+}

@@ -139,15 +139,20 @@ private fun SkillsScreen(settings: HeylanaSettings, onBack: () -> Unit, modifier
         )
 
         val have = rows.map { it.skill.id }.toSet()
-        index?.filter { it.id !in have }?.let { more ->
-            if (more.isEmpty() && status.isEmpty()) {
+        index?.let { entries ->
+            val listed = SkillsText.listing(entries, have)
+            if (listed.everythingInstalled) {
                 Text(text = SkillsText.ALL_INSTALLED, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
             }
-            more.forEach { entry ->
+            listed.entries.forEach { (entry, installed) ->
                 GlassCard {
                     Text(text = entry.name, style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary))
                     Text(text = entry.summary, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
                     Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
+                    if (installed) {
+                        Text(text = SkillsText.INSTALLED, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+                        return@GlassCard
+                    }
                     GlassButton(
                         text = "Install",
                         enabled = !busy,
@@ -214,7 +219,16 @@ object SkillsText {
     const val INTRO = "Skills are reference notes for one app each. They never act for you."
     const val INDEX_FAILED = "Couldn't load more skills. Check the connection and try again."
     const val INDEX_EMPTY = "No skills to add right now."
-    const val ALL_INSTALLED = "You have every skill on the list."
+    const val ALL_INSTALLED = "Everything in the index is installed"
+    const val INSTALLED = "Installed"
+
+    /** Every index entry, in index order, marked if it is already here (built in or installed). */
+    data class Listing(val entries: List<Pair<SkillIndex.Entry, Boolean>>) {
+        val everythingInstalled: Boolean get() = entries.isNotEmpty() && entries.all { it.second }
+    }
+
+    fun listing(index: List<SkillIndex.Entry>, have: Set<String>): Listing =
+        Listing(index.map { it to (it.id in have) })
     const val DOWNLOAD_FAILED = "Couldn't download that skill. Try again."
 
     fun installed(name: String) = "$name installed."

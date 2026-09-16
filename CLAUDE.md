@@ -445,7 +445,9 @@ can be copied to a public repo as it is. The address is
 `heylana.skillsIndexUrl` in local.properties, else the public repo). "Get more" is
 a plain GET with no Heylana headers, https only (loopback http in debug builds,
 for a local server over `adb reverse`), no redirects, 64 KB for the index and 16 KB
-a skill. Install parses, sanitises, refuses a built-in's id or a body over 400
+a skill. Every index entry is listed: one already here (built in or installed)
+says "Installed" instead of Install, and when all of them are, the line "Everything
+in the index is installed" sits above the list. Install parses, sanitises, refuses a built-in's id or a body over 400
 tokens, and stores the file; Remove deletes it. `skills-index/skills/chrome.md` is
 the test entry.
 

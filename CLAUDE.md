@@ -638,6 +638,27 @@ becomes an ordinary drag. The overlay window only becomes focusable while the
 panel was opened by a tap — never mid-gesture, because changing focusability tears
 down the touch stream and would swallow the release that ends a hold.
 
+## Crash reports
+
+**Sentry, off unless a DSN is built in, and scrubbed either way.** The app reads
+`heylana.sentryDsn` from local.properties into `BuildConfig.SENTRY_DSN`; empty means
+off. It reports from release builds only, unless `heylana.sentryDebug=true` (for the
+test crash: long-press the version line at the bottom of Settings, debug builds
+only). `HeylanaApp` starts it by hand (`io.sentry.auto-init` is false) with
+`sentry-android-core` alone — no NDK, replay or screenshot modules — no default PII,
+no screenshot or view hierarchy (the view hierarchy would carry the words on
+screen), no tap, network or system breadcrumbs, no tracing. `ops/CrashReports` keeps
+only navigation and lifecycle breadcrumbs, drops the user, request and extras, and
+`ReportScrub` turns every base58 run of 32–88 characters into `[address]` and any
+`sk-ant-…` or `Bearer …` into `[key]` in messages, exception text and breadcrumbs.
+
+The worker reports only unhandled errors, through toucan-js, when the `SENTRY_DSN`
+secret is set (`worker/src/sentry.ts`): only the request's method and path, no
+breadcrumbs, no user or server name, and every string in the event through the same
+secret scrub as error replies plus the same `[address]` rule. Tests check that an
+address, a signature, the RPC address, a header and the device id never reach the
+report body.
+
 ## API budget
 
 The operator pays for every request out of a small budget. Treat their key as

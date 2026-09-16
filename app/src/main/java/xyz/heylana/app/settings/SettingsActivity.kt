@@ -6,6 +6,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -246,8 +248,39 @@ private fun SettingsScreen(
         OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
             Text(text = "Back")
         }
+
+        VersionLine()
     }
 }
+
+/**
+ * "Heylana 0.9.0 (1)". In debug builds a long press crashes the app on purpose, so a
+ * crash report can be checked end to end; the message carries a made-up address
+ * that has to arrive in Sentry as [address].
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun VersionLine() {
+    val text = "Heylana ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+    val style = MaterialTheme.typography.bodySmall
+    if (!BuildConfig.DEBUG) {
+        Text(text = text, style = style)
+        return
+    }
+    Text(
+        text = text,
+        style = style,
+        modifier = Modifier.combinedClickable(
+            onClick = {},
+            onLongClick = { throw TestCrash() }
+        )
+    )
+}
+
+/** Debug builds only. The address is made up, and must not survive the scrubbing. */
+private class TestCrash : RuntimeException(
+    "Heylana test crash. This address must arrive as [address]: 7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv"
+)
 
 /**
  * Which voice reads the answers out. Picking one says a short line in it, so the

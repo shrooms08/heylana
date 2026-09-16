@@ -19,6 +19,7 @@ import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
 import { answerWithTools, proposeSend, toolsNamed } from './brain.ts'
+import { sentryFor, type WaitUntil } from './sentry.ts'
 import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
 import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.ts'
 import { prepareSend } from './tools.ts'
@@ -57,6 +58,8 @@ export interface Env {
   JUPITER_API_KEY?: string
   /** Optional: a mainnet RPC for .skr names, which live on mainnet whatever CLUSTER is. */
   MAINNET_RPC_URL?: string
+  /** Optional: where unhandled errors are reported, scrubbed. Unset means nowhere. */
+  SENTRY_DSN?: string
   /** Signing certificate SHA-256 fingerprints for assetlinks.json, comma-separated. */
   ASSETLINKS_SHA256?: string
 
@@ -167,7 +170,7 @@ const MAX_OUTPUT_TOKENS = 1024
 const CAP_KEY_TTL_SECONDS = 172800
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, context?: WaitUntil): Promise<Response> {
     const route = new URL(request.url).pathname.replace(/^\/+|\/+$/g, '')
 
     // The mark is public: Seed Vault fetches it for its approval screen with no
@@ -230,6 +233,7 @@ export default {
       // Whatever went wrong, the reply is a shape the app understands and
       // carries nothing that could have come from a secret.
       log({ route, device, ms: clock.now() - started, error: 'unhandled' })
+      sentryFor(request, env.SENTRY_DSN, context, (text) => scrub(text, env))?.captureException(error)
       return fail(502, 'upstream', scrub(String(error), env))
     }
   },
@@ -1096,6 +1100,7 @@ export function scrub(text: string, env: Env): string {
     env.RPC_URL,
     env.JUPITER_API_KEY,
     env.MAINNET_RPC_URL,
+    env.SENTRY_DSN,
   ]
   let safe = text
   for (const secret of secrets) {

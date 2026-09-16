@@ -125,6 +125,12 @@ runs on devnet this is what lets Heylana resolve them; on mainnet `RPC_URL` is e
 If `RPC_URL` is a Helius endpoint, token names come from its DAS API too; any other
 RPC works without them.
 
+Optionally, `npx wrangler secret put SENTRY_DSN` with the DSN of a Sentry project
+set up for Cloudflare Workers (Sentry → Settings → Projects → the worker's project →
+Client Keys (DSN)). Unhandled errors are then reported, scrubbed of keys, the RPC
+address, every Solana address and signature, and anything about the person asking.
+Unset, nothing is reported.
+
 **`RPC_URL` must be on the same network as `CLUSTER`.** A devnet `CLUSTER` with a
 mainnet `RPC_URL` hands the phone mainnet blockhashes, and Seed Vault, set to devnet,
 refuses with "Network mismatch". The worker now checks the RPC's network (its

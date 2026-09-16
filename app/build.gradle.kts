@@ -41,6 +41,20 @@ val skillsIndexUrl: String = (providers.gradleProperty("heylana.skillsIndexUrl")
     }.getProperty("heylana.skillsIndexUrl")
     ?: "https://raw.githubusercontent.com/shrooms08/heylana-skills/main/index.json").trim()
 
+/**
+ * Crash reports. The Sentry DSN is one line in local.properties, and empty means
+ * Sentry is off. Release builds only, unless heylana.sentryDebug=true says a debug
+ * build should report too (for the test crash).
+ *
+ *     heylana.sentryDsn=https://…@….ingest.sentry.io/…
+ */
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val sentryDsn: String = localProperties.getProperty("heylana.sentryDsn").orEmpty().trim()
+val sentryInDebug: Boolean = localProperties.getProperty("heylana.sentryDebug").orEmpty().trim() == "true"
+
 android {
     namespace = "xyz.heylana.app"
     compileSdk {
@@ -59,6 +73,8 @@ android {
         buildConfigField("String", "PROXY_URL", "\"$proxyUrl\"")
         buildConfigField("String", "LISTEN_URL", "\"$listenUrl\"")
         buildConfigField("String", "SKILLS_INDEX_URL", "\"$skillsIndexUrl\"")
+        buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")
+        buildConfigField("boolean", "SENTRY_IN_DEBUG", "$sentryInDebug")
     }
 
     buildTypes {
@@ -103,6 +119,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.mwa.clientlib.ktx)
     implementation(libs.sol4k)
+    implementation(libs.sentry.android.core)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

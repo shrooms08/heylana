@@ -76,6 +76,11 @@ balance has to be asked for twice.
    no wallet, no screen. A skill itself is text on the phone; it reads nothing and
    sends nothing.
 
+9. **Crash reports, if turned on in the build** — when the app or Heylana's server
+   crashes, what went wrong goes to **Sentry**: the error, the app version and the
+   phone model. No screen text, no screenshots, no taps, no name, and every Solana
+   address and key is removed before it leaves.
+
 Never: the screen never goes to Deepgram or Cartesia. No API key is ever stored
 on the phone. What Heylana reads off the screen is used for one request and then
 dropped — never logged, never saved. The hidden "use my own key" setting is the

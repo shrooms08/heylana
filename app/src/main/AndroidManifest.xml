@@ -28,6 +28,7 @@
     </queries>
 
     <application
+        android:name=".HeylanaApp"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -36,6 +37,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Heylana">
+        <!-- Sentry starts from HeylanaApp, only when a DSN is built in, with its
+             own scrubbing; never on its own from the manifest. -->
+        <meta-data
+            android:name="io.sentry.auto-init"
+            android:value="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

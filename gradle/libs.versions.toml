@@ -16,6 +16,8 @@ dynamicAnimation = "1.1.0"
 mwa = "2.1.1"
 # sol4k: 0.7.0 is the newest this Kotlin 2.2 compiler can read (0.8.x is built with 2.4).
 sol4k = "0.7.0"
+# Sentry: the core Android SDK only, with no NDK, session replay or screenshot modules.
+sentry = "8.57.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,6 +40,7 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 mwa-clientlib-ktx = { group = "com.solanamobile", name = "mobile-wallet-adapter-clientlib-ktx", version.ref = "mwa" }
 sol4k = { group = "org.sol4k", name = "sol4k", version.ref = "sol4k" }
+sentry-android-core = { group = "io.sentry", name = "sentry-android-core", version.ref = "sentry" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

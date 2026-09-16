@@ -65,6 +65,16 @@ android {
     }
 }
 
+/**
+ * The built-in skills are the files in skills/ at the top of the repo, shipped as
+ * assets at the root of the APK so the app and the repo can never disagree.
+ */
+androidComponents {
+    onVariants { variant ->
+        variant.sources.assets?.addStaticSourceDirectory(rootProject.file("skills").absolutePath)
+    }
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)

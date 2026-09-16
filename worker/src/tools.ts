@@ -299,7 +299,7 @@ async function explainAddress(given: unknown, context: ToolContext) {
   }
   const isTreasury = Boolean(context.treasury) && address === context.treasury
   const label = known?.label ??
-    (isTreasury ? "Heylana's treasury, where Pro payments go" : null) ??
+    (isTreasury ? 'your Heylana treasury' : null) ??
     (kind === 'token mint' ? await dasName(address, context) : null)
   const parsed = account?.data?.parsed?.info
 

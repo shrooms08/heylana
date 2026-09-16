@@ -69,7 +69,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         screenText: String,
         history: String? = null,
         greeting: String? = null,
-        route: Routing.Route = Routing.PLAIN
+        route: Routing.Route = Routing.PLAIN,
+        knownAddresses: List<String> = emptyList()
     ): BrainReply {
         val tools = route.toolsWanted && !settings.useOwnKey
         HeylanaLog.state(
@@ -77,19 +78,33 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 (route.solana?.let { "solana-core loaded reason=${it.log}" } ?: "solana-core not loaded") +
                 " tools=${if (tools) "sent" else "not sent"}"
         )
+        val extra = JSONObject()
         val message = if (route.explainsSigning) {
             val found = SigningScan.of(screenText)
             // Counts only: what is on a signing screen is never written to the log.
-            HeylanaLog.state("sign-check: addresses=${found.addresses.size} amounts=${found.amounts.size}")
-            HeylanaPrompt.signingMessage(screenText, question, found.addresses, found.amounts, greeting)
+            HeylanaLog.state(
+                "sign-check: addresses=${found.addresses.size} shortened=${found.shortAddresses.size} " +
+                    "amounts=${found.amounts.size} typed=${knownAddresses.size}"
+            )
+            // The worker matches shortened addresses before the model sees the question.
+            if (tools && found.shortAddresses.isNotEmpty()) {
+                extra.put(
+                    "signing",
+                    JSONObject().put("short", JSONArray(found.shortAddresses)).put("typed", JSONArray(knownAddresses))
+                )
+            }
+            HeylanaPrompt.signingMessage(screenText, question, found)
         } else {
-            HeylanaPrompt.userMessage(screenText, question, history, greeting)
+            HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null)
         }
+        // A send is never left to prose: the worker asks the model for the send only.
+        if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
         return send(
             message,
             route.mode,
             solana = route.solana != null,
-            tools = tools
+            tools = tools,
+            extra = extra
         )
     }
 
@@ -109,13 +124,14 @@ class ProxyClient(private val settings: HeylanaSettings) {
         userMessage: String,
         mode: String,
         solana: Boolean = false,
-        tools: Boolean = false
+        tools: Boolean = false,
+        extra: JSONObject? = null
     ): BrainReply = withContext(Dispatchers.IO) {
         val ownKey = settings.useOwnKey
         val request = if (ownKey) {
             ownKeyRequest(userMessage, mode, solana)
         } else {
-            proxyRequest(userMessage, mode, solana, tools)
+            proxyRequest(userMessage, mode, solana, tools, extra)
         }
         if (request == null) {
             return@withContext BrainReply.Failed(if (ownKey) NO_KEY else NO_PROXY)
@@ -144,11 +160,18 @@ class ProxyClient(private val settings: HeylanaSettings) {
     }
 
     /** What the app sends: the kind of work, not the model. */
-    private fun proxyRequest(userMessage: String, mode: String, solana: Boolean, tools: Boolean): Request? {
+    private fun proxyRequest(
+        userMessage: String,
+        mode: String,
+        solana: Boolean,
+        tools: Boolean,
+        extra: JSONObject?
+    ): Request? {
         if (!proxy.isConfigured) return null
         // The worker owns the tool definitions; the app only says whether to send them.
         val body = payload(userMessage, solana).put("mode", mode)
         if (tools) body.put("tools", true)
+        extra?.keys()?.forEach { key -> body.put(key, extra.get(key)) }
         return proxy.post("chat", body.toString())
     }
 
@@ -197,7 +220,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         // Summed across every tool round by the worker, so this is the whole question.
         HeylanaLog.state(
             "usage: mode=$mode input_tokens=${usage.optInt("input_tokens", -1)} " +
-                "output_tokens=${usage.optInt("output_tokens", -1)}"
+                "output_tokens=${usage.optInt("output_tokens", -1)} " +
+                "tool_ms=${usage.optInt("tool_ms", 0)} tools=${usage.optString("tools").ifEmpty { "none" }}"
         )
     }
 
@@ -214,7 +238,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
     /** First text block → strip fences → parse the JSON → fall back to raw text. */
     private fun extractReply(body: String): BrainReply {
         val content = JSONObject(body).optJSONArray("content")
-            ?: return BrainReply.Say(body.trim(), null, null)
+            ?: return BrainReply.Say(AddressText.shorten(body.trim()), null, null)
 
         var raw: String? = null
         for (i in 0 until content.length()) {
@@ -231,13 +255,16 @@ class ProxyClient(private val settings: HeylanaSettings) {
 
         val unfenced = stripFences(text)
         val json = runCatching { JSONObject(unfenced) }.getOrNull()
-            ?: return BrainReply.Say(unfenced, null, null)
+            ?: return BrainReply.Say(AddressText.shorten(unfenced), null, null)
 
+        // Every word the model says is shortened here, once, before it is shown or spoken.
         val say = json.optString("say").trim()
-        return if (say.isEmpty()) {
-            BrainReply.Say(unfenced, null, null)
+        val action = readAction(json)
+        return if (say.isEmpty() && action == null) {
+            BrainReply.Say(AddressText.shorten(unfenced), null, null)
         } else {
-            BrainReply.Say(say, readPointAt(json), readTask(json), readAction(json))
+            // A send carries no words of its own: the app writes the confirmation.
+            BrainReply.Say(AddressText.shorten(say), readPointAt(json), readTask(json), action)
         }
     }
 
@@ -260,7 +287,20 @@ class ProxyClient(private val settings: HeylanaSettings) {
     private fun readAction(json: JSONObject): SendAction? {
         val action = json.optJSONObject("action") ?: return null
         val amount = if (action.has("amount") && !action.isNull("amount")) action.opt("amount")?.toString() else null
-        return SendAction.of(action.optString("type"), action.optString("to"), amount, action.optString("token"))
+        val to = action.optString("to")
+        val kind = when {
+            AddressText.isKey(to.trim()) -> "address"
+            Regex("\\.(skr|sol)$", RegexOption.IGNORE_CASE).containsMatchIn(to.trim()) -> "name"
+            else -> "other"
+        }
+        // The raw action as it came back, with no more than four characters of the recipient.
+        HeylanaLog.state(
+            "send: raw action type=${action.optString("type")} to=${to.take(4)} kind=$kind " +
+                "amount=${amount ?: "null"} token=${action.optString("token")}"
+        )
+        return SendAction.of(action.optString("type"), to, amount, action.optString("token")).also {
+            if (it == null) HeylanaLog.state("send: raw action rejected as malformed")
+        }
     }
 
     private fun readPointAt(json: JSONObject): Int? {

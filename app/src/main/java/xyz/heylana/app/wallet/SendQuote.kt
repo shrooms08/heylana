@@ -1,5 +1,6 @@
 package xyz.heylana.app.wallet
 
+import xyz.heylana.app.brain.AddressText
 import java.math.BigDecimal
 
 /** A send the worker checked and kept for fifteen minutes, ready for the user to confirm. */
@@ -27,22 +28,25 @@ data class SendQuote(
 /** The words of the confirmation strip, read aloud as they are shown. */
 object SendText {
 
-    fun short(address: String): String =
-        if (address.length > 10) "${address.take(4)}…${address.takeLast(4)}" else address
+    fun short(address: String): String = AddressText.short(address)
 
-    /** "Send 5 USDC to bob.skr (7c2y…ab12). Fee ~0.000005 SOL." */
+    /**
+     * "Send 0.05 USDC to 7c2y…SxSv. Confirm?" — written by the app, never by the
+     * model, and the same words shown and spoken.
+     */
     fun strip(quote: SendQuote): String {
         val who = quote.resolvedFrom?.let { "$it (${short(quote.toAddress)})" } ?: short(quote.toAddress)
         val rent = if (quote.willCreateAta) {
-            ", plus ${quote.accountRent} SOL to open their ${quote.token} account"
+            " It also opens their ${quote.token} account for ${quote.accountRent} SOL."
         } else {
             ""
         }
-        return "Send ${quote.amount} ${quote.token} to $who. Fee ~${quote.feeEstimate} SOL$rent."
+        return "Send ${quote.amount} ${quote.token} to $who.$rent Confirm?"
     }
 
     fun sent(shortSignature: String): String = "Sent. Signature $shortSignature."
 
     const val CANCELLED = "Cancelled. Nothing was sent."
+    const val NO_ACTION = "I couldn't tell what to send. Say the amount, the token and who it's for."
     const val NO_WALLET = "Connect your wallet in Heylana Settings first, then ask again."
 }

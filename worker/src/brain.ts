@@ -30,6 +30,9 @@ export interface LoopResult {
   rounds: number
   toolCalls: string[]
   timedOut: boolean
+  /** Time spent in lookups, added up, and each one as "name:123ms". */
+  toolMs: number
+  timings: string[]
 }
 
 const LIMIT_REACHED =
@@ -53,6 +56,8 @@ export async function answerWithTools(options: {
   let rounds = 0
   let timedOut = false
   const toolCalls: string[] = []
+  const timings: string[] = []
+  let toolMs = 0
   const outOfTime = () => now() - started >= toolLimits.ms || controller.signal.aborted
 
   try {
@@ -73,8 +78,9 @@ export async function answerWithTools(options: {
 
       const uses = Array.isArray(reply?.content) ? reply.content.filter((block: any) => block?.type === 'tool_use') : []
       if (!res.ok || !reply || finalRound || reply.stop_reason !== 'tool_use' || uses.length === 0) {
-        const body = reply ? JSON.stringify({ ...reply, usage: { input_tokens: input, output_tokens: output } }) : text
-        return { status: res.status, body, input, output, rounds, toolCalls, timedOut }
+        const usage = { input_tokens: input, output_tokens: output, tool_ms: toolMs, tools: timings.join(',') }
+        const body = reply ? JSON.stringify({ ...reply, usage }) : text
+        return { status: res.status, body, input, output, rounds, toolCalls, timedOut, toolMs, timings }
       }
 
       // Every tool_use needs a tool_result, run or not. The allowance is handed
@@ -87,10 +93,14 @@ export async function answerWithTools(options: {
           }
           toolCalls.push(String(use.name))
           const remaining = toolLimits.ms - (now() - started)
+          const began = now()
           const result = await withDeadline(runTool(String(use.name), use.input, context), remaining, {
             error: 'timed_out',
             detail: 'The lookup took too long.',
           })
+          const ms = now() - began
+          toolMs += ms
+          timings.push(`${use.name}:${ms}ms`)
           if ((result as any)?.error === 'timed_out') timedOut = true
           return { type: 'tool_result', tool_use_id: use.id, content: JSON.stringify(result) }
         }),
@@ -116,4 +126,67 @@ function withDeadline<T>(work: Promise<T>, ms: number, late: T): Promise<T> {
     timer = setTimeout(() => resolve(late), Math.max(0, ms))
   })
   return Promise.race([work, tooLate]).finally(() => clearTimeout(timer))
+}
+
+// ---------------------------------------------------------------------- send
+
+/**
+ * The only tool offered when the question is a send, and the model has to use
+ * it: it writes down what the user asked to send and nothing else. No prose comes
+ * back, so nothing the model says about a send ever reaches the user — the app
+ * writes the confirmation, and /send/prepare does the checking.
+ */
+export const PROPOSE_SEND = {
+  name: 'propose_send',
+  description: 'Write down the send the user asked for, exactly as they said it. Heylana checks it and the user confirms and signs it.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      to: { type: 'string', description: 'The recipient exactly as the user wrote or said it: an address, or a .skr or .sol name' },
+      amount: { type: ['number', 'null'], description: 'The amount; null only if the user said everything or all' },
+      token: { type: 'string', enum: ['SOL', 'USDC', 'SKR'] },
+    },
+    required: ['to', 'amount', 'token'],
+  },
+}
+
+export interface SendProposal {
+  status: number
+  body: string
+  input: number
+  output: number
+  action: { type: 'send'; to: string; amount: unknown; token: unknown } | null
+}
+
+export async function proposeSend(options: {
+  callModel: (payload: unknown) => Promise<Response>
+  base: ModelPayload
+}): Promise<SendProposal> {
+  const res = await options.callModel({
+    ...options.base,
+    tools: [PROPOSE_SEND],
+    tool_choice: { type: 'tool', name: PROPOSE_SEND.name },
+  })
+  const text = await res.text()
+  const reply = parse(text)
+  const input = Number(reply?.usage?.input_tokens ?? 0)
+  const output = Number(reply?.usage?.output_tokens ?? 0)
+  if (!res.ok || !reply) return { status: res.status, body: text, input, output, action: null }
+
+  const use = (Array.isArray(reply.content) ? reply.content : []).find(
+    (block: any) => block?.type === 'tool_use' && block?.name === PROPOSE_SEND.name,
+  )
+  const action = use && typeof use.input?.to === 'string' && use.input.to.trim()
+    ? { type: 'send' as const, to: use.input.to, amount: use.input.amount ?? null, token: use.input.token }
+    : null
+  // The shape every other answer has, with no words in it: the app writes them.
+  const answer = { say: '', point_at: null, task: null, action }
+  const body = JSON.stringify({
+    type: 'message',
+    role: 'assistant',
+    stop_reason: 'end_turn',
+    content: [{ type: 'text', text: JSON.stringify(answer) }],
+    usage: { input_tokens: input, output_tokens: output, tool_ms: 0, tools: '' },
+  })
+  return { status: res.status, body, input, output, action }
 }

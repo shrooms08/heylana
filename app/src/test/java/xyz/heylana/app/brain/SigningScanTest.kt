@@ -11,6 +11,7 @@ class SigningScanTest {
     private val payer = "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"
     private val wallet = "com.solanamobile.wallet"
     private val seedVault = "com.solanamobile.seedvaultimpl"
+    private val chrome = "com.android.chrome"
 
     private val confirmScreen = """
         App: com.solanamobile.wallet
@@ -21,6 +22,16 @@ class SigningScanTest {
         [5] Button: Approve
     """.trimIndent()
 
+    /** How the Wallet and Seed Vault actually print addresses. */
+    private val shortConfirmScreen = """
+        App: com.solanamobile.wallet
+        [1] Text: Review
+        [2] Text: 0.05 USDC
+        [3] Text: To 7c2y…SxSv
+        [4] Text: From 9WzD…AWWM
+        [5] Button: Confirm
+    """.trimIndent()
+
     @Test
     fun `addresses are real 32-byte keys, each once, three at most`() {
         val text = "$treasury and $payer and $treasury again, " +
@@ -29,7 +40,6 @@ class SigningScanTest {
             listOf(treasury, payer, "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"),
             SigningScan.addresses(text)
         )
-        // 44 characters of base58 that decode to 33 bytes are not an address.
         assertEquals(emptyList<String>(), SigningScan.addresses("Mys7eryMint1111111111111111111111111111111111"))
     }
 
@@ -41,20 +51,32 @@ class SigningScanTest {
     }
 
     @Test
+    fun `shortened addresses are found too, written one way`() {
+        val found = SigningScan.of(shortConfirmScreen)
+        assertEquals(emptyList<String>(), found.addresses)
+        assertEquals(listOf("7c2y…SxSv", "9WzD…AWWM"), found.shortAddresses)
+        assertEquals(listOf("0.05 USDC"), found.amounts)
+        assertEquals(listOf("7c2y…SxSv"), SigningScan.of("[1] Text: to 7c2y...SxSv").shortAddresses)
+    }
+
+    @Test
     fun `Seed Vault is always a signing screen, whatever it shows`() {
         assertTrue(SigningScan.looksLikeSigning(seedVault, ""))
     }
 
     @Test
-    fun `a wallet's confirm screen is one, and its home screen is not`() {
+    fun `a wallet's confirm screen is one, full or shortened, and its home screen is not`() {
         assertTrue(SigningScan.looksLikeSigning(wallet, confirmScreen))
+        assertTrue(SigningScan.looksLikeSigning(wallet, shortConfirmScreen, ownWallet = payer))
         val home = "[1] Text: 1.5 SOL\n[2] Button: Send\n[3] Button: Receive\n[4] Button: Swap"
-        assertFalse(SigningScan.looksLikeSigning(wallet, home))
+        assertFalse(SigningScan.looksLikeSigning(wallet, home, ownWallet = payer))
+        // Your own shortened address next to "Review backup" is not a request to sign.
+        assertFalse(SigningScan.looksLikeSigning(wallet, "[1] Text: 9WzD…AWWM\n[2] Button: Review backup", ownWallet = payer))
     }
 
     @Test
     fun `approve and an amount in Chrome is not a signing screen`() {
-        assertFalse(SigningScan.looksLikeSigning("com.android.chrome", "Approve 5 USDC"))
+        assertFalse(SigningScan.looksLikeSigning(chrome, "Approve 5 USDC"))
     }
 
     @Test
@@ -63,6 +85,7 @@ class SigningScanTest {
         assertEquals(Routing.Why.SIGNING_SCREEN, route.why)
         assertEquals(ProxyClient.MODE_TASK, route.mode)
         assertTrue(route.explainsSigning)
+        assertEquals(Routing.Why.SIGNING_SCREEN, Routing.forQuestion(wallet, "what am I signing", shortConfirmScreen, payer).why)
 
         val home = Routing.forQuestion(wallet, "what is my balance", "[1] Text: 1.5 SOL\n[2] Button: Send")
         assertEquals(Routing.Why.WALLET_SCREEN, home.why)
@@ -71,8 +94,7 @@ class SigningScanTest {
 
     @Test
     fun `the signing message lists what was found and asks for plain findings, never safe`() {
-        val found = SigningScan.of(confirmScreen)
-        val message = HeylanaPrompt.signingMessage(confirmScreen, "what am I signing", found.addresses, found.amounts)
+        val message = HeylanaPrompt.signingMessage(confirmScreen, "what am I signing", SigningScan.of(confirmScreen))
         assertTrue(message.contains("Addresses on screen: $treasury."))
         assertTrue(message.contains("Amounts on screen: 0.05 USDC, 0.000005 SOL."))
         assertTrue(message.contains("explain_address"))
@@ -82,9 +104,28 @@ class SigningScanTest {
     }
 
     @Test
+    fun `shortened addresses are listed, never reported as unreadable`() {
+        val message = HeylanaPrompt.signingMessage(shortConfirmScreen, "what am I signing", SigningScan.of(shortConfirmScreen))
+        assertTrue(message.contains("Addresses on screen: 7c2y…SxSv, 9WzD…AWWM."))
+        assertFalse(message.contains("No addresses or amounts could be read"))
+        assertTrue(message.contains("I can't verify a shortened address from here; check it matches who you meant."))
+    }
+
+    @Test
     fun `a signing screen with nothing readable says so instead of guessing`() {
-        val message = HeylanaPrompt.signingMessage("App: com.solanamobile.seedvaultimpl\n(no readable elements)", "what is this", emptyList(), emptyList())
+        val message = HeylanaPrompt.signingMessage(
+            "App: com.solanamobile.seedvaultimpl\n(no readable elements)", "what is this",
+            SigningScan.Found(emptyList(), emptyList(), emptyList())
+        )
         assertTrue(message.contains("No addresses or amounts could be read from this screen."))
         assertTrue(message.contains("read the request in Seed Vault"))
+    }
+
+    @Test
+    fun `no greeting on a send or a signing explanation`() {
+        assertFalse(Routing.forQuestion(chrome, "send 0.05 USDC to $treasury").allowsGreeting)
+        assertFalse(Routing.forQuestion(chrome, "what am I signing").allowsGreeting)
+        assertFalse(Routing.forQuestion(wallet, "hello", confirmScreen).allowsGreeting)
+        assertTrue(Routing.forQuestion(chrome, "what is the capital of Nigeria").allowsGreeting)
     }
 }

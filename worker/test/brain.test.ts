@@ -97,7 +97,10 @@ test('the worker runs the lookup the model asks for, and returns the final answe
   assert.equal(res.status, 200)
   const body = await res.json()
   assert.equal(JSON.parse(body.content[0].text).say, 'SOL is 150 dollars, per Jupiter.')
-  assert.deepEqual(body.usage, { input_tokens: 280, output_tokens: 50 })
+  assert.equal(body.usage.input_tokens, 280)
+  assert.equal(body.usage.output_tokens, 50)
+  assert.equal(body.usage.tool_ms, 0)
+  assert.equal(body.usage.tools, 'get_price:0ms')
 
   assert.equal(modelBodies.length, 2)
   assert.ok(modelBodies[0].tools.some((tool: any) => tool.name === 'get_balances'))

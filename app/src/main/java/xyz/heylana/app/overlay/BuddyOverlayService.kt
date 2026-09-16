@@ -35,6 +35,8 @@ import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.Greeting
 import xyz.heylana.app.brain.Routing
+import xyz.heylana.app.brain.AddressText
+import xyz.heylana.app.brain.TypedAddresses
 import xyz.heylana.app.brain.SendAction
 import xyz.heylana.app.brain.SendGuard
 import xyz.heylana.app.wallet.Answer
@@ -113,6 +115,9 @@ class BuddyOverlayService : Service() {
     private data class PendingSend(val quote: SendQuote, val at: Long)
 
     private val walletApi by lazy { WalletApi(settings) }
+
+    /** Addresses typed since the buddy started, to recognise them shortened on a wallet screen. Memory only. */
+    private val typedAddresses = TypedAddresses()
 
     private val main = Handler(Looper.getMainLooper())
 
@@ -455,20 +460,28 @@ class BuddyOverlayService : Service() {
                 return@launch
             }
 
-            val route = Routing.forQuestion(snapshot.packageName, question, screenText)
-            val reply = brain.ask(question, screenText, memory, greeting.lineFor(settings.callMe), route)
+            typedAddresses.record(question)
+            val route = Routing.forQuestion(snapshot.packageName, question, screenText, settings.walletSession?.pubkey)
+            // No hello by name on a send or a signing explanation, and it is not used up by one.
+            val greetingLine = if (route.allowsGreeting) greeting.lineFor(settings.callMe) else null
+            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all())
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
             when (reply) {
                 is BrainReply.Say -> {
-                    greeting.answered()
+                    if (route.allowsGreeting) greeting.answered()
                     // The capsule goes as the answer lands, whichever way it
                     // was asked for.
                     view.endVoiceExchange()
                     val action = reply.action
                     if (action != null) {
-                        conversation.record(question, reply.text, snapshot.packageName)
                         handleSend(action, question)
+                        return@launch
+                    }
+                    if (route.why == Routing.Why.SEND_QUESTION) {
+                        // A send never falls back to the model's own words.
+                        HeylanaLog.state("send: raw action missing")
+                        sayLine(SendText.NO_ACTION)
                         return@launch
                     }
                     val task = reply.task
@@ -496,13 +509,14 @@ class BuddyOverlayService : Service() {
      * checks the rest, and the strip says what will happen before anything does.
      */
     private fun handleSend(action: SendAction, question: String) {
-        HeylanaLog.state(
-            "send: attempt token=${action.token} amount=${action.amount?.toPlainString() ?: "all"} " +
-                "to=${action.to.take(4)}"
-        )
         val verdict = SendGuard.check(action, question)
+        HeylanaLog.state(
+            "send: guard verdict=" + when (verdict) {
+                is SendGuard.Verdict.Allowed -> "allowed amount=${verdict.amount} token=${verdict.token}"
+                is SendGuard.Verdict.Refused -> "refused reason=${verdict.reason}"
+            }
+        )
         if (verdict is SendGuard.Verdict.Refused) {
-            HeylanaLog.state("send: dropped reason=${verdict.reason}")
             sayLine(verdict.line)
             return
         }
@@ -581,8 +595,9 @@ class BuddyOverlayService : Service() {
     /** One of Heylana's own lines: shown, spoken, then back to rest. */
     private fun sayLine(line: String) {
         val view = overlayView ?: return
-        view.showNotice(line)
-        if (!speak(line)) settleSoon()
+        val shown = AddressText.shorten(line)
+        view.showNotice(shown)
+        if (!speak(shown)) settleSoon()
     }
 
     /** An ordinary answer: say it, point once, let the box time out by itself. */

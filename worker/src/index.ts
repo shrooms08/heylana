@@ -16,7 +16,8 @@
 import { isAddress } from './base58.ts'
 import { challengeMessage, randomNonce, readSession, signSession, verifySignature } from './session.ts'
 import { MARK_PATH, markResponse } from './mark.ts'
-import { answerWithTools } from './brain.ts'
+import { answerWithTools, proposeSend } from './brain.ts'
+import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.ts'
 import { prepareSend } from './tools.ts'
 import { checkSend, type PreparedSend } from './send.ts'
 import { short } from './solana.ts'
@@ -271,6 +272,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   // Tools go only with the questions the app marked as Solana ones. Everything
   // else is sent exactly as it always was, at exactly the size it always was.
   const withTools = body.tools === true
+  const sendIntent = withTools && body.intent === 'send'
   let status: number
   let text: string
   let tokensIn: number
@@ -278,8 +280,31 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   let rounds = 1
   let toolCalls: string[] = []
   let toolTimeout = false
-  if (withTools) {
-    const result = await answerWithTools({ callModel, base, context: toolContext(env, who), now: clock.now })
+  let toolMs = 0
+  let toolTimings: string[] = []
+  let signingMs: number | undefined
+  let sendAction: { to: unknown; amount: unknown; token: unknown } | null = null
+  if (sendIntent) {
+    // A send is never left to prose: one call, the send written down and nothing
+    // else. The app writes every word the user sees and hears about it.
+    const result = await proposeSend({ callModel, base })
+    status = result.status
+    text = result.body
+    tokensIn = result.input
+    tokensOut = result.output
+    sendAction = result.action
+  } else if (withTools) {
+    const context = toolContext(env, who)
+    const signing = body.signing as { short?: unknown; typed?: unknown } | undefined
+    if (signing && typeof signing === 'object') {
+      const checkStarted = clock.now()
+      const checks = await checkShortAddresses(signing.short, signing.typed, context, env.CAPS)
+      if (checks.length > 0) {
+        base.messages = withAddressChecks(base.messages, checkLines(checks))
+        signingMs = clock.now() - checkStarted
+      }
+    }
+    const result = await answerWithTools({ callModel, base, context, now: clock.now })
     status = result.status
     text = result.body
     tokensIn = result.input
@@ -287,6 +312,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     rounds = result.rounds
     toolCalls = result.toolCalls
     toolTimeout = result.timedOut
+    toolMs = result.toolMs
+    toolTimings = result.timings
   } else {
     const upstream = await callModel(base)
     status = upstream.status
@@ -309,6 +336,12 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     tools: withTools,
     rounds,
     tool_calls: toolCalls,
+    tool_ms: toolMs,
+    tool_timings: toolTimings,
+    ...(signingMs !== undefined ? { signing_ms: signingMs } : {}),
+    ...(sendIntent
+      ? { send_action: sendAction ? { to: String(sendAction.to).slice(0, 4), amount: sendAction.amount, token: sendAction.token } : null }
+      : {}),
     ...(toolTimeout ? { tool_timeout: true } : {}),
     status,
     tokens_in: tokensIn,

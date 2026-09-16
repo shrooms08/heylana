@@ -212,6 +212,8 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.BODY_SP)
             maxLines = MAX_ANSWER_LINES
             movementMethod = ScrollingMovementMethod()
+            // Long answers scroll inside the strip rather than being cut off.
+            isVerticalScrollBarEnabled = true
             setLineSpacing(HeylanaTokens.dp(context, HeylanaTokens.SPACE_1_DP), 1f)
         }
         topRow.addView(answer, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
@@ -690,7 +692,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         private const val MAX_ANSWER_LINES = 8
 
         /** The strip shows three lines and then scrolls. */
-        private const val STRIP_LINES = 3
+        private const val STRIP_LINES = 6
         private const val MUTE_LABEL = "Mute Heylana's voice"
         private const val UNMUTE_LABEL = "Unmute Heylana's voice"
     }

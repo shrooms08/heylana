@@ -52,6 +52,7 @@ xyz.heylana.app
 │   ├── Routing              quick or task, and whether Solana knowledge and tools go along
 │   ├── SigningScan          addresses and amounts on a signing screen; is this a signing screen
 │   ├── SendGuard            recipient and amount from the user's own words; the 25% rule
+│   ├── AddressText          every address shortened to first4…last4 before it is shown or spoken
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
 │                            (plus Conversation, the short-term memory)
@@ -204,22 +205,44 @@ or "what am I signing" questions, route to `task`. "What does this button do" is
 deliberately not an explain question.
 
 **Explain before you sign.** On Seed Vault's screen, a wallet screen that says
-approve/confirm/sign next to an address or amount, or for "what am I signing"
-anywhere, `SigningScan` pulls the addresses (up to 3) and amounts off the screen
-text, the model runs explain_address on each, and answers what the request does,
-who receives what, whether the destination is known, and fine / check the amount /
-do not sign — never "safe". Only the counts are logged.
+approve/confirm/sign/review/slide next to an amount or an address that is not the
+user's own, or for "what am I signing" anywhere, `SigningScan` pulls the full
+addresses, the shortened ones (7c2y…SxSv — how the Wallet and Seed Vault print
+them) and the amounts off the screen text. The worker matches each shortened
+address before the model is called (`worker/src/shortaddr.ts`): against the
+treasury, the user's wallet and its token accounts, the addresses they typed since
+the buddy started (kept in memory on the phone), and only then the counterparties
+of their last 20 transactions, cached ten minutes. Exactly one match gives a name
+("your Heylana treasury"); anything else is "cannot be verified from here", and the
+model says: "The screen shows 0.05 USDC to 7c2y…SxSv. I can't verify a shortened
+address from here; check it matches who you meant." Amounts are always read off the
+screen; it never says "safe", never greets by name, and only counts are logged.
 
-**Sending.** The model may return `action: {type: "send", to, amount, token}`.
-`SendGuard` drops it unless the recipient and the amount are in the user's own words
-(an address exactly, a name case-free with "dot" allowed; "everything" becomes
-"all"). `/send/prepare` checks it and keeps it 15 minutes; over a quarter of the
-balance is refused until the user says "yes send it all" or the amount again (that
-second turn skips the model). Otherwise the strip reads it aloud with confirm and
-cancel, and nothing settles it away. Confirm opens `SendActivity` — no `noHistory`,
-or it would die when Seed Vault opens — which builds the transfer, has Seed Vault
-sign and send it, and polls `/send/confirm` until the worker sees it land. Send logs
-carry amounts and at most four characters of any address.
+**Sending is deterministic.** A question routed as a send goes with `intent: "send"`,
+and the worker makes one call offering only `propose_send`, with the model forced to
+use it: it writes down to, amount (null for "everything") and token, and no prose
+ever comes back. The app writes the confirmation itself — "Send 0.05 USDC to
+7c2y…SxSv. Confirm?" — and says a plain line if no action came back. The raw action
+(recipient's first four characters, amount, token) and `SendGuard`'s verdict are
+logged at info. `SendGuard` drops the action unless the recipient and the amount are
+in the user's own words (an address exactly, a name case-free with "dot" allowed;
+"everything" becomes "all"). `/send/prepare` resolves and checks it and keeps it 15
+minutes; over a quarter of the balance is refused until the user says "yes send it
+all" or the amount again (that second turn skips the model). The strip holds until
+confirm or cancel. Confirm opens `SendActivity` — no `noHistory`, or it would die
+when Seed Vault opens — which builds the transfer, has Seed Vault sign and send it,
+and polls `/send/confirm` until the worker sees it land. Send logs carry amounts and
+at most four characters of any address.
+
+**Addresses are never shown or spoken whole.** `AddressText.shorten` turns any base58
+run of 32 to 44 characters into first four…last four, leaving .skr and .sol names
+whole. Every model answer passes through it when it is parsed, and every line
+Heylana says itself; the worker's tool results were already shortened. The reply
+strip shows up to six lines and scrolls beyond that.
+
+**Lookups are timed.** Each tool call's name and milliseconds, and their total, ride
+on the response's usage (`tool_ms`, `tools`) into the phone's `usage:` line, and on
+the worker's log line with `signing_ms` for the address check.
 
 **Names.** .skr names are AllDomains records on mainnet, resolved without an SDK in
 `worker/src/names.ts` (one account read), using `MAINNET_RPC_URL` when the worker is

@@ -19,14 +19,15 @@ class SendQuoteTest {
     )
 
     @Test
-    fun `the strip names the amount, the name, the short address and the fee`() {
-        assertEquals("Send 5 USDC to bob.skr (7c2y…nSxSv). Fee ~0.000005 SOL.".replace("nSxSv", "SxSv"), SendText.strip(quote()))
+    fun `the strip is the app's own words, with the address shortened`() {
+        assertEquals("Send 0.05 USDC to 7c2y…SxSv. Confirm?", SendText.strip(quote(amount = "0.05", resolvedFrom = null)))
     }
 
     @Test
-    fun `a plain address and a new token account are both said`() {
+    fun `a name keeps its whole, and a new token account is said`() {
+        assertEquals("Send 5 USDC to bob.skr (7c2y…SxSv). Confirm?", SendText.strip(quote()))
         assertEquals(
-            "Send 0.05 USDC to 7c2y…SxSv. Fee ~0.000005 SOL, plus 0.00203928 SOL to open their USDC account.",
+            "Send 0.05 USDC to 7c2y…SxSv. It also opens their USDC account for 0.00203928 SOL. Confirm?",
             SendText.strip(quote(amount = "0.05", resolvedFrom = null, willCreateAta = true))
         )
     }

@@ -63,31 +63,28 @@ object HeylanaPrompt {
         }
 
     const val SIGNING_INSTRUCTIONS: String =
-        "Call explain_address on each address first. Then say in plain words what this request does, " +
-            "who receives what, and whether the destination is known. End with one line of advice: " +
-            "fine, check the amount, or do not sign. Never call it safe; say what you found. If nothing " +
-            "could be read, say so and tell them to read the request in Seed Vault before approving."
+        "Call explain_address on each full address; shortened ones are checked for you below. Then say in plain " +
+            "words what this request does, each amount exactly as the screen shows it, who receives it, and " +
+            "whether the destination is known. End with one line of advice: fine, check the amount, or do not " +
+            "sign. Never call it safe; say what you found. For a shortened address that could not be verified, " +
+            "say: \"The screen shows <amount> to <shortened address>. I can't verify a shortened address from " +
+            "here; check it matches who you meant.\" If nothing could be read, say so and tell them to read the " +
+            "request in Seed Vault before approving."
 
     /**
      * Explain before you sign: the screen, what was found on it, and how to answer.
-     * The recent conversation is left out so the answer is about this request only.
+     * No recent conversation and no greeting: the answer is about this request only.
      */
-    fun signingMessage(
-        screenText: String,
-        question: String,
-        addresses: List<String>,
-        amounts: List<String>,
-        greeting: String? = null
-    ): String = buildString {
-        greeting?.let { append(it).append("\n\n") }
+    fun signingMessage(screenText: String, question: String, found: SigningScan.Found): String = buildString {
         append("Screen now:\n")
         append(screenText)
         append("\n\nSigning check. ")
-        if (addresses.isEmpty() && amounts.isEmpty()) {
+        if (found.isEmpty) {
             append("No addresses or amounts could be read from this screen. ")
         } else {
+            val addresses = found.addresses + found.shortAddresses
             if (addresses.isNotEmpty()) append("Addresses on screen: ").append(addresses.joinToString(", ")).append(". ")
-            if (amounts.isNotEmpty()) append("Amounts on screen: ").append(amounts.joinToString(", ")).append(". ")
+            if (found.amounts.isNotEmpty()) append("Amounts on screen: ").append(found.amounts.joinToString(", ")).append(". ")
         }
         append(SIGNING_INSTRUCTIONS)
         append("\n\nUser asks: ").append(question)

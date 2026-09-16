@@ -168,7 +168,7 @@ test('a well-known mint is named from the table', async () => {
 
 test("Heylana's own treasury is named as such", async () => {
   const result: any = await runTool('explain_address', { address: WALLET }, context({ treasury: WALLET }))
-  assert.equal(result.label, "Heylana's treasury, where Pro payments go")
+  assert.equal(result.label, 'your Heylana treasury')
   assert.equal(result.well_known, true)
   const other: any = await runTool('explain_address', { address: WALLET }, context({ treasury: OTHER }))
   assert.equal(other.label, null)

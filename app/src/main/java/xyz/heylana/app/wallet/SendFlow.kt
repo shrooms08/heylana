@@ -28,7 +28,8 @@ object SendRelay {
 class SendFlow(
     private val blockhash: suspend (Cluster) -> Answer<String>,
     private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<String>,
-    private val confirm: suspend (id: String, signature: String) -> Answer<String>,
+    /** [signature] is null when the wallet gave none: the worker then looks for the transfer itself. */
+    private val confirm: suspend (id: String, signature: String?) -> Answer<String>,
     private val log: (String) -> Unit = { HeylanaLog.state(it) },
     private val now: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) }
@@ -94,14 +95,23 @@ class SendFlow(
         val signature = when (val trip = signAndSend(unsigned, request.cluster)) {
             is SeedVault.Trip.Done -> trip.value
             SeedVault.Trip.NoWallet -> return SendResult.Stopped(WalletProblem.NO_WALLET.words)
-            is SeedVault.Trip.Stopped -> return SendResult.Stopped(trip.problem.words)
+            is SeedVault.Trip.Stopped -> {
+                // Declined, or not enough funds: nothing was sent, say so at once.
+                if (trip.problem !in UNSURE) return SendResult.Stopped(trip.problem.words)
+                // Anything else may still have gone through. Look before answering.
+                log("send: wallet gave no signature (${trip.problem.name}), looking for it on chain cluster=${request.cluster.id}")
+                return when (val found = awaitLanded(request.id, null)) {
+                    is SendResult.Sent -> found.also { log("send: found on chain") }
+                    is SendResult.Stopped -> SendResult.Stopped(UNSURE_LINE)
+                }
+            }
         }
         log("send: signed in Seed Vault, waiting for it to land cluster=${request.cluster.id}")
         return awaitLanded(request.id, signature)
     }
 
     /** Not confirmed yet, a hiccup, or no connection: ask again, for up to a minute. */
-    private suspend fun awaitLanded(id: String, signature: String): SendResult {
+    private suspend fun awaitLanded(id: String, signature: String?): SendResult {
         val deadline = now() + LAND_TIMEOUT_MS
         while (true) {
             when (val answer = confirm(id, signature)) {
@@ -122,6 +132,12 @@ class SendFlow(
         const val POLL_MS = 2_000L
         private const val SERVER_ERROR = 500
         private const val TOO_MANY = 429
+
+        /** What the wallet can end with even after a send went out. */
+        private val UNSURE = setOf(WalletProblem.UNKNOWN, WalletProblem.TOOK_TOO_LONG)
+
+        const val UNSURE_LINE =
+            "Seed Vault didn't confirm the send, and I can't find it on chain. Check your wallet before trying again."
 
         const val DID_NOT_MATCH =
             "That send didn't land the way it was prepared. Check your wallet before trying again."

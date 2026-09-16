@@ -249,6 +249,19 @@ when Seed Vault opens — which builds the transfer, has Seed Vault sign and sen
 and polls `/send/confirm` until the worker sees it land. Send logs carry amounts and
 at most four characters of any address.
 
+**A send's result is read from the wallet's error code, and checked on chain.**
+Seed Vault's JSON-RPC codes decide first (declined or not signed is cancelled; not
+submitted is unsure; an unsupported network says so), and every result is logged
+raw: exception types, code, signature count, message with addresses shortened.
+When the wallet ends unsure without a signature, `/send/confirm` without one looks
+among the sender's latest 10 transactions, newer than the prepare, for one that
+does exactly what was prepared and is not already counted for another send. Found
+is "Sent" with its short signature; not found is "check your wallet before trying
+again", never "try again".
+
+**Only a plain question greets.** The greeting is decided after routing, and a
+send, a signing explanation, or anything on a wallet or swap screen never carries it.
+
 **Addresses are never shown or spoken whole.** `AddressText.shorten` turns any base58
 run of 32 to 44 characters into first four…last four, leaving .skr and .sol names
 whole. Every model answer passes through it when it is parsed, and every line
@@ -456,6 +469,22 @@ back to the main thread before it reaches the overlay. Starting an animation fro
 the wrong thread does not glitch — Android kills the app, and because the
 accessibility service lives in the same process, it takes screen reading down with
 it until someone switches it off and on again.
+
+**Every window is read, topmost first.** A wallet's send sheet, a dialog or a
+prompt is its own window above the activity behind it, so reading one window
+missed the one that mattered. The service reads every application window (the
+keyboard is not one), drops Heylana's own, and `screen/WindowMerge` orders them by
+layer, top first. The model still gets 120 elements at most; when there are more,
+amounts, addresses short or full, .skr/.sol names and to/from/fee/send/approve
+words are kept first. Each read logs the windows with package, layer and element
+counts, and which window carried the signing words. While the full-screen box is
+open, it lets touches through for the moment of the read, or Android would leave
+the covered app out of the window list altogether.
+
+**Checking a read without asking anything.** In debug builds,
+`adb shell am broadcast -a xyz.heylana.app.debug.READ_SCREEN` reads the screen as a
+question would and logs `debug-read:` with counts, whether it is a signing screen,
+and how it would route. No request goes anywhere.
 
 **Reading the screen.** The snapshot is taken after the keyboard is dismissed and
 the app underneath has been given a moment to lay itself out again. With the

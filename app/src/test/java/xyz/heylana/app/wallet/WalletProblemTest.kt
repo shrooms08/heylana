@@ -31,6 +31,16 @@ class WalletProblemTest {
     }
 
     @Test
+    fun `the wallet's own error code decides before its words`() {
+        assertEquals(WalletProblem.CANCELLED, WalletProblem.fromRemote(-1, "JsonRpc20RemoteException", "whatever"))
+        assertEquals(WalletProblem.CANCELLED, WalletProblem.fromRemote(-3, null, null))
+        // Signed but perhaps not sent: unsure, so the send path looks on chain.
+        assertEquals(WalletProblem.UNKNOWN, WalletProblem.fromRemote(-4, "NotSubmittedException", "insufficient funds"))
+        assertEquals(WalletProblem.WRONG_NETWORK, WalletProblem.fromRemote(-7, null, null))
+        assertEquals(WalletProblem.TOOK_TOO_LONG, WalletProblem.fromRemote(null, "TimeoutException", null))
+    }
+
+    @Test
     fun `the worker's reasons map to the same plain lines`() {
         assertEquals(WalletProblem.SESSION_ENDED, WalletProblem.fromWorker("bad_session"))
         assertEquals(WalletProblem.MISMATCH, WalletProblem.fromWorker("short_amount"))

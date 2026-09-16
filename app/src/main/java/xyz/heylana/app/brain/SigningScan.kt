@@ -55,6 +55,9 @@ object SigningScan {
         RegexOption.IGNORE_CASE
     )
 
+    /** Whether [text] carries a wallet's words for "you are about to sign". */
+    fun hasSigningWords(text: String): Boolean = CONFIRM_WORDS.containsMatchIn(text)
+
     fun of(screenText: String): Found {
         val full = addresses(screenText)
         val tokens = tokenShortForms(screenText)

@@ -393,14 +393,18 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * empty screen. While the screen is read, the box lets touches through, which
      * puts the app back in that list. Nothing changes on screen.
      */
+    private var flagsBeforeRead: Int? = null
+
     fun letScreenReadThrough(through: Boolean) {
-        val touchable = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0
-        if (through && (mode != Mode.COMPOSE || !touchable)) return
-        if (!through && touchable) return
-        params.flags = if (through) {
-            params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        val passing = params.flags and READ_THROUGH_FLAGS == READ_THROUGH_FLAGS
+        if (through && (mode != Mode.COMPOSE || passing)) return
+        if (!through && !passing) return
+        if (through) {
+            flagsBeforeRead = params.flags
+            params.flags = params.flags or READ_THROUGH_FLAGS
         } else {
-            params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            params.flags = flagsBeforeRead ?: (params.flags and READ_THROUGH_FLAGS.inv())
+            flagsBeforeRead = null
         }
         runCatching { windowManager.updateViewLayout(this, params) }
         HeylanaLog.state("screen: box ${if (through) "lets the read through" else "takes touches again"}")
@@ -1068,6 +1072,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun dp(value: Float): Int = HeylanaTokens.dpInt(context, value)
 
     companion object {
+        /** Neither touches nor focus while the screen is read, so the app beneath is listed again. */
+        private const val READ_THROUGH_FLAGS =
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+
         /** The box starts as a small pill under the disc. */
         private const val GROW_FROM_X = 0.25f
         private const val GROW_FROM_Y = 0.12f

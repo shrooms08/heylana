@@ -770,7 +770,7 @@ async function sendPrepare(request: Request, env: Env, who: Who): Promise<Respon
     return json(422, { reason: quote.error, detail: quote.detail ?? '' })
   }
   const id = newReference()
-  const prepared: PreparedSend = { ...quote, from: who.wallet }
+  const prepared: PreparedSend = { ...quote, from: who.wallet, prepared_at: clock.now() }
   await env.CAPS.put(`send:${id}`, JSON.stringify(prepared), { expirationTtl: SEND_TTL_SECONDS })
   log({
     route: 'send/prepare', device: who.device, wallet: who.wallet.slice(0, 4), to: quote.to_address.slice(0, 4),
@@ -784,29 +784,72 @@ async function sendConfirm(request: Request, env: Env, who: Who): Promise<Respon
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   const body = await readJson(request)
   const id = String(body.id ?? '')
-  const signature = String(body.signature ?? '')
-  if (!/^[1-9A-HJ-NP-Za-km-z]{64,88}$/.test(signature)) return fail(400, 'bad_signature', 'That is not a transaction signature.')
+  // No signature means the wallet ended without one; the transfer is then looked for.
+  const given = body.signature === undefined || body.signature === null ? null : String(body.signature)
+  if (given !== null && !SIGNATURE.test(given)) return fail(400, 'bad_signature', 'That is not a transaction signature.')
 
   const stored = await env.CAPS.get(`send:${id}`)
   if (!stored) return fail(404, 'unknown_send', 'That send has expired. Ask again.')
   const sent = JSON.parse(stored) as PreparedSend
   if (sent.from !== who.wallet) return fail(403, 'not_yours', 'That send belongs to another wallet.')
-  if (await env.CAPS.get(`sent:${id}`)) return json(200, { confirmed: true, signature: short(signature), already_confirmed: true })
+  const already = await env.CAPS.get(`sent:${id}`)
+  if (already) return json(200, { confirmed: true, signature: short(already), already_confirmed: true })
 
-  const tx = await rpc(env.RPC_URL, 'getTransaction', [
-    signature,
-    { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
-  ])
-  const verdict = checkSend(tx, sent)
-  const logged = { route: 'send/confirm', device: who.device, wallet: who.wallet.slice(0, 4), to: sent.to_address.slice(0, 4), token: sent.token, amount: sent.amount }
+  let signature = given
+  let verdict: { ok: true } | { ok: false; reason: string }
+  if (signature) {
+    const used = await env.CAPS.get(`sentsig:${signature}`)
+    if (used && used !== id) return fail(409, 'signature_used', 'That transaction already counted for another send.')
+    const tx = await rpc(env.RPC_URL, 'getTransaction', [
+      signature,
+      { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+    ])
+    verdict = checkSend(tx, sent)
+  } else {
+    signature = await findLandedSend(env, sent, id)
+    verdict = signature ? { ok: true } : { ok: false, reason: 'not_confirmed' }
+  }
+  const logged = {
+    route: 'send/confirm', device: who.device, wallet: who.wallet.slice(0, 4), to: sent.to_address.slice(0, 4),
+    token: sent.token, amount: sent.amount, looked_up: given === null,
+  }
   if (!verdict.ok) {
     log({ ...logged, confirmed: false, reason: verdict.reason })
     if (verdict.reason === 'not_confirmed') return json(409, { reason: 'not_confirmed' })
     return json(402, { reason: verdict.reason })
   }
-  await env.CAPS.put(`sent:${id}`, signature, { expirationTtl: SEND_TTL_SECONDS })
+  await env.CAPS.put(`sent:${id}`, signature!, { expirationTtl: SEND_TTL_SECONDS })
+  await env.CAPS.put(`sentsig:${signature}`, id, { expirationTtl: SEND_TTL_SECONDS })
   log({ ...logged, confirmed: true })
-  return json(200, { confirmed: true, signature: short(signature) })
+  return json(200, { confirmed: true, signature: short(signature!) })
+}
+
+const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/
+const LANDED_LOOKBACK = 10
+const LANDED_SLACK_MS = 120_000
+
+/**
+ * The wallet ended without a signature, so look for the send among the sender's
+ * latest transactions: newer than when it was prepared, succeeded, doing exactly
+ * what was prepared, and not already counted for another send.
+ */
+async function findLandedSend(env: Env, sent: PreparedSend, id: string): Promise<string | null> {
+  const recent = await rpc(env.RPC_URL, 'getSignaturesForAddress', [sent.from, { limit: LANDED_LOOKBACK }])
+  const since = (sent.prepared_at ?? 0) - LANDED_SLACK_MS
+  for (const entry of Array.isArray(recent) ? recent : []) {
+    if (entry?.err) continue
+    if (entry?.blockTime && entry.blockTime * 1000 < since) break
+    const signature = String(entry?.signature ?? '')
+    if (!SIGNATURE.test(signature)) continue
+    const used = await env.CAPS.get(`sentsig:${signature}`)
+    if (used && used !== id) continue
+    const tx = await rpc(env.RPC_URL, 'getTransaction', [
+      signature,
+      { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+    ])
+    if (checkSend(tx, sent).ok) return signature
+  }
+  return null
 }
 
 /** What the tools may use: the cluster's RPC, prices, the mints, and whose wallet. */

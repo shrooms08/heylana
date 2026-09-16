@@ -331,6 +331,7 @@ class BuddyOverlayService : Service() {
         highlight = null
         overlayView?.removeFromWindow()
         overlayView = null
+        HeylanaAccessibilityService.readThrough = null
         super.onDestroy()
     }
 
@@ -347,6 +348,7 @@ class BuddyOverlayService : Service() {
         }
 
         overlayView = BuddyOverlayView(this).also { view ->
+            HeylanaAccessibilityService.readThrough = { through -> view.letScreenReadThrough(through) }
             // The pointer's window doubles as the stage the disc flies across.
             view.flightStage = highlight
             view.onQuestion = { question -> ask(question) }
@@ -470,6 +472,7 @@ class BuddyOverlayService : Service() {
             val route = Routing.forQuestion(snapshot.packageName, question, screenText, settings.walletSession?.pubkey)
             // No hello by name on a send or a signing explanation, and it is not used up by one.
             val greetingLine = if (route.allowsGreeting) greeting.lineFor(settings.callMe) else null
+            HeylanaLog.state("greeting: ${if (greetingLine != null) "included" else "not included"} why=${route.why.log}")
             val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all())
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()

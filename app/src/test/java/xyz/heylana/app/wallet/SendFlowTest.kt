@@ -96,4 +96,46 @@ class SendFlowTest {
         )
         assertEquals(SendResult.Stopped(SendFlow.DID_NOT_MATCH), wrong.run(SendFlow.Request.of(quote("devnet")), from))
     }
+
+    @Test
+    fun `a wallet that errors after sending still reports Sent when the transfer is found on chain`() = runBlocking {
+        val asked = mutableListOf<String?>()
+        val flow = SendFlow(
+            blockhash = { Answer.Ok(blockhash) },
+            signAndSend = { _, _ -> SeedVault.Trip.Stopped(WalletProblem.UNKNOWN) },
+            confirm = { _, signature -> asked += signature; Answer.Ok("4444…4444") },
+            log = {},
+            sleep = {}
+        )
+        assertEquals(SendResult.Sent("4444…4444"), flow.run(SendFlow.Request.of(quote("devnet")), from))
+        assertEquals(listOf<String?>(null), asked)
+    }
+
+    @Test
+    fun `declined in Seed Vault is said at once, with no search on chain`() = runBlocking {
+        var searched = false
+        val flow = SendFlow(
+            blockhash = { Answer.Ok(blockhash) },
+            signAndSend = { _, _ -> SeedVault.Trip.Stopped(WalletProblem.CANCELLED) },
+            confirm = { _, _ -> searched = true; Answer.Ok("s") },
+            log = {},
+            sleep = {}
+        )
+        assertEquals(SendResult.Stopped(WalletProblem.CANCELLED.words), flow.run(SendFlow.Request.of(quote("devnet")), from))
+        assertFalse(searched)
+    }
+
+    @Test
+    fun `an unsure wallet and nothing on chain says check your wallet, never try again`() = runBlocking {
+        var clock = 0L
+        val flow = SendFlow(
+            blockhash = { Answer.Ok(blockhash) },
+            signAndSend = { _, _ -> SeedVault.Trip.Stopped(WalletProblem.UNKNOWN) },
+            confirm = { _, _ -> Answer.Refused(409, "not_confirmed") },
+            log = {},
+            now = { clock },
+            sleep = { clock += it }
+        )
+        assertEquals(SendResult.Stopped(SendFlow.UNSURE_LINE), flow.run(SendFlow.Request.of(quote("devnet")), from))
+    }
 }

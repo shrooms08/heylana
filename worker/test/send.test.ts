@@ -100,12 +100,12 @@ function env(kv = store()): Env {
   } as Env
 }
 
-let chain: { tx: unknown; balances: Record<string, string> }
+let chain: { tx: unknown; balances: Record<string, string>; signatures: unknown[] }
 let logs: string[]
 
 beforeEach(() => {
   clock.now = () => SEPT
-  chain = { tx: null, balances: {} }
+  chain = { tx: null, balances: {}, signatures: [] }
   logs = []
   console.log = (line: string) => { logs.push(String(line)) }
   globalThis.fetch = (async (input: any, init: any) => {
@@ -121,6 +121,7 @@ beforeEach(() => {
       if (method === 'getBalance') return { value: 1_000_000_000 }
       if (method === 'getMinimumBalanceForRentExemption') return 2_039_280
       if (method === 'getTransaction') return chain.tx
+      if (method === 'getSignaturesForAddress') return chain.signatures
       throw new Error(`unexpected rpc ${method}`)
     })()
     return new Response(JSON.stringify({ result }))
@@ -225,4 +226,41 @@ test("someone else's send, an unknown one, or a bad signature is refused", async
   assert.equal((await worker.fetch(req('/send/confirm', { id: quote.id, signature: SIG }, b.session), e)).status, 403)
   assert.equal((await worker.fetch(req('/send/confirm', { id: 'nope', signature: SIG }, a.session), e)).status, 404)
   assert.equal((await worker.fetch(req('/send/confirm', { id: quote.id, signature: 'short' }, a.session), e)).status, 400)
+})
+
+// ------------------------------------------------- when the wallet gives none
+
+const SIG2 = '4'.repeat(88)
+
+test('with no signature from the wallet, the landed transfer is found on chain', async () => {
+  const e = env()
+  const { pubkey, session } = await connected(e)
+  const quote = await (await worker.fetch(req('/send/prepare', { to: TO, amount: '0.05', token: 'USDC' }, session), e)).json()
+  chain.signatures = [{ signature: SIG2, blockTime: SEPT / 1000, err: null }]
+  chain.tx = tokenTx(pubkey)
+  const res = await worker.fetch(req('/send/confirm', { id: quote.id }, session), e)
+  assert.equal(res.status, 200)
+  assert.deepEqual(await res.json(), { confirmed: true, signature: '4444…4444' })
+})
+
+test('nothing new on chain is not confirmed, and an older transfer does not count', async () => {
+  const e = env()
+  const { pubkey, session } = await connected(e)
+  const quote = await (await worker.fetch(req('/send/prepare', { to: TO, amount: '0.05', token: 'USDC' }, session), e)).json()
+  chain.signatures = [{ signature: SIG2, blockTime: SEPT / 1000 - 600, err: null }]
+  chain.tx = tokenTx(pubkey)
+  const res = await worker.fetch(req('/send/confirm', { id: quote.id }, session), e)
+  assert.equal(res.status, 409)
+})
+
+test('a transfer already counted for one send is never counted for another', async () => {
+  const e = env()
+  const { pubkey, session } = await connected(e)
+  const first = await (await worker.fetch(req('/send/prepare', { to: TO, amount: '0.05', token: 'USDC' }, session), e)).json()
+  const second = await (await worker.fetch(req('/send/prepare', { to: TO, amount: '0.05', token: 'USDC' }, session), e)).json()
+  chain.tx = tokenTx(pubkey)
+  assert.equal((await worker.fetch(req('/send/confirm', { id: first.id, signature: SIG }, session), e)).status, 200)
+  chain.signatures = [{ signature: SIG, blockTime: SEPT / 1000, err: null }]
+  assert.equal((await worker.fetch(req('/send/confirm', { id: second.id }, session), e)).status, 409)
+  assert.equal((await worker.fetch(req('/send/confirm', { id: second.id, signature: SIG }, session), e)).status, 409)
 })

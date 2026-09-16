@@ -25,8 +25,11 @@ object Routing {
         /** Explain before you sign: a signing screen, or "what am I signing" anywhere. */
         val explainsSigning: Boolean get() = why == Why.SIGNING_SCREEN || why == Why.EXPLAIN_QUESTION
 
-        /** A send or a signing explanation is about money: no hello by name on those. */
-        val allowsGreeting: Boolean get() = !explainsSigning && why != Why.SEND_QUESTION
+        /**
+         * Only a plain question greets by name. A send, a signing explanation, or
+         * anything on a wallet or swap screen is about money: no hello on those.
+         */
+        val allowsGreeting: Boolean get() = why == Why.PLAIN
     }
 
     val PLAIN = Route(ProxyClient.MODE_QUICK, Why.PLAIN, null)

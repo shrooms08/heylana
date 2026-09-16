@@ -2,14 +2,24 @@ package xyz.heylana.app.screen
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Rect
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import androidx.core.content.ContextCompat
+import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
+import xyz.heylana.app.brain.Routing
+import xyz.heylana.app.brain.SigningScan
+import xyz.heylana.app.settings.HeylanaSettings
 
 /**
  * Reads the current screen — and only when asked.
@@ -39,6 +49,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
         connected = this
         // Start deaf. Nothing is delivered until something asks for it.
         applyEventTypes()
+        if (BuildConfig.DEBUG) registerDebugRead()
     }
 
     /**
@@ -107,7 +118,55 @@ class HeylanaAccessibilityService : AccessibilityService() {
 
     override fun onInterrupt() = Unit
 
+    private var debugRead: BroadcastReceiver? = null
+
+    /**
+     * Debug builds only: `adb shell am broadcast -a xyz.heylana.app.debug.READ_SCREEN`
+     * reads the screen exactly as a question would and logs what the signing
+     * check finds and how it would route — counts and package names only, and no
+     * request goes anywhere.
+     */
+    private fun registerDebugRead() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                // Exactly as a question reads: if the box is open it lets the read
+                // through first, and the read waits the same moment for the app.
+                val through = readThrough
+                through?.invoke(true)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try {
+                        debugReport(context)
+                    } finally {
+                        through?.invoke(false)
+                    }
+                }, intent.getLongExtra("settle_ms", DEBUG_READ_SETTLE_MS))
+            }
+        }
+        ContextCompat.registerReceiver(this, receiver, IntentFilter(DEBUG_READ_ACTION), ContextCompat.RECEIVER_EXPORTED)
+        debugRead = receiver
+    }
+
+    private fun debugReport(context: Context) {
+                val snapshot = snapshot()
+                val text = snapshot.toPromptText()
+                val found = SigningScan.of(text)
+                val own = HeylanaSettings.get(context).walletSession?.pubkey
+                val route = Routing.forQuestion(snapshot.packageName, "what is this", text, own)
+                HeylanaLog.state(
+                    "debug-read: pkg=${snapshot.packageName} nodes=${snapshot.nodes.size} " +
+                        "signing=${SigningScan.looksLikeSigning(snapshot.packageName, text, own)} " +
+                        "addresses=${found.addresses.size} shortened=${found.shortAddresses.size} " +
+                        "amounts=${found.amounts.size} route=${route.why.log} greets=${route.allowsGreeting}"
+                )
+    }
+
+    private fun unregisterDebugRead() {
+        debugRead?.let { runCatching { unregisterReceiver(it) } }
+        debugRead = null
+    }
+
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        unregisterDebugRead()
         if (connected === this) {
             connected = null
             watcher = null
@@ -117,6 +176,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
     }
 
     override fun onDestroy() {
+        unregisterDebugRead()
         if (connected === this) {
             connected = null
             watcher = null
@@ -125,49 +185,73 @@ class HeylanaAccessibilityService : AccessibilityService() {
         super.onDestroy()
     }
 
-    /** Reads the topmost window that is not Heylana's own overlay. */
+    /**
+     * Reads every window the user can see except Heylana's own, topmost first, so
+     * a sheet or dialog on top is read before the activity behind it. Logs counts
+     * and packages per window, never a word of what is on them.
+     */
     fun snapshot(): ScreenSnapshot {
-        val root = topmostForeignRoot()
-        // Counts only: how much was there to read, never a word of what.
+        val merged = WindowMerge.merge(readWindows(), ownPackage = packageName)
         HeylanaLog.state(
-            "screen: windows=${runCatching { windows.size }.getOrDefault(-1)} " +
-                "root=${root != null}"
+            "screen: windows=${runCatching { windows.size }.getOrDefault(-1)} read=${merged.windows.size} " +
+                "kept=${merged.nodes.size} truncated=${merged.truncated}"
         )
-        if (root == null) return ScreenSnapshot.empty()
-        val targetPackage = root.packageName?.toString() ?: "unknown"
-
-        val nodes = ArrayList<ScreenNode>(ScreenSnapshot.MAX_NODES)
-        val truncated = collect(root, depth = 0, out = nodes)
-
+        for (window in merged.windows) {
+            HeylanaLog.state("screen: window pkg=${window.packageName} layer=${window.layer} nodes=${window.read} kept=${window.kept}")
+        }
+        HeylanaLog.state(
+            "screen: signing words from " +
+                (merged.signingWordsFrom?.let { "pkg=${it.packageName} layer=${it.layer}" } ?: "none")
+        )
+        val target = merged.packageName ?: return ScreenSnapshot.empty()
+        val nodes = merged.nodes.mapIndexed { index, raw ->
+            ScreenNode(
+                id = index,
+                depth = raw.depth,
+                className = raw.className,
+                text = raw.text,
+                contentDescription = raw.description,
+                viewId = raw.viewId,
+                clickable = raw.clickable,
+                editable = raw.editable,
+                scrollable = raw.scrollable,
+                checked = raw.checked,
+                bounds = Rect(raw.left, raw.top, raw.right, raw.bottom)
+            )
+        }
         return ScreenSnapshot(
-            packageName = targetPackage,
-            appLabel = appLabel(targetPackage),
+            packageName = target,
+            appLabel = appLabel(target),
             nodes = nodes,
-            truncated = truncated
+            truncated = merged.truncated
         )
     }
 
     /**
-     * Picks the visible application window with the highest layer whose package
-     * is not ours, so our own overlay never shadows the app being asked about.
+     * Every application window's tree. The keyboard is not an application window,
+     * and Heylana's own are dropped in the merge. When the system reports no window
+     * list at all, the active window alone.
      */
-    private fun topmostForeignRoot(): AccessibilityNodeInfo? {
-        val candidates = windows
-            .asSequence()
+    private fun readWindows(): List<WindowMerge.Window> {
+        val found = windows
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
-            .sortedByDescending { it.layer }
-            .mapNotNull { it.root }
-            .filter { it.packageName?.toString() != packageName }
-            .toList()
-
-        return candidates.firstOrNull()
-            ?: rootInActiveWindow?.takeIf { it.packageName?.toString() != packageName }
+            .mapNotNull { window ->
+                val root = window.root ?: return@mapNotNull null
+                val nodes = ArrayList<WindowMerge.Raw>()
+                val truncated = collect(root, depth = 0, out = nodes)
+                WindowMerge.Window(root.packageName?.toString() ?: "unknown", window.layer, nodes, truncated)
+            }
+        if (found.any { it.packageName != packageName }) return found
+        val root = rootInActiveWindow?.takeIf { it.packageName?.toString() != packageName } ?: return found
+        val nodes = ArrayList<WindowMerge.Raw>()
+        val truncated = collect(root, depth = 0, out = nodes)
+        return found + WindowMerge.Window(root.packageName?.toString() ?: "unknown", Int.MIN_VALUE, nodes, truncated)
     }
 
     /** Depth-first walk. Returns true if the node cap was hit. */
     @Suppress("DEPRECATION") // isChecked has no pre-API-36 replacement
-    private fun collect(node: AccessibilityNodeInfo, depth: Int, out: MutableList<ScreenNode>): Boolean {
-        if (out.size >= ScreenSnapshot.MAX_NODES) return true
+    private fun collect(node: AccessibilityNodeInfo, depth: Int, out: MutableList<WindowMerge.Raw>): Boolean {
+        if (out.size >= MAX_READ_PER_WINDOW) return true
         if (!node.isVisibleToUser) return false
 
         var text = node.text?.toString()?.clean()
@@ -200,18 +284,20 @@ class HeylanaAccessibilityService : AccessibilityService() {
         if (worthKeeping) {
             val bounds = Rect().also { node.getBoundsInScreen(it) }
             out.add(
-                ScreenNode(
-                    id = out.size,
+                WindowMerge.Raw(
                     depth = depth,
                     className = simplifyClassName(node.className?.toString()),
                     text = text,
-                    contentDescription = description,
+                    description = description,
                     viewId = viewId,
                     clickable = clickable,
                     editable = editable,
                     scrollable = scrollable,
                     checked = if (checkable) node.isChecked else null,
-                    bounds = bounds
+                    left = bounds.left,
+                    top = bounds.top,
+                    right = bounds.right,
+                    bottom = bounds.bottom
                 )
             )
             childDepth = depth + 1
@@ -221,7 +307,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
             val child = childSource.getChild(i) ?: continue
             if (collect(child, childDepth, out)) return true
         }
-        return out.size >= ScreenSnapshot.MAX_NODES
+        return out.size >= MAX_READ_PER_WINDOW
     }
 
     /**
@@ -268,6 +354,20 @@ class HeylanaAccessibilityService : AccessibilityService() {
 
         /** How far to follow a single-child chain when collapsing a wrapper. */
         private const val MAX_COLLAPSE_DEPTH = 3
+
+        /** Per window, before the merge picks what the model gets. */
+        private const val MAX_READ_PER_WINDOW = 300
+
+        /** Debug builds only: read the screen as a question would, log counts, ask nobody. */
+        const val DEBUG_READ_ACTION = "xyz.heylana.app.debug.READ_SCREEN"
+        private const val DEBUG_READ_SETTLE_MS = 350L
+
+        /**
+         * Set by the buddy while its overlay exists: lets a debug read open the box
+         * to accessibility the way a real question does.
+         */
+        @Volatile
+        var readThrough: ((Boolean) -> Unit)? = null
 
         /** True once Android has actually bound and connected the service. */
         val isConnected: Boolean get() = connected != null

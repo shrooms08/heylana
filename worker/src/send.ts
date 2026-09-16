@@ -12,6 +12,8 @@ import type { SendQuote } from './tools.ts'
 export interface PreparedSend extends SendQuote {
   /** The wallet that asked, from its session. */
   from: string
+  /** When it was prepared (ms): a transfer found on chain must be newer. */
+  prepared_at?: number
 }
 
 export type SendVerdict = { ok: true } | { ok: false; reason: string }

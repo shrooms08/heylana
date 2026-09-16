@@ -8,7 +8,10 @@ import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import org.sol4k.Base58
 import xyz.heylana.app.BuildConfig
+import com.solana.mobilewalletadapter.clientlib.protocol.JsonRpc20Client
+import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient
 import xyz.heylana.app.HeylanaLog
+import xyz.heylana.app.brain.AddressText
 
 /**
  * Talking to the user's wallet — Seed Vault Wallet on the Seeker — over Mobile
@@ -91,12 +94,30 @@ class SeedVault(activity: ComponentActivity) {
     }
 
     private fun <T> finish(result: TransactionResult<T>): Trip<T> = when (result) {
-        is TransactionResult.Success -> Trip.Done(result.payload)
-        is TransactionResult.NoWalletFound -> Trip.NoWallet
+        is TransactionResult.Success -> {
+            HeylanaLog.state("wallet: raw result success")
+            Trip.Done(result.payload)
+        }
+        is TransactionResult.NoWalletFound -> {
+            HeylanaLog.state("wallet: raw result no wallet found")
+            Trip.NoWallet
+        }
         is TransactionResult.Failure -> {
-            val stop = generateSequence(result.e as Throwable?) { it.cause }
-                .filterIsInstance<WalletStop>().firstOrNull()
-            val problem = stop?.problem ?: WalletProblem.from(result.e?.javaClass?.simpleName, result.message)
+            val chain = generateSequence(result.e as Throwable?) { it.cause }.toList()
+            val stop = chain.filterIsInstance<WalletStop>().firstOrNull()
+            val remote = chain.filterIsInstance<JsonRpc20Client.JsonRpc20RemoteException>().firstOrNull()
+            val signed = chain.filterIsInstance<MobileWalletAdapterClient.NotSubmittedException>()
+                .firstOrNull()?.signatures?.size ?: 0
+            val message = (result.message ?: result.e?.message).orEmpty()
+            // What the wallet actually returned: types, its error code, and the
+            // message with any address shortened.
+            HeylanaLog.state(
+                "wallet: raw result failure types=${chain.joinToString(">") { it.javaClass.simpleName }} " +
+                    "code=${remote?.code ?: "none"} signatures=$signed " +
+                    "message=${AddressText.shorten(message).replace('\n', ' ').take(RAW_MESSAGE_CHARS)}"
+            )
+            val problem = stop?.problem
+                ?: WalletProblem.fromRemote(remote?.code, result.e?.javaClass?.simpleName, message)
             HeylanaLog.state("wallet: stopped ${problem.name}")
             Trip.Stopped(problem)
         }
@@ -116,5 +137,6 @@ class SeedVault(activity: ComponentActivity) {
         /** Relative to the identity address: the wallet shows the mark from there. */
         const val ICON_PATH = "heylana-mark.png"
         const val IDENTITY_NAME = "Heylana"
+        const val RAW_MESSAGE_CHARS = 160
     }
 }

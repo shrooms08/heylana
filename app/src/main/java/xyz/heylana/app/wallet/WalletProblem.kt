@@ -15,9 +15,28 @@ enum class WalletProblem(val words: String) {
     NOT_SET_UP("Wallets aren't set up on Heylana's server yet."),
     MISMATCH("That payment didn't match the quote, so nothing was unlocked."),
     SESSION_ENDED("Your wallet session ended. Connect the wallet again."),
+    WRONG_NETWORK("Seed Vault is set to a different network than Heylana. Switch networks in the wallet and try again."),
     UNKNOWN("That didn't go through. Try again.");
 
     companion object {
+        /** The wallet's JSON-RPC error codes, from Mobile Wallet Adapter's protocol contract. */
+        const val ERROR_AUTHORIZATION_FAILED = -1
+        const val ERROR_NOT_SIGNED = -3
+        const val ERROR_NOT_SUBMITTED = -4
+        const val ERROR_CLUSTER_NOT_SUPPORTED = -7
+
+        /**
+         * The wallet's own error code first; its words only when it gave no code.
+         * "Not submitted" means it signed but may not have sent: not a failure to
+         * report, but a reason to look on chain.
+         */
+        fun fromRemote(code: Int?, errorClass: String?, message: String?): WalletProblem = when (code) {
+            ERROR_AUTHORIZATION_FAILED, ERROR_NOT_SIGNED -> CANCELLED
+            ERROR_NOT_SUBMITTED -> UNKNOWN
+            ERROR_CLUSTER_NOT_SUPPORTED -> WRONG_NETWORK
+            else -> from(errorClass, message)
+        }
+
         /** From what the wallet library reported. Nothing it said is shown as-is. */
         fun from(errorClass: String?, message: String?): WalletProblem {
             val text = "${errorClass.orEmpty()} ${message.orEmpty()}".lowercase()

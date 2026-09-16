@@ -187,6 +187,32 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             }.apply()
         }
 
+    /** The skills the user has switched off. Everything else is on, including a new install. */
+    var skillsOff: Set<String>
+        get() = prefs.getStringSet(KEY_SKILLS_OFF, null)?.toSet().orEmpty()
+        set(value) {
+            prefs.edit().putStringSet(KEY_SKILLS_OFF, value.toSet()).apply()
+        }
+
+    /**
+     * How many skills the plan allows, as the worker's /me last said it, so the buddy
+     * can pick a skill without asking. Null until Settings has heard it once.
+     */
+    var skillsCap: Int?
+        get() = prefs.getInt(KEY_SKILLS_CAP, 0).takeIf { it > 0 }
+        set(value) {
+            prefs.edit().apply {
+                if (value == null || value <= 0) remove(KEY_SKILLS_CAP) else putInt(KEY_SKILLS_CAP, value)
+            }.apply()
+        }
+
+    /** Debug switch: count skills against the Free plan's cap whatever the plan is. */
+    var simulateFreePlan: Boolean
+        get() = prefs.getBoolean(KEY_SIMULATE_FREE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SIMULATE_FREE, value).apply()
+        }
+
     val hasApiKey: Boolean get() = apiKey != null
 
     /** "sk-ant-…4f2a" — enough to recognise the key, never enough to use it. */
@@ -217,6 +243,9 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_SAVE_TTS = "save_tts_stream"
 
         private const val KEY_WARM_UP = "warm_up_connection"
+        private const val KEY_SKILLS_OFF = "skills_off"
+        private const val KEY_SKILLS_CAP = "skills_cap"
+        private const val KEY_SIMULATE_FREE = "simulate_free_plan"
 
         private const val FILE_NAME = "heylana_secure_settings"
         private const val KEY_API_KEY = "api_key"

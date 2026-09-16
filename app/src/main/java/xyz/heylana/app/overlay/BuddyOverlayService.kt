@@ -57,6 +57,7 @@ import xyz.heylana.app.screen.ScreenSnapshot
 import xyz.heylana.app.screen.TapWatch
 import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
+import xyz.heylana.app.skills.SkillStore
 import xyz.heylana.app.voice.CartesiaVoice
 import xyz.heylana.app.voice.DeepgramEars
 import xyz.heylana.app.voice.EarsRace
@@ -83,6 +84,7 @@ class BuddyOverlayService : Service() {
 
     private val settings: HeylanaSettings by lazy { HeylanaSettings.get(this) }
     private val brain: ProxyClient by lazy { ProxyClient(settings) }
+    private val skills: SkillStore by lazy { SkillStore(this, settings) }
 
     /** Heylana's voice: Cartesia when it can be reached, the phone's own when not. */
     private var mouth: CartesiaVoice? = null
@@ -473,7 +475,8 @@ class BuddyOverlayService : Service() {
             // No hello by name on a send or a signing explanation, and it is not used up by one.
             val greetingLine = if (route.allowsGreeting) greeting.lineFor(settings.callMe) else null
             HeylanaLog.state("greeting: ${if (greetingLine != null) "included" else "not included"} why=${route.why.log}")
-            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all())
+            val skill = skills.pick(snapshot.packageName, question)
+            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
             when (reply) {
@@ -807,7 +810,8 @@ class BuddyOverlayService : Service() {
                 historyText = current.historyText(),
                 screenText = screenText,
                 stepNumber = current.stepNumber + 1,
-                needPointerHint = current.lastStepHadNoPointer
+                needPointerHint = current.lastStepHadNoPointer,
+                skill = skills.pick(snapshot.packageName, current.goal)
             )
             exchange.over()
 

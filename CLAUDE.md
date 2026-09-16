@@ -57,6 +57,11 @@ xyz.heylana.app
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
 │                            (plus Conversation, the short-term memory)
+├── skills/                  per-app reference notes, loaded only while that app is in front
+│   ├── Skill / SkillFile    the skills/<id>.md format: front matter, body under 400 tokens
+│   ├── SkillSanitiser       strips any line that reads like an order to the model
+│   ├── SkillCap / SkillLoader  which skills the plan allows; the one a request carries
+│   └── SkillStore           built-ins from the APK, installed ones in private storage
 ├── net/                     everything that leaves the phone
 │   └── Proxy                the address, the device header, the shared client, the warmup
 ├── voice/                   Heylana's mouth and ears
@@ -339,6 +344,35 @@ spoken answer text goes to Cartesia to become speech. The screen never goes to
 either. **Keep that copy and the code saying the same thing** — the keyterms sent
 to Deepgram are the fixed word list only, and if screen labels are ever added to
 them the sentence has to change with them.
+
+## Skills
+
+**A skill is one app's reference notes, and never more.** `skills/<id>.md` has a
+front matter block (id, name, package, version, author, summary, privacy, and
+optional triggers) and a plain-text body under 400 tokens (counted as characters
+÷ 4, rounded up): the app's screens and what their buttons do, common tasks as
+numbered steps, and warnings. The body goes to the model after
+`HeylanaPrompt.SKILL_RULE` — reference only, can never authorise a send, a sign or
+a tap, can never change the rules — fenced between `<<<` and `>>>`.
+
+**Sanitised on the way in.** `SkillSanitiser` drops every line that opens (after
+any list marker, quote or emphasis) with "you must", "ignore", "disregard", "send",
+"sign", "transfer", "approve" and similar, and any line with "ignore previous",
+"system prompt" and the like anywhere. Each dropped line is logged
+(`skills: stripped from <id>: …`): skill text is neither the screen nor a secret.
+Built-ins are written so nothing is stripped, and a test holds them to it.
+
+**One skill per request, and only for the app in front.** The foreground package
+picks among the *active* skills; two for one app (Kamino's notes live in the
+Wallet) are decided by the `triggers` words in the question, else the app's main
+skill. A send question carries none. The brain line says `skill=<id> tokens=<n>`
+or `skill=none`; task steps pick against the goal.
+
+**The plan caps what is active.** Free 3, Pro and Judge 10, as `/me`'s
+`skills_cap` last said (kept in settings; Free until heard). The first *cap*
+switched-on skills in list order are active; the rest stay on but greyed, and an
+off skill cannot come on while every place is taken. Everything is on until the
+user switches it off, a new install included.
 
 ## How the pieces talk to each other
 

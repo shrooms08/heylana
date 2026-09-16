@@ -146,6 +146,11 @@ private fun SettingsScreen(
     var planProblem by remember { mutableStateOf("") }
     var goPro by remember { mutableStateOf(false) }
 
+    // The buddy picks skills without asking the worker, so it keeps the plan's cap.
+    LaunchedEffect(standing) {
+        standing?.let { settings.skillsCap = it.skillsCap }
+    }
+
     // Whenever the wallet changes: claim any payment still waiting, then ask where we stand.
     LaunchedEffect(session) {
         if (session != null) settlePendingPayment(settings, api)

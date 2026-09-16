@@ -4,6 +4,11 @@ Heylana is a small glass buddy that floats over every app on the Solana Seeker.
 Hold it and talk, or tap it and type, and it answers out loud about whatever is on
 your screen — and points at the exact button you need. Ask it to help you *do* something and it walks you there one tap at a time.
 
+It can also get the phone's own apps to do simple things you ask for: set an alarm
+or a timer, open an app or a website, show a place on the map, or put a number in
+the dialer. Every part of the request has to be in your own words, the phone's own
+app does it in front of you, and Heylana never places a call.
+
 ## Who it is for
 
 Seeker owners finding their way around Solana apps (and every other app) who want
@@ -129,6 +134,11 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 - **Long answers cost a second, small call.** An answer over 60 words (40 on a signing
   screen) is asked for again in fewer words once; that call is not counted as a talk.
+
+- **Calling a contact by name opens an empty dialer.** Heylana has no access to
+  contacts, so it says who to search for; a number said aloud is filled in.
+- **Directions show the place, not turn-by-turn.** The map app opens on what you
+  named, and you start navigation there.
 
 ## Mainnet switch before submission
 

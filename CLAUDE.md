@@ -64,6 +64,11 @@ xyz.heylana.app
 │   ├── SkillStore           built-ins from the APK, installed ones in private storage
 │   ├── SkillIndex           the public index: read, checked, and each skill downloaded
 │   └── SkillsActivity       Settings → Skills: toggles, "n of cap active", Get more, Remove
+├── actions/                 quick actions: the phone's own apps do it, Heylana never taps
+│   ├── QuickAction          alarm, timer, open_app, open_url, navigate, dial; when the rules load
+│   ├── QuickGuard           every argument in the user's own words; times and durations as said
+│   ├── QuickIntents         the intent as plain data, the line Heylana says, AppMatcher
+│   └── QuickActionRunner    turns it into an Intent and starts it in a new task
 ├── net/                     everything that leaves the phone
 │   └── Proxy                the address, the device header, the shared client, the warmup
 ├── voice/                   Heylana's mouth and ears
@@ -365,6 +370,37 @@ spoken answer text goes to Cartesia to become speech. The screen never goes to
 either. **Keep that copy and the code saying the same thing** — the keyterms sent
 to Deepgram are the fixed word list only, and if screen labels are ever added to
 them the sentence has to change with them.
+
+## Quick actions
+
+**The phone's own apps act; Heylana still taps nothing.** Asked to set an alarm or a
+timer, open an app or a web page, get directions or call someone, the model adds
+`action: {type: "intent", intent: alarm|timer|open_app|open_url|navigate|dial, …}`.
+`QuickGuard` checks every argument against the user's own words, as `SendGuard` does
+for a send: the hour and minutes as said (digits, "7:30", "0730", "seven thirty",
+"half", "quarter", "noon"; "7 in the morning" refuses 19), the timer's length as said
+("5 minutes", "half an hour", "an hour and a half"), every word of an app name, place
+or contact, the digits of a number, and the host of a web page. An alarm label that
+was not said is dropped; anything else not said is refused with one plain line.
+
+**The intents.** Alarm: `ACTION_SET_ALARM` with hour, minutes and the label, SKIP_UI
+false so the Clock comes to the front. Timer: `ACTION_SET_TIMER` with the length.
+open_app: the launcher intent of the best `AppMatcher` match among apps with a
+launcher icon (exact name 100, a name holding every word said 80, the reverse 60, a
+near spelling up to 50; a tie at the top asks "I found X and Y. Say which one.").
+open_url: `ACTION_VIEW`, https only. navigate: `ACTION_VIEW` on `geo:0,0?q=`. dial:
+`ACTION_DIAL` only — `ACTION_CALL` is never built, so no call is ever placed — with the
+number, or an empty dialer and "Search for Mum there" for a name (Heylana has no
+contacts permission). Heylana then says one short line: "Alarm set for 7 AM
+tomorrow.", "Opening Wallet.".
+
+**The rules cost nothing unless asked for.** `QuickActions.RULES` goes only when the
+question has alarm/timer/open/launch/directions/call-type words, and never with a
+send or signing question; the brain line says `quick-actions=loaded|not loaded`.
+Every action is logged — `action: raw`, `action: guard verdict=…`, `action: fired` —
+with times and lengths, but a web page only by its host, a place or name by its
+length, and a number by its digit count. `SET_ALARM` is the one new permission; the
+launcher `<queries>` entry is what lets "open the wallet" see installed apps.
 
 ## Skills
 
@@ -698,7 +734,9 @@ surest way to keep that true is not to build such a screen at all.
 
 5. **Heylana never acts for the user.** It reads the screen and points at things.
    It never taps, types, scrolls or gestures on the user's behalf, and it must
-   never tell the user it has done something on their behalf.
+   never tell the user it has done something on their behalf. The one kind of
+   doing it allows is a quick action the user asked for in their own words, handed
+   to the phone as a standard intent so the phone's own app does it in front of them.
 
 6. **The API key never appears in code, logs, or git.** It is entered by the
    operator on the Settings screen and lives only in EncryptedSharedPreferences

@@ -10,6 +10,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import xyz.heylana.app.BuildConfig
+import xyz.heylana.app.actions.QuickAction
+import xyz.heylana.app.actions.QuickActions
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.settings.HeylanaSettings
@@ -31,7 +33,9 @@ sealed interface BrainReply {
         val pointAt: Int?,
         val task: TaskState?,
         /** A send the model proposed. Checked by SendGuard before anything happens. */
-        val action: SendAction? = null
+        val action: SendAction? = null,
+        /** An alarm, timer, app, page, place or number. Checked by QuickGuard first. */
+        val quick: QuickAction? = null
     ) : BrainReply
 
     data class Failed(val message: String) : BrainReply
@@ -77,10 +81,13 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val tools = route.toolsWanted && !settings.useOwnKey
         // A send is one forced tool call that writes nothing: app notes would only cost.
         val carried = skill.takeUnless { route.why == Routing.Why.SEND_QUESTION }
+        // The quick action rules go only with questions that sound like one, and never about money.
+        val quick = route.why == Routing.Why.PLAIN || route.why == Routing.Why.WALLET_SCREEN || route.why == Routing.Why.SWAP_SCREEN
+        val quickRules = quick && QuickActions.mentions(question)
         HeylanaLog.state(
             "brain: mode=${route.mode} why=${route.why.log} " +
                 (route.solana?.let { "solana-core loaded reason=${it.log}" } ?: "solana-core not loaded") +
-                " tools=${if (tools) "sent" else "not sent"} ${skillLog(carried)}"
+                " tools=${if (tools) "sent" else "not sent"} ${skillLog(carried)} quick-actions=${if (quickRules) "loaded" else "not loaded"}"
         )
         val extra = JSONObject()
         val message = if (route.explainsSigning) {
@@ -115,7 +122,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
             tools = tools,
             extra = extra,
             skill = carried,
-            signing = route.explainsSigning
+            signing = route.explainsSigning,
+            quickRules = quickRules
         )
         return limitLength(reply, AnswerLength.capFor(route.explainsSigning))
     }
@@ -212,10 +220,11 @@ class ProxyClient(private val settings: HeylanaSettings) {
         tools: Boolean = false,
         extra: JSONObject? = null,
         skill: Skill? = null,
-        signing: Boolean = false
+        signing: Boolean = false,
+        quickRules: Boolean = false
     ): BrainReply = withContext(Dispatchers.IO) {
         val ownKey = settings.useOwnKey
-        val system = HeylanaPrompt.system(solana, skill, signing)
+        val system = HeylanaPrompt.system(solana, skill, signing, quickRules)
         val request = if (ownKey) {
             ownKeyRequest(userMessage, mode, system)
         } else {
@@ -348,11 +357,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
         // Every word the model says is shortened here, once, before it is shown or spoken.
         val say = json.optString("say").trim()
         val action = readAction(json)
-        return if (say.isEmpty() && action == null) {
+        val quick = readQuick(json)
+        return if (say.isEmpty() && action == null && quick == null) {
             BrainReply.Say(AddressText.shorten(unfenced), null, null)
         } else {
             // A send carries no words of its own: the app writes the confirmation.
-            BrainReply.Say(AddressText.shorten(say), readPointAt(json), readTask(json), action)
+            BrainReply.Say(AddressText.shorten(say), readPointAt(json), readTask(json), action, quick)
         }
     }
 
@@ -372,8 +382,21 @@ class ProxyClient(private val settings: HeylanaSettings) {
      * Missing, null, non-numeric or negative all mean "do not point at anything".
      * Whether the id actually exists on screen is the caller's check.
      */
+    private fun readQuick(json: JSONObject): QuickAction? {
+        val action = json.optJSONObject("action") ?: return null
+        if (action.optString("type") != QuickAction.TYPE) return null
+        val fields = HashMap<String, Any?>()
+        action.keys().forEach { key -> fields[key] = if (action.isNull(key)) null else action.opt(key) }
+        // The kind of action only: what was asked for stays out of the log until the guard has looked.
+        HeylanaLog.state("action: raw type=intent intent=${action.optString("intent")}")
+        return QuickAction.of(fields).also {
+            if (it == null) HeylanaLog.state("action: raw action rejected as malformed")
+        }
+    }
+
     private fun readAction(json: JSONObject): SendAction? {
         val action = json.optJSONObject("action") ?: return null
+        if (action.optString("type") != "send") return null
         val amount = if (action.has("amount") && !action.isNull("amount")) action.opt("amount")?.toString() else null
         val to = action.optString("to")
         val kind = when {

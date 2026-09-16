@@ -58,6 +58,10 @@ import xyz.heylana.app.screen.TapWatch
 import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.skills.SkillStore
+import xyz.heylana.app.actions.QuickAction
+import xyz.heylana.app.actions.QuickActionRunner
+import xyz.heylana.app.actions.QuickGuard
+import xyz.heylana.app.actions.QuickLog
 import xyz.heylana.app.voice.CartesiaVoice
 import xyz.heylana.app.voice.DeepgramEars
 import xyz.heylana.app.voice.EarsRace
@@ -85,6 +89,7 @@ class BuddyOverlayService : Service() {
     private val settings: HeylanaSettings by lazy { HeylanaSettings.get(this) }
     private val brain: ProxyClient by lazy { ProxyClient(settings) }
     private val skills: SkillStore by lazy { SkillStore(this, settings) }
+    private val quickRunner: QuickActionRunner by lazy { QuickActionRunner(this) }
 
     /** Heylana's voice: Cartesia when it can be reached, the phone's own when not. */
     private var mouth: CartesiaVoice? = null
@@ -490,6 +495,11 @@ class BuddyOverlayService : Service() {
                         handleSend(action, question)
                         return@launch
                     }
+                    val quick = reply.quick
+                    if (quick != null) {
+                        handleQuick(quick, question)
+                        return@launch
+                    }
                     if (route.why == Routing.Why.SEND_QUESTION) {
                         // A send never falls back to the model's own words.
                         HeylanaLog.state("send: raw action missing")
@@ -509,6 +519,27 @@ class BuddyOverlayService : Service() {
                     view.endVoiceExchange()
                     view.showNotice(reply.message)
                 }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------ quick actions
+
+    /**
+     * An alarm, a timer, an app, a page, directions or the dialer. Every part must be
+     * in the user's own words; then the phone's own app does it, in front, and
+     * Heylana says one short line. Heylana itself taps nothing.
+     */
+    private fun handleQuick(action: QuickAction, question: String) {
+        when (val verdict = QuickGuard.check(action, question)) {
+            is QuickGuard.Verdict.Refused -> {
+                HeylanaLog.state("action: guard verdict=refused intent=${action.intent} reason=${verdict.reason}")
+                sayLine(verdict.line)
+            }
+            is QuickGuard.Verdict.Allowed -> {
+                HeylanaLog.state("action: guard verdict=allowed ${QuickLog.describe(verdict.action)}")
+                val outcome = quickRunner.run(verdict.action)
+                sayLine(outcome.line)
             }
         }
     }

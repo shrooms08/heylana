@@ -1,5 +1,6 @@
 package xyz.heylana.app.brain
 
+import xyz.heylana.app.actions.QuickActions
 import xyz.heylana.app.skills.Skill
 
 /**
@@ -43,8 +44,9 @@ object HeylanaPrompt {
      * go only with questions routed as Solana ones; everything else gets [SYSTEM]
      * alone, exactly as before.
      */
-    fun system(solana: Boolean, skill: Skill? = null, signing: Boolean = false): String = buildString {
+    fun system(solana: Boolean, skill: Skill? = null, signing: Boolean = false, quickActions: Boolean = false): String = buildString {
         append(SYSTEM)
+        if (quickActions) append("\n\n").append(QuickActions.RULES)
         if (solana) {
             append("\n\n").append(SolanaCore.KNOWLEDGE).append("\n\n").append(SolanaCore.RULES)
             if (!signing) append('\n').append(SolanaCore.SEND_RULES)

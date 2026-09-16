@@ -55,6 +55,23 @@ val localProperties = Properties().apply {
 val sentryDsn: String = localProperties.getProperty("heylana.sentryDsn").orEmpty().trim()
 val sentryInDebug: Boolean = localProperties.getProperty("heylana.sentryDebug").orEmpty().trim() == "true"
 
+/**
+ * The release signing key, from local.properties (or -P for a one-off build). The
+ * keystore lives outside the repo, at ~/.heylana/release.keystore by convention:
+ *
+ *     heylana.keystore=~/.heylana/release.keystore
+ *     heylana.keystorePass=…
+ *     heylana.keyAlias=heylana
+ *     heylana.keyPass=…
+ *
+ * Missing, and a release build still compiles, unsigned; scripts/release.sh refuses it.
+ */
+fun releaseSetting(key: String): String? =
+    (providers.gradleProperty(key).orNull ?: localProperties.getProperty(key))?.trim()?.takeIf { it.isNotEmpty() }
+val releaseKeystore: File? = releaseSetting("heylana.keystore")
+    ?.let { File(if (it.startsWith("~/")) System.getProperty("user.home") + it.substring(1) else it) }
+    ?.takeIf { it.isFile }
+
 android {
     namespace = "xyz.heylana.app"
     compileSdk {
@@ -66,7 +83,7 @@ android {
         minSdk = 31
         targetSdk = 37
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -77,11 +94,25 @@ android {
         buildConfigField("boolean", "SENTRY_IN_DEBUG", "$sentryInDebug")
     }
 
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = releaseSetting("heylana.keystorePass")
+                keyAlias = releaseSetting("heylana.keyAlias")
+                keyPassword = releaseSetting("heylana.keyPass")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            // R8: shrink and optimise. Keep rules for the libraries that need them are
+            // in src/main/keepRules/heylana.keep; the default optimize rules come too.
             optimization {
-                enable = false
+                enable = true
             }
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -117,7 +148,13 @@ dependencies {
     implementation(libs.androidx.security.crypto)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.okhttp)
-    implementation(libs.mwa.clientlib.ktx)
+    implementation(libs.mwa.clientlib.ktx) {
+        // Its published dependencies wrongly include androidx.test, which would put
+        // test activities in the release manifest. None of its classes use them.
+        exclude(group = "androidx.test")
+        exclude(group = "androidx.test.ext")
+        exclude(group = "androidx.test.services")
+    }
     implementation(libs.sol4k)
     implementation(libs.sentry.android.core)
     testImplementation(libs.junit)

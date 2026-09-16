@@ -1,0 +1,30 @@
+# Heylana's keep rules for R8 in release builds.
+# Libraries with their own consumer rules (Compose, coroutines, Sentry, Tink) bring them.
+
+# Mobile Wallet Adapter: JSON-RPC over reflection-free code, but its protocol
+# classes are looked up by name and its Kotlin wrappers use them across modules.
+-keep class com.solana.mobilewalletadapter.** { *; }
+-dontwarn com.solana.mobilewalletadapter.**
+
+# sol4k: transactions, keys and encodings, used through its public API and its
+# crypto providers.
+-keep class org.sol4k.** { *; }
+-dontwarn org.sol4k.**
+-keep class org.bouncycastle.** { *; }
+-dontwarn org.bouncycastle.**
+
+# OkHttp and Okio: platform lookups by reflection for TLS providers that are not on
+# Android.
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**
+-dontwarn org.openjsse.**
+-keepnames class okhttp3.internal.publicsuffix.PublicSuffixDatabase
+-dontwarn okio.**
+
+# EncryptedSharedPreferences (Tink) annotations that are compile-only.
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn javax.annotation.**
+
+# Reported crashes should say where they happened: keep file names and lines.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

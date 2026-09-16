@@ -22,3 +22,6 @@ design/refs/tts_capture.pcm
 
 # Python bytecode from running the stub proxy
 scripts/__pycache__/
+
+# release APKs copied out by scripts/release.sh
+dist/

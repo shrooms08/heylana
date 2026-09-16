@@ -659,6 +659,36 @@ secret scrub as error replies plus the same `[address]` rule. Tests check that a
 address, a signature, the RPC address, a header and the device id never reach the
 report body.
 
+## Release build
+
+**`./scripts/release.sh` builds, signs and copies it out.** It runs
+`:app:assembleRelease`, refuses if the APK is unsigned, copies it to
+`dist/heylana-<versionName>.apk` (`dist/` is gitignored), and prints its path, its
+SHA-256 and the signing certificate's SHA-256 in colon form for `ASSETLINKS_SHA256`.
+Extra arguments go to Gradle.
+
+**Signing comes from local.properties**, or `-P` for a one-off:
+`heylana.keystore` (a `~/` path is fine; by convention
+`~/.heylana/release.keystore`, outside the repo), `heylana.keystorePass`,
+`heylana.keyAlias`, `heylana.keyPass`. Without them a release still compiles,
+unsigned. Version is `versionCode 1`, `versionName "0.9.0"`.
+
+**R8 is on for release.** AGP 9 reads keep rules from `src/main/keepRules/*.keep`
+(a `.pro` there is an error): Mobile Wallet Adapter, sol4k and BouncyCastle are kept
+whole; OkHttp's optional TLS providers and Tink's compile-only annotations are
+`dontwarn`; file names and line numbers are kept so crash reports point somewhere.
+MWA clientlib-ktx 2.1.1 wrongly lists androidx.test as a runtime dependency, which put
+three test activities in the release manifest; it is excluded (none of MWA's classes
+use it). Sentry's own start-up providers are removed in the manifest.
+
+**Nothing debug ships.** The release manifest has only Heylana's own activities and
+services plus androidx.startup and the profile installer: no Debug states screen (it
+is in `src/debug`), no loopback network config, no test activities. The Debug section
+of Settings, the READ_SCREEN receiver, the test crash and every `HeylanaState` log
+line sit behind `BuildConfig.DEBUG`, and R8 removes them: none of their strings is
+in the release dex. Checked with `aapt2 dump xmltree` on the APK and a string search
+of its classes.
+
 ## API budget
 
 The operator pays for every request out of a small budget. Treat their key as

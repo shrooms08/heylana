@@ -32,6 +32,40 @@ class SigningScanTest {
         [5] Button: Confirm
     """.trimIndent()
 
+    /** The Wallet's real confirm screen, as its content descriptions read (Sept 16, devnet). */
+    private val walletSendScreen = """
+        App: com.solanamobile.wallet
+        [1] View (Send)
+        [2] View (Sending)
+        [3] View (0.05 4zMM...ncDU)
+        [4] View (Value)
+        [5] View (${'$'}0.00)
+        [6] View (To)
+        [7] View (7c2y...SxSv)
+        [8] View (From)
+        [9] View (oghenekparobor.skr)
+        [10] View (Network fee)
+        [11] View (0.000018598 SOL)
+        [12] Button (Send)
+    """.trimIndent()
+
+    @Test
+    fun `the Wallet's own send screen is a signing screen, read the way it prints things`() {
+        assertTrue(SigningScan.looksLikeSigning(wallet, walletSendScreen, ownWallet = payer))
+        val found = SigningScan.of(walletSendScreen)
+        assertEquals(listOf("0.000018598 SOL", "0.05 USDC", "${'$'}0.00"), found.amounts)
+        // The mint after the amount is the token, not a recipient.
+        assertEquals(listOf("7c2y…SxSv"), found.shortAddresses)
+        assertEquals(Routing.Why.SIGNING_SCREEN, Routing.forQuestion(wallet, "what am I signing", walletSendScreen, payer).why)
+    }
+
+    @Test
+    fun `a known mint is its symbol, full or shortened, and an unknown one says so`() {
+        assertEquals("USDC", SigningScan.tokenFor("4zMM…ncDU"))
+        assertEquals("USDC", SigningScan.tokenFor("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"))
+        assertEquals(listOf("3 of the token AAAA…BBBB"), SigningScan.amounts("[1] View (3 AAAA...BBBB)"))
+    }
+
     @Test
     fun `addresses are real 32-byte keys, each once, three at most`() {
         val text = "$treasury and $payer and $treasury again, " +

@@ -387,6 +387,25 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         applyPosition()
     }
 
+    /**
+     * The full-screen box covers the app, and Android leaves a covered window out
+     * of what accessibility can read — so a typed question used to go with an
+     * empty screen. While the screen is read, the box lets touches through, which
+     * puts the app back in that list. Nothing changes on screen.
+     */
+    fun letScreenReadThrough(through: Boolean) {
+        val touchable = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE == 0
+        if (through && (mode != Mode.COMPOSE || !touchable)) return
+        if (!through && touchable) return
+        params.flags = if (through) {
+            params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        } else {
+            params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        }
+        runCatching { windowManager.updateViewLayout(this, params) }
+        HeylanaLog.state("screen: box ${if (through) "lets the read through" else "takes touches again"}")
+    }
+
     fun hideSendConfirm() {
         panel.hideConfirm()
         applyPosition()

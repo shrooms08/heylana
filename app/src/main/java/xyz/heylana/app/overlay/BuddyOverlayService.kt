@@ -429,18 +429,24 @@ class BuddyOverlayService : Service() {
         view.hideKeyboard()
 
         inFlight = scope.launch {
-            delay(KEYBOARD_SETTLE_MS)
+            // The app under the box has to be readable for the moment of the read.
+            view.letScreenReadThrough(true)
+            val snapshot = try {
+                delay(KEYBOARD_SETTLE_MS)
 
-            // A screen with nothing readable on it is not a reason to refuse.
-            // Plenty of questions are not about the screen at all, and some apps
-            // hand us an empty tree however hard we look — Chrome does unless
-            // something is subscribed to its events, which Heylana deliberately
-            // is not. The model is told the screen was unreadable and answers
-            // from general knowledge. A task step is different: see advance().
-            val reading = HeylanaAccessibilityService.isConnected
-            HeylanaLog.state("ask: screen reading connected=$reading")
-            val snapshot = HeylanaAccessibilityService.snapshotOrNull()
-                ?: ScreenSnapshot.empty(readingOff = !reading)
+                // A screen with nothing readable on it is not a reason to refuse.
+                // Plenty of questions are not about the screen at all, and some apps
+                // hand us an empty tree however hard we look — Chrome does unless
+                // something is subscribed to its events, which Heylana deliberately
+                // is not. The model is told the screen was unreadable and answers
+                // from general knowledge. A task step is different: see advance().
+                val reading = HeylanaAccessibilityService.isConnected
+                HeylanaLog.state("ask: screen reading connected=$reading")
+                HeylanaAccessibilityService.snapshotOrNull()
+                    ?: ScreenSnapshot.empty(readingOff = !reading)
+            } finally {
+                view.letScreenReadThrough(false)
+            }
 
             val screenText = snapshot.toPromptText()
             logScreenSize(snapshot, screenText)

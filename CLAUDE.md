@@ -42,7 +42,8 @@ xyz.heylana.app
 │   ├── Profile              what the wallet is called, what to call its owner, cleanName
 │   ├── SendTransaction      a SOL transfer, or token account + transferChecked, unsigned
 │   ├── SendQuote            a send the worker checked, and the confirmation strip's words
-│   └── SendActivity         invisible; hands a confirmed send to Seed Vault, waits for it to land
+│   ├── SendFlow             a confirmed send: blockhash and Seed Vault on the quote's cluster, then landed
+│   └── SendActivity         invisible; hosts SendFlow, since Seed Vault needs an activity to open from
 ├── brain/                   talking to the model
 │   ├── ProxyClient          POST /chat through the proxy; says quick or task, never a model
 │   ├── QuotaMessage         the words for talks_cap, daily_cap and an ended session
@@ -180,6 +181,20 @@ to pay for. A failed first question keeps the greeting for the next.
 answered before any device check or cap, because Seed Vault fetches it with no
 headers. The Mobile Wallet Adapter identity is the built-in worker address with
 icon path `heylana-mark.png` (relative, no leading slash, as the spec asks).
+
+**The worker vouches for the app.** Seed Vault fetches `GET
+/.well-known/assetlinks.json` from the identity address (the worker) to check the
+app is really Heylana. It is answered before any device check with a Digital Asset
+Links statement for `xyz.heylana.app` and the certificate fingerprints in the
+`ASSETLINKS_SHA256` var (comma-separated; debug first, release added later).
+
+**The RPC must be on CLUSTER's network.** A devnet `CLUSTER` with a mainnet
+`RPC_URL` produces mainnet blockhashes that Seed Vault refuses ("Network
+mismatch"). `worker/src/cluster.ts` reads the RPC's genesis hash once per address,
+and `/pay/blockhash` and `/send/prepare` refuse with `503 rpc_wrong_cluster` and a
+plain sentence while they disagree. The phone's send path (`wallet/SendFlow`)
+carries the quote's cluster to both the blockhash request and Seed Vault, and logs
+`cluster=` at each step.
 
 ## The Solana brain
 

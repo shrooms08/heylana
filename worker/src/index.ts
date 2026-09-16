@@ -16,6 +16,8 @@
 import { isAddress } from './base58.ts'
 import { challengeMessage, randomNonce, readSession, signSession, verifySignature } from './session.ts'
 import { MARK_PATH, markResponse } from './mark.ts'
+import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
+import { rpcClusterMismatch } from './cluster.ts'
 import { answerWithTools, proposeSend } from './brain.ts'
 import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.ts'
 import { prepareSend } from './tools.ts'
@@ -54,6 +56,8 @@ export interface Env {
   JUPITER_API_KEY?: string
   /** Optional: a mainnet RPC for .skr names, which live on mainnet whatever CLUSTER is. */
   MAINNET_RPC_URL?: string
+  /** Signing certificate SHA-256 fingerprints for assetlinks.json, comma-separated. */
+  ASSETLINKS_SHA256?: string
 
   /** Plain configuration. */
   DEEPGRAM_PROJECT_ID: string
@@ -170,6 +174,14 @@ export default {
     if (route === MARK_PATH) {
       if (request.method === 'GET') return markResponse()
       if (request.method === 'HEAD') return new Response(null, { headers: markResponse().headers })
+      return fail(405, 'method', 'GET or HEAD to this.')
+    }
+
+    // Seed Vault checks the app's identity here, with no device header either.
+    if (route === ASSETLINKS_PATH) {
+      if (request.method === 'GET' || request.method === 'HEAD') {
+        return assetLinksResponse(env.ASSETLINKS_SHA256, request.method === 'HEAD')
+      }
       return fail(405, 'method', 'GET or HEAD to this.')
     }
 
@@ -648,6 +660,12 @@ async function payBlockhash(request: Request, env: Env, who: Who): Promise<Respo
   if (body.cluster !== undefined && body.cluster !== cluster) {
     return fail(409, 'wrong_cluster', `Payments are on ${cluster}.`)
   }
+  // A blockhash from the wrong network makes a transaction the wallet will refuse.
+  const mismatch = await rpcClusterMismatch(env.RPC_URL, cluster)
+  if (mismatch) {
+    log({ route: 'pay/blockhash', device: who.device, rpc_wrong_cluster: true, cluster })
+    return fail(503, 'rpc_wrong_cluster', mismatch)
+  }
   const result = await rpc(env.RPC_URL, 'getLatestBlockhash', [{ commitment: 'confirmed' }])
   return json(200, {
     blockhash: result?.value?.blockhash,
@@ -739,6 +757,11 @@ const SEND_TTL_SECONDS = 900
 async function sendPrepare(request: Request, env: Env, who: Who): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   if (!env.RPC_URL) return fail(503, 'not_configured', 'Sending is not set up.')
+  const mismatch = await rpcClusterMismatch(env.RPC_URL, clusterOf(env))
+  if (mismatch) {
+    log({ route: 'send/prepare', device: who.device, rpc_wrong_cluster: true, cluster: clusterOf(env) })
+    return json(503, { reason: 'rpc_wrong_cluster', detail: mismatch })
+  }
   const body = await readJson(request)
   const token = String(body.token ?? '').toUpperCase()
   const quote = await prepareSend({ to: body.to, amount: body.amount, token: body.token }, toolContext(env, who))

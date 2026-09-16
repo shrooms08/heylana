@@ -529,6 +529,10 @@ class BuddyOverlayService : Service() {
             when (val answer = walletApi.prepareSend(allowed.to, allowed.amount, allowed.token)) {
                 is Answer.Ok -> {
                     val quote = answer.value
+                    HeylanaLog.state(
+                        "send: attempt token=${quote.token} amount=${quote.amount} " +
+                            "to=${quote.toAddress.take(4)} cluster=${quote.cluster.id}"
+                    )
                     if (SendGuard.overLimit(quote.amount, quote.balance)) {
                         HeylanaLog.state("send: over a quarter of the balance amount=${quote.amount}")
                         overLimit = PendingSend(quote, System.currentTimeMillis())

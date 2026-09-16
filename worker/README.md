@@ -125,6 +125,37 @@ runs on devnet this is what lets Heylana resolve them; on mainnet `RPC_URL` is e
 If `RPC_URL` is a Helius endpoint, token names come from its DAS API too; any other
 RPC works without them.
 
+**`RPC_URL` must be on the same network as `CLUSTER`.** A devnet `CLUSTER` with a
+mainnet `RPC_URL` hands the phone mainnet blockhashes, and Seed Vault, set to devnet,
+refuses with "Network mismatch". The worker now checks the RPC's network (its
+genesis hash) and refuses to prepare a send or hand out a blockhash until they agree.
+
+### Verified app identity (assetlinks.json)
+
+When the app asks Seed Vault to connect or sign, it names this worker as its
+identity, and Seed Vault checks that by fetching
+`/.well-known/assetlinks.json` from it. The worker answers with a Digital Asset
+Links statement for `xyz.heylana.app` and the signing certificate fingerprints in
+`ASSETLINKS_SHA256` in `wrangler.toml` (comma-separated).
+
+To print the debug certificate's fingerprint (the one Android Studio signs with),
+run this in a terminal and copy the `SHA256:` line:
+
+```
+keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA256
+```
+
+If `keytool` is not found, use Android Studio's own copy:
+
+```
+"/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool" -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA256
+```
+
+For a release build, run the same command on the release keystore with its own
+alias and password, add that fingerprint to `ASSETLINKS_SHA256` after a comma, and
+run `npx wrangler deploy`. Check it in a browser at
+`https://heylana-proxy.heylana.workers.dev/.well-known/assetlinks.json`.
+
 **6. Send it up.**
 
 ```

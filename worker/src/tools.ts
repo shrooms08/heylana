@@ -60,7 +60,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: 'explain_address',
-    description: 'What a Solana address is (wallet, token mint, program), its known name, when it was first used, how many transactions, and what it holds.',
+    description: 'What a Solana address is (wallet, token mint, program, token account), its known name, how old it is and how many transactions it has.',
     input_schema: { type: 'object', properties: { address: ADDRESS }, required: ['address'] },
   },
   {
@@ -290,19 +290,15 @@ async function explainAddress(given: unknown, context: ToolContext) {
   const list: any[] = Array.isArray(signatures) ? signatures : []
   const complete = list.length < SIGNATURE_PAGE
   const oldest = list.at(-1)?.blockTime
-  const newest = list[0]?.blockTime
 
-  let tokensHeld: number | null = null
-  if (kind === 'wallet' || !account) {
-    const holdings = account ? await tokenHoldings(address, { ...context }) : new Map()
-    tokensHeld = [...holdings.values()].filter((holding) => holding.units > 0n).length
-  }
   const isTreasury = Boolean(context.treasury) && address === context.treasury
   const label = known?.label ??
     (isTreasury ? 'your Heylana treasury' : null) ??
     (kind === 'token mint' ? await dasName(address, context) : null)
   const parsed = account?.data?.parsed?.info
 
+  // Only what an answer about this address uses: every field is paid for again in
+  // the next round, and a sign explanation reads up to three of these.
   return {
     address: short(address),
     kind,
@@ -311,12 +307,7 @@ async function explainAddress(given: unknown, context: ToolContext) {
     transactions: complete ? list.length : `${SIGNATURE_PAGE} or more`,
     first_seen: oldest ? (complete ? isoDay(oldest) : `before ${isoDay(oldest)}`) : null,
     age_days: oldest && complete ? Math.floor((context.now() / 1000 - oldest) / 86400) : null,
-    last_active: newest ? isoDay(newest) : null,
-    sol: unitsToDecimal(BigInt(account?.lamports ?? 0), SOL_DECIMALS),
-    token_kinds_held: tokensHeld,
-    ...(kind === 'token mint' ? { decimals: parsed?.decimals ?? null, supply: parsed?.supply ?? null } : {}),
     ...(kind === 'token account' ? { owner: parsed?.owner ? short(parsed.owner) : null, mint: parsed?.mint ? short(parsed.mint) : null } : {}),
-    cluster: context.cluster,
   }
 }
 

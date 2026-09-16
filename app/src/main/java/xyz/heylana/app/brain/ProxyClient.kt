@@ -97,20 +97,27 @@ class ProxyClient(private val settings: HeylanaSettings) {
                     JSONObject().put("short", JSONArray(found.shortAddresses)).put("typed", JSONArray(knownAddresses))
                 )
             }
+            // Only the lookup a sign explanation uses, and none when there is no full
+            // address to look up: every tool definition is read again each round.
+            if (tools) {
+                extra.put("tool_names", JSONArray(if (found.addresses.isNotEmpty()) listOf(EXPLAIN_ADDRESS) else emptyList()))
+            }
             HeylanaPrompt.signingMessage(screenText, question, found)
         } else {
             HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null)
         }
         // A send is never left to prose: the worker asks the model for the send only.
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
-        return send(
+        val reply = send(
             message,
             route.mode,
             solana = route.solana != null,
             tools = tools,
             extra = extra,
-            skill = carried
+            skill = carried,
+            signing = route.explainsSigning
         )
+        return limitLength(reply, AnswerLength.capFor(route.explainsSigning))
     }
 
     /** The next step of a task already under way. The proxy uses the stronger model. */
@@ -123,11 +130,75 @@ class ProxyClient(private val settings: HeylanaSettings) {
         skill: Skill? = null
     ): BrainReply {
         HeylanaLog.state("brain: mode=$MODE_TASK why=task_step ${skillLog(skill)}")
-        return send(
+        val reply = send(
             HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber, needPointerHint),
             MODE_TASK,
             skill = skill
         )
+        return limitLength(reply, AnswerLength.GENERAL_WORDS)
+    }
+
+    /**
+     * An answer over its word cap is sent back once to be said in fewer words, and the
+     * shorter one is used if it really is shorter. Counts only in the log. A send
+     * carries no words of its own, so it is never shortened.
+     */
+    private suspend fun limitLength(reply: BrainReply, cap: Int): BrainReply {
+        if (reply !is BrainReply.Say || reply.action != null) return reply
+        val words = AnswerLength.words(reply.text)
+        if (words <= cap) return reply
+        val shortened = shorten(reply.text, cap)
+        val chosen = AnswerLength.better(reply.text, shortened)
+        HeylanaLog.state(
+            "answer: over cap words=$words cap=$cap asked_shorter=${if (shortened == null) "failed" else "ok"} " +
+                "now=${AnswerLength.words(chosen)}"
+        )
+        return reply.copy(text = AddressText.shorten(chosen))
+    }
+
+    /** The shorter wording, or null if it could not be had. Never counted as a talk. */
+    private suspend fun shorten(text: String, cap: Int): String? = withContext(Dispatchers.IO) {
+        val clipped = text.take(SHORTEN_MAX_CHARS)
+        val messages = JSONArray().put(JSONObject().put("role", "user").put("content", clipped))
+        val request = if (settings.useOwnKey) {
+            val key = settings.apiKey ?: return@withContext null
+            val body = JSONObject()
+                .put("model", HeylanaSettings.DEFAULT_QUICK_MODEL)
+                .put("max_tokens", SHORTEN_MAX_TOKENS)
+                .put("system", HeylanaPrompt.shortenSystem(cap))
+                .put("messages", messages)
+            Request.Builder()
+                .url(ANTHROPIC_ENDPOINT)
+                .addHeader("x-api-key", key)
+                .addHeader("anthropic-version", ANTHROPIC_VERSION)
+                .addHeader("content-type", "application/json")
+                .post(body.toString().toRequestBody(JSON))
+                .build()
+        } else {
+            if (!proxy.isConfigured) return@withContext null
+            // The worker writes the rest of this request itself.
+            val body = JSONObject().put("mode", MODE_QUICK).put("shorten", true).put("max_words", cap).put("messages", messages)
+            proxy.post("chat", body.toString())
+        }
+        try {
+            Proxy.http.newCall(request).execute().use { response ->
+                val body = response.body.string()
+                if (!response.isSuccessful) return@withContext null
+                logUsage("shorten", body)
+                firstText(body)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun firstText(body: String): String? {
+        val content = runCatching { JSONObject(body).optJSONArray("content") }.getOrNull() ?: return null
+        for (i in 0 until content.length()) {
+            val block = content.optJSONObject(i) ?: continue
+            if (block.optString("type") == "text") return block.optString("text")
+        }
+        return null
     }
 
     /** "skill=jupiter tokens=312", or "skill=none". The id and a count, never the text. */
@@ -140,13 +211,15 @@ class ProxyClient(private val settings: HeylanaSettings) {
         solana: Boolean = false,
         tools: Boolean = false,
         extra: JSONObject? = null,
-        skill: Skill? = null
+        skill: Skill? = null,
+        signing: Boolean = false
     ): BrainReply = withContext(Dispatchers.IO) {
         val ownKey = settings.useOwnKey
+        val system = HeylanaPrompt.system(solana, skill, signing)
         val request = if (ownKey) {
-            ownKeyRequest(userMessage, mode, solana, skill)
+            ownKeyRequest(userMessage, mode, system)
         } else {
-            proxyRequest(userMessage, mode, solana, tools, extra, skill)
+            proxyRequest(userMessage, mode, system, tools, extra)
         }
         if (request == null) {
             return@withContext BrainReply.Failed(if (ownKey) NO_KEY else NO_PROXY)
@@ -178,21 +251,20 @@ class ProxyClient(private val settings: HeylanaSettings) {
     private fun proxyRequest(
         userMessage: String,
         mode: String,
-        solana: Boolean,
+        system: String,
         tools: Boolean,
-        extra: JSONObject?,
-        skill: Skill?
+        extra: JSONObject?
     ): Request? {
         if (!proxy.isConfigured) return null
         // The worker owns the tool definitions; the app only says whether to send them.
-        val body = payload(userMessage, solana, skill).put("mode", mode)
+        val body = payload(userMessage, system).put("mode", mode)
         if (tools) body.put("tools", true)
         extra?.keys()?.forEach { key -> body.put(key, extra.get(key)) }
         return proxy.post("chat", body.toString())
     }
 
     /** The hidden way round: straight to Anthropic with the user's own key. */
-    private fun ownKeyRequest(userMessage: String, mode: String, solana: Boolean, skill: Skill?): Request? {
+    private fun ownKeyRequest(userMessage: String, mode: String, system: String): Request? {
         val key = settings.apiKey ?: return null
         val model = if (mode == MODE_TASK) {
             HeylanaSettings.DEFAULT_TASK_MODEL
@@ -204,13 +276,13 @@ class ProxyClient(private val settings: HeylanaSettings) {
             .addHeader("x-api-key", key)
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .addHeader("content-type", "application/json")
-            .post(payload(userMessage, solana, skill).put("model", model).toString().toRequestBody(JSON))
+            .post(payload(userMessage, system).put("model", model).toString().toRequestBody(JSON))
             .build()
     }
 
-    private fun payload(userMessage: String, solana: Boolean, skill: Skill?): JSONObject = JSONObject()
+    private fun payload(userMessage: String, system: String): JSONObject = JSONObject()
         .put("max_tokens", MAX_TOKENS)
-        .put("system", HeylanaPrompt.system(solana, skill))
+        .put("system", system)
         .put(
             "messages",
             JSONArray().put(JSONObject().put("role", "user").put("content", userMessage))
@@ -338,6 +410,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
         private const val ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages"
         private const val ANTHROPIC_VERSION = "2023-06-01"
         private const val MAX_TOKENS = 300
+        private const val SHORTEN_MAX_TOKENS = 150
+        /** The worker refuses a longer text to shorten; see worker/src/shorten.ts. */
+        private const val SHORTEN_MAX_CHARS = 1_200
+        private const val EXPLAIN_ADDRESS = "explain_address"
 
         /** What the app is allowed to say about the work. The proxy picks the model. */
         const val MODE_QUICK = "quick"

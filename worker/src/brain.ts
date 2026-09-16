@@ -11,6 +11,16 @@
  */
 import { TOOL_DEFINITIONS, runTool, type ToolContext } from './tools.ts'
 
+/**
+ * The tools a request offers: all of them, or only the ones named. A sign
+ * explanation needs explain_address alone, and every definition left out is input
+ * the model is not paid to read, twice.
+ */
+export function toolsNamed(names: unknown): typeof TOOL_DEFINITIONS {
+  if (!Array.isArray(names)) return TOOL_DEFINITIONS
+  return TOOL_DEFINITIONS.filter((tool) => names.includes(tool.name))
+}
+
 /** Mutable so tests can shorten them; nothing else changes them. */
 export const toolLimits = { calls: 4, ms: 12_000 }
 
@@ -43,8 +53,11 @@ export async function answerWithTools(options: {
   base: ModelPayload
   context: Omit<ToolContext, 'signal'>
   now: () => number
+  /** Which tools to offer; all of them unless the app asked for fewer. */
+  tools?: typeof TOOL_DEFINITIONS
 }): Promise<LoopResult> {
   const { callModel, base, now } = options
+  const offered = options.tools ?? TOOL_DEFINITIONS
   const started = now()
   const controller = new AbortController()
   const deadline = setTimeout(() => controller.abort(), toolLimits.ms)
@@ -67,7 +80,7 @@ export async function answerWithTools(options: {
       const res = await callModel({
         ...base,
         messages,
-        tools: TOOL_DEFINITIONS,
+        tools: offered,
         ...(finalRound ? { tool_choice: { type: 'none' } } : {}),
       })
       rounds++

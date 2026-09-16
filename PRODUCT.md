@@ -127,6 +127,9 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
   now; Get more works once that folder is copied to a public repository at the
   address the app is built with.
 
+- **Long answers cost a second, small call.** An answer over 60 words (40 on a signing
+  screen) is asked for again in fewer words once; that call is not counted as a talk.
+
 ## Mainnet switch before submission
 
 In `worker/wrangler.toml` and the worker's secrets, then on the phone:

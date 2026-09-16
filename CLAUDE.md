@@ -289,6 +289,25 @@ alone. Settings → Debug states has "box from left dock" and "box from right do
 **Only a plain question greets.** The greeting is decided after routing, and a
 send, a signing explanation, or anything on a wallet or swap screen never carries it.
 
+**Answers have a word cap, enforced once.** `brain/AnswerLength`: a signing
+explanation is two sentences under 40 words (the prompt asks for it); everything else
+keeps 1 to 3 short sentences with 60 words as the app's line. A `say` over its cap is
+sent back once with `shorten: true` and the shorter wording is used if it really is
+shorter; `answer: over cap words=… cap=… now=…` is logged. The worker writes that
+whole request itself (`worker/src/shorten.ts`: its own system prompt, the quick model,
+150 max tokens, one text of at most 1,200 characters) and does not count it as a talk,
+so it cannot be used as a free question. The own-key path sends the same prompt; a
+test keeps the two copies identical. Task steps are capped at 60 too; a send's empty
+`say` is never shortened.
+
+**A sign explanation is kept small.** It goes with the Solana rules but not the send
+rules, offers only `explain_address` (`tool_names`), and offers no tools at all when
+the screen has only shortened addresses, which the worker checks before the single
+round. `explain_address` returns only kind, label, well_known, transactions,
+first_seen and age_days (plus owner and mint for a token account). A test holds a
+typical Seed Vault request with its skill under 2,600 tokens by the ÷4 estimate; the
+operator checks the real `input_tokens` stays under 3,000.
+
 **Addresses are never shown or spoken whole.** `AddressText.shorten` turns any base58
 run of 32 to 44 characters into first four…last four, leaving .skr and .sol names
 whole. Every model answer passes through it when it is parsed, and every line

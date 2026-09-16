@@ -18,7 +18,8 @@ import { challengeMessage, randomNonce, readSession, signSession, verifySignatur
 import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
-import { answerWithTools, proposeSend } from './brain.ts'
+import { answerWithTools, proposeSend, toolsNamed } from './brain.ts'
+import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
 import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.ts'
 import { prepareSend } from './tools.ts'
 import { checkSend, type PreparedSend } from './send.ts'
@@ -246,6 +247,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     return fail(400, 'bad_messages', 'messages must be a non-empty array.')
   }
 
+  if (body.shorten === true) return await shorten(body, env, who, started)
+
   // Every question is a talk. Checked before anything is spent upstream, and
   // only counted once the answer has actually come back.
   const now = new Date(clock.now())
@@ -316,16 +319,28 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
         signingMs = clock.now() - checkStarted
       }
     }
-    const result = await answerWithTools({ callModel, base, context, now: clock.now })
-    status = result.status
-    text = result.body
-    tokensIn = result.input
-    tokensOut = result.output
-    rounds = result.rounds
-    toolCalls = result.toolCalls
-    toolTimeout = result.timedOut
-    toolMs = result.toolMs
-    toolTimings = result.timings
+    const offered = toolsNamed(body.tool_names)
+    if (offered.length === 0) {
+      // Nothing to look up (a signing screen with only shortened addresses, already
+      // checked above): one round, no tool definitions to pay for.
+      const upstream = await callModel(base)
+      status = upstream.status
+      text = await upstream.text()
+      const usage = usageOf(text)
+      tokensIn = usage.input
+      tokensOut = usage.output
+    } else {
+      const result = await answerWithTools({ callModel, base, context, now: clock.now, tools: offered })
+      status = result.status
+      text = result.body
+      tokensIn = result.input
+      tokensOut = result.output
+      rounds = result.rounds
+      toolCalls = result.toolCalls
+      toolTimeout = result.timedOut
+      toolMs = result.toolMs
+      toolTimings = result.timings
+    }
   } else {
     const upstream = await callModel(base)
     status = upstream.status
@@ -364,6 +379,45 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     status,
     headers: { 'content-type': 'application/json' },
   })
+}
+
+/**
+ * An answer that ran long, said again in fewer words. The worker writes the whole
+ * request, so it cannot be used as a free question; see shorten.ts.
+ */
+async function shorten(body: any, env: Env, who: Who, started: number): Promise<Response> {
+  const asked = shortenRequest(body)
+  if (!asked) return fail(400, 'bad_shorten', 'shorten needs one short text.')
+  const model = MODELS.quick
+  const upstream = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': env.ANTHROPIC_API_KEY,
+      'anthropic-version': ANTHROPIC_VERSION,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: SHORTEN_MAX_TOKENS,
+      system: shortenSystem(asked.maxWords),
+      messages: [{ role: 'user', content: asked.text }],
+    }),
+  })
+  const text = await upstream.text()
+  const usage = usageOf(text)
+  log({
+    route: 'chat',
+    device: who.device,
+    wallet: who.wallet?.slice(0, 8),
+    ms: clock.now() - started,
+    model,
+    shorten: true,
+    max_words: asked.maxWords,
+    status: upstream.status,
+    tokens_in: usage.input,
+    tokens_out: usage.output,
+  })
+  return new Response(scrub(text, env), { status: upstream.status, headers: { 'content-type': 'application/json' } })
 }
 
 /** Some text to say out loud, in one of Heylana's two voices. */

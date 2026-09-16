@@ -136,3 +136,64 @@ class HeylanaPromptSkillTest {
         }
     }
 }
+
+class SigningLengthTest {
+
+    @Test
+    fun `a signing explanation asks for two sentences under 40 words`() {
+        assertTrue(HeylanaPrompt.SIGNING_INSTRUCTIONS.contains("two sentences, under 40 words"))
+    }
+
+    @Test
+    fun `a signing explanation leaves the send rules out, and everything else keeps them`() {
+        assertFalse(HeylanaPrompt.system(solana = true, signing = true).contains(SolanaCore.SEND_RULES))
+        assertTrue(HeylanaPrompt.system(solana = true, signing = true).contains(SolanaCore.RULES))
+        assertTrue(HeylanaPrompt.system(solana = true).contains(SolanaCore.SEND_RULES))
+    }
+
+    @Test
+    fun `explain_address is asked for only when there is a full address to look up`() {
+        val shortOnly = HeylanaPrompt.signingMessage(
+            "[1] Text: 7c2y…SxSv", "what am I signing", SigningScan.Found(emptyList(), listOf("7c2y…SxSv"), listOf("0.05 USDC"))
+        )
+        assertFalse(shortOnly.contains("explain_address"))
+    }
+
+    @Test
+    fun `the own-key shorten prompt matches the worker's`() {
+        val worker = java.io.File(listOf("../worker/src/shorten.ts", "worker/src/shorten.ts").first { java.io.File(it).exists() }).readText()
+        val expected = HeylanaPrompt.shortenSystem(40).replace("40", "\${maxWords}")
+        val quoted = Regex("'([^']*)'|`([^`]*)`").findAll(worker.substringAfter("export function shortenSystem"))
+            .map { it.groupValues[1] + it.groupValues[2] }.take(4).joinToString("")
+        assertEquals(expected, quoted)
+    }
+}
+
+class SigningBudgetTest {
+
+    /** A Seed Vault request as the reader lists it: 25 elements, the kind of size seen on the Seeker. */
+    private val screen = buildString {
+        append("App: com.solanamobile.seedvaultimpl\n")
+        val lines = listOf(
+            "Text: Heylana", "Text: wants you to sign a transaction", "Text: Sending", "Text: 0.05 USDC",
+            "Text: To", "Text: 7c2y…SxSv", "Text: From", "Text: 9WzD…AWWM", "Text: Network fee", "Text: 0.000005 SOL",
+            "Text: Network", "Text: Solana Devnet", "Text: Balance changes", "Text: -0.05 USDC", "Text: -0.000005 SOL",
+            "Text: Account", "Text: Main wallet", "Button: Cancel", "Button: Approve", "Text: Double-tap to approve",
+            "Image: Heylana mark", "Text: heylana-proxy.workers.dev", "Text: Verified app", "Text: Details", "Button: View details"
+        )
+        lines.forEachIndexed { i, line -> append("[${i + 1}] ").append(line).append('\n') }
+    }
+
+    @Test
+    fun `a sign explanation with the signing skill loaded stays well under 3000 input tokens`() {
+        val file = java.io.File(listOf("../skills/seed-vault-signing.md", "skills/seed-vault-signing.md").first { java.io.File(it).exists() })
+        val skill = (xyz.heylana.app.skills.SkillFile.parse(file.readText(), builtIn = true) as xyz.heylana.app.skills.SkillFile.Parsed.Ok).skill
+        val found = SigningScan.of(screen)
+        val system = HeylanaPrompt.system(solana = true, skill = skill, signing = true)
+        val message = HeylanaPrompt.signingMessage(screen, "what am I signing", found)
+        val tokens = xyz.heylana.app.skills.SkillFile.tokens(system + message)
+        // One round: only shortened addresses, so no tool definitions go and no second round is needed.
+        assertTrue("sign explanation is about $tokens tokens", tokens < 2_600)
+        assertTrue(found.addresses.isEmpty())
+    }
+}

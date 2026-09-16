@@ -147,15 +147,15 @@ test('a symbol not in the table is searched for; an unknown one says so', async 
 
 // ------------------------------------------------------------------- address
 
-test('a wallet: kind, age, transactions and what it holds', async () => {
+test('a wallet: kind, age and transactions, and nothing an answer does not use', async () => {
   const result: any = await runTool('explain_address', { address: WALLET }, context())
   assert.equal(result.kind, 'wallet')
   assert.equal(result.label, null)
   assert.equal(result.transactions, 3)
   assert.equal(result.first_seen, '2026-09-12')
   assert.equal(result.age_days, 3)
-  assert.equal(result.sol, '0.01')
-  assert.equal(result.token_kinds_held, 3)
+  assert.deepEqual(Object.keys(result).sort(), ['address', 'age_days', 'first_seen', 'kind', 'label', 'transactions', 'well_known'])
+  assert.ok(JSON.stringify(result).length < 200, 'a result stays small')
 })
 
 test('a well-known mint is named from the table', async () => {
@@ -163,7 +163,7 @@ test('a well-known mint is named from the table', async () => {
   assert.equal(result.kind, 'token mint')
   assert.equal(result.label, 'USD Coin (USDC)')
   assert.equal(result.well_known, true)
-  assert.equal(result.decimals, 6)
+  assert.equal(result.decimals, undefined)
 })
 
 test("Heylana's own treasury is named as such", async () => {

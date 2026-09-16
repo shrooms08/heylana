@@ -501,7 +501,8 @@ private suspend fun connect(
 /** A payment sent earlier that had not confirmed in time: ask once more, quietly. */
 private suspend fun settlePendingPayment(settings: HeylanaSettings, api: WalletApi) {
     val (reference, signature) = settings.pendingPayment ?: return
-    when (val answer = api.confirm(reference, signature)) {
+    // A blank signature means the wallet gave none: the worker finds it by its reference.
+    when (val answer = api.confirm(reference, signature.ifBlank { null })) {
         is Answer.Ok -> settings.pendingPayment = null
         is Answer.Refused -> if (!ConfirmPoll.keepWaiting(answer)) settings.pendingPayment = null
         is Answer.Unreachable -> Unit

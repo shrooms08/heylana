@@ -30,13 +30,13 @@ function env(over: Partial<Env> = {}, kv = store()): Env {
 }
 
 /** What the mocked chain and price service say. */
-let chain: { skrPrice: number; skrDecimals: number; skrProgram: string; tx: unknown }
+let chain: { skrPrice: number; skrDecimals: number; skrProgram: string; tx: unknown; referenced: unknown[] }
 let rpcCalls: string[] = []
 
 beforeEach(() => {
   clock.now = () => SEPT
   rpcCalls = []
-  chain = { skrPrice: 0.05, skrDecimals: 6, skrProgram: TOKEN_PROGRAM, tx: null }
+  chain = { skrPrice: 0.05, skrDecimals: 6, skrProgram: TOKEN_PROGRAM, tx: null, referenced: [] }
   globalThis.fetch = (async (input: any, init: any) => {
     const url = typeof input === 'string' ? input : input.url
     if (url.startsWith('https://api.jup.ag/price/v3')) {
@@ -51,6 +51,7 @@ beforeEach(() => {
       if (method === 'getLatestBlockhash') {
         return new Response(JSON.stringify({ result: { value: { blockhash: 'EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k', lastValidBlockHeight: 42 } } }))
       }
+      if (method === 'getSignaturesForAddress') return new Response(JSON.stringify({ result: chain.referenced }))
       if (method === 'getTransaction') return new Response(JSON.stringify({ result: chain.tx }))
     }
     throw new Error(`unexpected fetch ${url}`)
@@ -265,4 +266,22 @@ test('the RPC token never appears in an error', async () => {
   const res = await worker.fetch(req('/pay/blockhash', {}, session), e)
   assert.equal(res.status, 502)
   assert.ok(!(await res.text()).includes('secret-token-abc'))
+})
+
+test('a payment the wallet gave no signature for is found by its reference', async () => {
+  const e = env()
+  const { session, q } = await quoted(e)
+  chain.referenced = [{ signature: SIG, err: null }]
+  const res = await worker.fetch(req('/pay/confirm', { reference: q.reference }, session), e)
+  assert.equal(res.status, 200)
+  assert.equal((await res.json()).plan, 'pro')
+})
+
+test('with no signature and nothing on the reference yet, the payment is not confirmed', async () => {
+  const e = env()
+  const { session, q } = await quoted(e)
+  chain.referenced = []
+  const res = await worker.fetch(req('/pay/confirm', { reference: q.reference }, session), e)
+  assert.equal(res.status, 409)
+  assert.equal((await res.json()).reason, 'not_confirmed')
 })

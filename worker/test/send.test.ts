@@ -100,12 +100,12 @@ function env(kv = store()): Env {
   } as Env
 }
 
-let chain: { tx: unknown; balances: Record<string, string>; signatures: unknown[] }
+let chain: { tx: unknown; balances: Record<string, string>; signatures: unknown[]; byAddress: Record<string, unknown[]> }
 let logs: string[]
 
 beforeEach(() => {
   clock.now = () => SEPT
-  chain = { tx: null, balances: {}, signatures: [] }
+  chain = { tx: null, balances: {}, signatures: [], byAddress: {} }
   logs = []
   console.log = (line: string) => { logs.push(String(line)) }
   globalThis.fetch = (async (input: any, init: any) => {
@@ -116,12 +116,13 @@ beforeEach(() => {
       if (method === 'getAccountInfo') return { value: { owner: TOKEN, data: { parsed: { info: { decimals: 6 } } } } }
       if (method === 'getTokenAccountsByOwner') {
         const amount = chain.balances[params[0]]
-        return { value: amount ? [{ account: { data: { parsed: { info: { mint: USDC, tokenAmount: { amount, decimals: 6 } } } } } }] : [] }
+        return { value: amount ? [{ pubkey: FROM_ATA, account: { data: { parsed: { info: { mint: USDC, tokenAmount: { amount, decimals: 6 } } } } } }] : [] }
       }
       if (method === 'getBalance') return { value: 1_000_000_000 }
       if (method === 'getMinimumBalanceForRentExemption') return 2_039_280
       if (method === 'getTransaction') return chain.tx
-      if (method === 'getSignaturesForAddress') return chain.signatures
+      if (method === 'getSignaturesForAddress') return chain.byAddress[params[0]] ?? chain.signatures
+      if (method === 'getSignatureStatuses') return { value: [chain.tx ? { confirmationStatus: 'confirmed', err: null } : null] }
       throw new Error(`unexpected rpc ${method}`)
     })()
     return new Response(JSON.stringify({ result }))
@@ -263,4 +264,16 @@ test('a transfer already counted for one send is never counted for another', asy
   chain.signatures = [{ signature: SIG, blockTime: SEPT / 1000, err: null }]
   assert.equal((await worker.fetch(req('/send/confirm', { id: second.id }, session), e)).status, 409)
   assert.equal((await worker.fetch(req('/send/confirm', { id: second.id, signature: SIG }, session), e)).status, 409)
+})
+
+test("a transfer seen only on the sender's token account is still found", async () => {
+  const e = env()
+  const { pubkey, session } = await connected(e)
+  chain.balances[pubkey] = '5000000'
+  const quote = await (await worker.fetch(req('/send/prepare', { to: TO, amount: '0.05', token: 'USDC' }, session), e)).json()
+  chain.byAddress = { [pubkey]: [], [FROM_ATA]: [{ signature: SIG2, blockTime: SEPT / 1000, err: null }] }
+  chain.tx = tokenTx(pubkey)
+  const res = await worker.fetch(req('/send/confirm', { id: quote.id }, session), e)
+  assert.equal(res.status, 200)
+  assert.equal((await res.json()).signature, '4444…4444')
 })

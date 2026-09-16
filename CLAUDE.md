@@ -259,6 +259,26 @@ does exactly what was prepared and is not already counted for another send. Foun
 is "Sent" with its short signature; not found is "check your wallet before trying
 again", never "try again".
 
+**Seed Vault gets three minutes, and a timeout is not a no.** The wallet adapter's
+client timeout is 180 seconds (the library default of 90 dropped a slow approval's
+signed result). A timeout anywhere in the error chain is unsure, not a failure:
+a send is then looked for on chain, and a Pro payment by its reference.
+
+**Checking the chain uses growing waits.** `wallet/Backoff` gives 2s, 3s, 5s, 8s,
+13s, 21s and whatever is left of the minute. Every look is logged as
+`send: check #n after=…ms signature=given|none result=…` (or `pay: check #n`). Only
+"does not match" or "not yours" ends a look early. On the worker, a given
+signature is checked with `getSignatureStatuses` before the transaction is read;
+with none, the sender's wallet and its token account for that mint are scanned
+since the send was prepared. A Pro payment with no signature is found by its
+reference address, the Solana Pay way.
+
+**The box opens one way outside a task.** Whether a tap opens it or Heylana opens
+it to say something (a notice, the send strip, a spoken answer's words), the disc
+flies to the top and the box is full width beneath it, from either dock side;
+only a tap brings up the keyboard. The small box beside the disc is for a task
+alone. Settings → Debug states has "box from left dock" and "box from right dock".
+
 **Only a plain question greets.** The greeting is decided after routing, and a
 send, a signing explanation, or anything on a wallet or swap screen never carries it.
 

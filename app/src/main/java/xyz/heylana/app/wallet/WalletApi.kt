@@ -39,6 +39,13 @@ data class Quote(
 /** A signed-in wallet, as the worker hands it back. */
 data class Verified(val session: String, val welcomeGranted: Boolean, val standing: Standing)
 
+/** One line for the log: "confirmed", "409 not_confirmed", "unreachable IOException". */
+fun describe(answer: Answer<*>): String = when (answer) {
+    is Answer.Ok -> "ok"
+    is Answer.Refused -> "${answer.code} ${answer.reason}"
+    is Answer.Unreachable -> "unreachable ${answer.cause}"
+}
+
 /** How a call to the worker went. */
 sealed interface Answer<out T> {
     data class Ok<T>(val value: T) : Answer<T>
@@ -106,10 +113,12 @@ class WalletApi(private val settings: HeylanaSettings) {
         post("pay/blockhash", JSONObject().put("cluster", cluster.id)) { it.getString("blockhash") }
 
     /** Answers Refused(409, "not_confirmed") until the chain has confirmed it. */
-    suspend fun confirm(reference: String, signature: String): Answer<Standing> =
-        post("pay/confirm", JSONObject().put("reference", reference).put("signature", signature)) {
-            standingOf(it)
-        }
+    /** Without [signature], the worker looks the payment up by its reference. */
+    suspend fun confirm(reference: String, signature: String?): Answer<Standing> =
+        post(
+            "pay/confirm",
+            JSONObject().put("reference", reference).apply { if (!signature.isNullOrBlank()) put("signature", signature) }
+        ) { standingOf(it) }
 
     private suspend fun <T> post(path: String, body: JSONObject, read: (JSONObject) -> T): Answer<T> =
         call(proxy.post(path, body.toString()), read)

@@ -36,7 +36,10 @@ class SeedVault(activity: ComponentActivity) {
             identityUri = Uri.parse(BuildConfig.PROXY_URL.trimEnd('/').ifEmpty { FALLBACK_IDENTITY_URI }),
             iconUri = Uri.parse(ICON_PATH),
             identityName = IDENTITY_NAME
-        )
+        ),
+        // The user may take a while to approve in Seed Vault. At the library's
+        // 90-second default a slow approval lost the signed result.
+        timeout = CLIENT_TIMEOUT_MS
     )
 
     /** How a trip to the wallet ended. */
@@ -116,8 +119,11 @@ class SeedVault(activity: ComponentActivity) {
                     "code=${remote?.code ?: "none"} signatures=$signed " +
                     "message=${AddressText.shorten(message).replace('\n', ' ').take(RAW_MESSAGE_CHARS)}"
             )
+            // A timeout is not a no: the wallet may have signed and sent anyway.
+            val timedOut = chain.any { it is java.util.concurrent.TimeoutException }
             val problem = stop?.problem
-                ?: WalletProblem.fromRemote(remote?.code, result.e?.javaClass?.simpleName, message)
+                ?: if (timedOut) WalletProblem.UNKNOWN
+                else WalletProblem.fromRemote(remote?.code, result.e?.javaClass?.simpleName, message)
             HeylanaLog.state("wallet: stopped ${problem.name}")
             Trip.Stopped(problem)
         }
@@ -138,5 +144,6 @@ class SeedVault(activity: ComponentActivity) {
         const val ICON_PATH = "heylana-mark.png"
         const val IDENTITY_NAME = "Heylana"
         const val RAW_MESSAGE_CHARS = 160
+        const val CLIENT_TIMEOUT_MS = 180_000
     }
 }

@@ -94,7 +94,13 @@ class DebugStatesActivity : Activity() {
             panel,
             FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply { gravity = Gravity.TOP; topMargin = dp(180f) }
+            ).apply {
+                gravity = Gravity.TOP
+                topMargin = dp(180f)
+                // The same side gutters the real box has, so width reads true here.
+                leftMargin = dp(HeylanaTokens.SPACE_5_DP)
+                rightMargin = dp(HeylanaTokens.SPACE_5_DP)
+            }
         )
 
         caption = TextView(this).apply {
@@ -160,8 +166,31 @@ class DebugStatesActivity : Activity() {
         Triple("error", "error", ::errorState),
         Triple("pointing", "pointing", ::pointing),
         Triple("task", "task 2 of 4", ::taskStep),
-        Triple("done", "done", ::done)
+        Triple("done", "done", ::done),
+        Triple("compose-left", "box from left dock", { composeFromDock(fromLeft = true) }),
+        Triple("compose-right", "box from right dock", { composeFromDock(fromLeft = false) })
     )
+
+    /**
+     * The box opening with the buddy docked on one side: the disc flies to the top
+     * centre and the box drops in full width beneath it, never beside it.
+     */
+    private fun composeFromDock(fromLeft: Boolean) {
+        reset()
+        val discWidth = (sprite.layoutParams as FrameLayout.LayoutParams).width
+        val edge = (stage.width - discWidth) / 2f
+        sprite.translationX = if (fromLeft) -edge else edge
+        sprite.translationY = dp(360f).toFloat()
+        sprite.animate()
+            .translationX(0f)
+            .translationY(0f)
+            .setDuration(HeylanaTokens.FADE_MS)
+            .withEndAction {
+                tapped()
+                panel.showAnswer(LONG_ANSWER)
+            }
+            .start()
+    }
 
     // ------------------------------------------------------------- states
 
@@ -385,6 +414,8 @@ class DebugStatesActivity : Activity() {
 
     private companion object {
         const val ANSWER = "The search bar is at the top."
+        const val LONG_ANSWER =
+            "Seed Vault didn't confirm the send, and I can't find it on chain. Check your wallet before trying again."
         const val HEARD = "where is the seed vault"
         val MIC_LEVELS = floatArrayOf(0.35f, 0.7f, 0.5f, 0.85f, 0.4f)
         const val HEARD_STEP_MS = 260L

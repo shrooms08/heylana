@@ -22,7 +22,8 @@ sealed interface PayOutcome {
 class ProPayment(
     private val blockhash: suspend (Cluster) -> Answer<String>,
     private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<String>,
-    private val confirm: suspend (reference: String, signature: String) -> Answer<Standing>,
+    /** [signature] is null when the wallet gave none: the worker then looks the payment up by its reference. */
+    private val confirm: suspend (reference: String, signature: String?) -> Answer<Standing>,
     private val log: (String) -> Unit = { HeylanaLog.state(it) }
 ) {
 
@@ -69,12 +70,23 @@ class ProPayment(
         val signature = when (val trip = signAndSend(unsigned, cluster)) {
             is SeedVault.Trip.Done -> trip.value
             SeedVault.Trip.NoWallet -> return PayOutcome.Stopped(WalletProblem.NO_WALLET)
-            is SeedVault.Trip.Stopped -> return PayOutcome.Stopped(trip.problem)
+            is SeedVault.Trip.Stopped -> {
+                // Declined or short of funds: nothing was paid.
+                if (trip.problem != WalletProblem.UNKNOWN && trip.problem != WalletProblem.TOOK_TOO_LONG) {
+                    return PayOutcome.Stopped(trip.problem)
+                }
+                // The wallet may have paid anyway. The reference is on the payment,
+                // so it can be found without a signature — and is remembered in
+                // case it lands after this minute.
+                log("pay: wallet gave no signature (${trip.problem.name}), looking for the payment by its reference")
+                onSent(quote.reference, "")
+                return ConfirmPoll.await(check = { confirm(quote.reference, null) }, log = log)
+            }
         }
         onSent(quote.reference, signature)
         log("pay: sent on ${cluster.id}, waiting for confirmation")
 
-        return ConfirmPoll.await(check = { confirm(quote.reference, signature) })
+        return ConfirmPoll.await(check = { confirm(quote.reference, signature) }, log = log)
     }
 }
 
@@ -87,26 +99,29 @@ class ProPayment(
 object ConfirmPoll {
 
     const val TIMEOUT_MS = 60_000L
-    const val INTERVAL_MS = 2_000L
 
+    /** Growing waits (2s, 3s, 5s…) for up to a minute; each look logged with its result. */
     suspend fun await(
         check: suspend () -> Answer<Standing>,
-        now: () -> Long = System::currentTimeMillis,
         sleep: suspend (Long) -> Unit = { delay(it) },
         timeoutMs: Long = TIMEOUT_MS,
-        intervalMs: Long = INTERVAL_MS
+        log: (String) -> Unit = {}
     ): PayOutcome {
-        val deadline = now() + timeoutMs
+        val waits = Backoff.delays(timeoutMs)
+        var attempt = 0
         while (true) {
-            when (val answer = check()) {
+            attempt++
+            val answer = check()
+            log("pay: check #$attempt result=${describe(answer)}")
+            when (answer) {
                 is Answer.Ok -> return PayOutcome.Paid(answer.value)
                 is Answer.Refused -> if (!keepWaiting(answer)) {
                     return PayOutcome.Stopped(WalletProblem.fromWorker(answer.reason))
                 }
                 is Answer.Unreachable -> Unit
             }
-            if (now() + intervalMs > deadline) return PayOutcome.Stopped(WalletProblem.TOOK_TOO_LONG)
-            sleep(intervalMs)
+            if (attempt > waits.size) return PayOutcome.Stopped(WalletProblem.TOOK_TOO_LONG)
+            sleep(waits[attempt - 1])
         }
     }
 

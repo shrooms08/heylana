@@ -138,4 +138,37 @@ class SendFlowTest {
         )
         assertEquals(SendResult.Stopped(SendFlow.UNSURE_LINE), flow.run(SendFlow.Request.of(quote("devnet")), from))
     }
+
+    @Test
+    fun `a slow landing is looked for with growing waits, every look logged`() = runBlocking {
+        val slept = mutableListOf<Long>()
+        val logged = mutableListOf<String>()
+        var looks = 0
+        val flow = SendFlow(
+            blockhash = { Answer.Ok(blockhash) },
+            signAndSend = { _, _ -> SeedVault.Trip.Done("signature") },
+            confirm = { _, _ -> if (++looks < 3) Answer.Refused(409, "not_confirmed") else Answer.Ok("5555…5555") },
+            log = { logged += it },
+            sleep = { slept += it }
+        )
+        assertEquals(SendResult.Sent("5555…5555"), flow.run(SendFlow.Request.of(quote("devnet")), from))
+        assertEquals(listOf(2_000L, 3_000L), slept)
+        assertEquals(3, logged.count { it.startsWith("send: check #") })
+        assertTrue(logged.any { it.contains("check #1") && it.contains("result=409 not_confirmed") })
+    }
+
+    @Test
+    fun `an unsure wallet is looked for on chain for the full minute, not given up on at once`() = runBlocking {
+        val slept = mutableListOf<Long>()
+        val flow = SendFlow(
+            blockhash = { Answer.Ok(blockhash) },
+            signAndSend = { _, _ -> SeedVault.Trip.Stopped(WalletProblem.UNKNOWN) },
+            // An older worker refusing a signature-less look must not end the search.
+            confirm = { _, _ -> Answer.Refused(400, "bad_signature") },
+            log = {},
+            sleep = { slept += it }
+        )
+        assertEquals(SendResult.Stopped(SendFlow.UNSURE_LINE), flow.run(SendFlow.Request.of(quote("devnet")), from))
+        assertEquals(SendFlow.LAND_TIMEOUT_MS, slept.sum())
+    }
 }

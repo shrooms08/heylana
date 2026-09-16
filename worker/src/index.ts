@@ -685,9 +685,10 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
   if (!payConfigured(env)) return fail(503, 'not_configured', 'Payments are not set up.')
   const body = await readJson(request)
   const reference = String(body.reference ?? '')
-  const signature = String(body.signature ?? '')
-  if (!isAddress(reference) || !/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) {
-    return fail(400, 'bad_request', 'reference and signature are required.')
+  // No signature means the wallet ended without one; the reference finds the payment.
+  const given = body.signature === undefined || body.signature === null || body.signature === '' ? null : String(body.signature)
+  if (!isAddress(reference) || (given !== null && !/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(given))) {
+    return fail(400, 'bad_request', 'A reference is required, and a signature must be one.')
   }
 
   const stored = await env.CAPS.get(`quote:${reference}`)
@@ -705,6 +706,11 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
       confirmed: true,
       already_confirmed: true,
     })
+  }
+  const signature = given ?? (await paymentByReference(env, reference, quote))
+  if (!signature) {
+    log({ route: 'pay/confirm', device: who.device, wallet: who.wallet.slice(0, 8), looked_up: true, found: false })
+    return json(409, { reason: 'not_confirmed' })
   }
   const usedFor = await env.CAPS.get(`sig:${signature}`)
   if (usedFor && usedFor !== reference) {
@@ -800,11 +806,21 @@ async function sendConfirm(request: Request, env: Env, who: Who): Promise<Respon
   if (signature) {
     const used = await env.CAPS.get(`sentsig:${signature}`)
     if (used && used !== id) return fail(409, 'signature_used', 'That transaction already counted for another send.')
-    const tx = await rpc(env.RPC_URL, 'getTransaction', [
-      signature,
-      { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
-    ])
-    verdict = checkSend(tx, sent)
+    // The status is cheap: only a confirmed transaction is worth reading in full.
+    const statuses = await rpc(env.RPC_URL, 'getSignatureStatuses', [[signature], { searchTransactionHistory: true }])
+    const status = statuses?.value?.[0]
+    const landed = status && (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized')
+    if (!landed) {
+      verdict = { ok: false, reason: 'not_confirmed' }
+    } else if (status.err) {
+      verdict = { ok: false, reason: 'failed_on_chain' }
+    } else {
+      const tx = await rpc(env.RPC_URL, 'getTransaction', [
+        signature,
+        { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+      ])
+      verdict = checkSend(tx, sent)
+    }
   } else {
     signature = await findLandedSend(env, sent, id)
     verdict = signature ? { ok: true } : { ok: false, reason: 'not_confirmed' }
@@ -834,7 +850,21 @@ const LANDED_SLACK_MS = 120_000
  * what was prepared, and not already counted for another send.
  */
 async function findLandedSend(env: Env, sent: PreparedSend, id: string): Promise<string | null> {
-  const recent = await rpc(env.RPC_URL, 'getSignaturesForAddress', [sent.from, { limit: LANDED_LOOKBACK }])
+  // The sender's wallet, and for a token its token account for that mint: a
+  // transfer shows up on both, but an RPC may index one before the other.
+  const addresses = [sent.from]
+  if (sent.mint) {
+    const accounts = await rpc(env.RPC_URL, 'getTokenAccountsByOwner', [sent.from, { mint: sent.mint }, { encoding: 'jsonParsed' }]).catch(() => null)
+    for (const account of accounts?.value ?? []) if (isAddress(account?.pubkey)) addresses.push(account.pubkey)
+  }
+  const lists = await Promise.all(
+    addresses.map((address) => rpc(env.RPC_URL, 'getSignaturesForAddress', [address, { limit: LANDED_LOOKBACK }]).catch(() => [])),
+  )
+  const seen = new Set<string>()
+  const recent = lists
+    .flatMap((list: unknown) => (Array.isArray(list) ? list : []))
+    .filter((entry: any) => entry?.signature && !seen.has(entry.signature) && Boolean(seen.add(entry.signature)))
+    .sort((a: any, b: any) => (b?.blockTime ?? 0) - (a?.blockTime ?? 0))
   const since = (sent.prepared_at ?? 0) - LANDED_SLACK_MS
   for (const entry of Array.isArray(recent) ? recent : []) {
     if (entry?.err) continue
@@ -865,6 +895,22 @@ function toolContext(env: Env, who: Who) {
     treasury: env.TREASURY_ADDRESS,
     now: clock.now,
   }
+}
+
+/** The payment carrying [reference] as an account: the Solana Pay way of finding one without its signature. */
+async function paymentByReference(env: Env, reference: string, quote: Quote): Promise<string | null> {
+  const found = await rpc(env.RPC_URL, 'getSignaturesForAddress', [reference, { limit: 5 }])
+  for (const entry of Array.isArray(found) ? found : []) {
+    if (entry?.err) continue
+    const signature = String(entry?.signature ?? '')
+    if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) continue
+    const tx = await rpc(env.RPC_URL, 'getTransaction', [
+      signature,
+      { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
+    ])
+    if (checkPayment(tx, quote).ok) return signature
+  }
+  return null
 }
 
 function payConfigured(env: Env): boolean {

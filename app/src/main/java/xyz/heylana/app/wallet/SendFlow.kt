@@ -98,7 +98,7 @@ class SendFlow(
             is SeedVault.Trip.Stopped -> {
                 // Declined, or not enough funds: nothing was sent, say so at once.
                 if (trip.problem !in UNSURE) return SendResult.Stopped(trip.problem.words)
-                // Anything else may still have gone through. Look before answering.
+                // Anything else, a timeout included, may still have gone through.
                 log("send: wallet gave no signature (${trip.problem.name}), looking for it on chain cluster=${request.cluster.id}")
                 return when (val found = awaitLanded(request.id, null)) {
                     is SendResult.Sent -> found.also { log("send: found on chain") }
@@ -110,30 +110,41 @@ class SendFlow(
         return awaitLanded(request.id, signature)
     }
 
-    /** Not confirmed yet, a hiccup, or no connection: ask again, for up to a minute. */
+    /**
+     * Asks the worker whether the send has landed, with growing waits (2s, 3s, 5s…)
+     * for up to a minute. Only "that transfer is not this send" or "not yours" ends
+     * it early; anything else, including a slow chain or a dropped connection, is
+     * asked again. Every look is logged with its result.
+     */
     private suspend fun awaitLanded(id: String, signature: String?): SendResult {
-        val deadline = now() + LAND_TIMEOUT_MS
+        val waits = Backoff.delays(LAND_TIMEOUT_MS)
+        val started = now()
+        var attempt = 0
         while (true) {
-            when (val answer = confirm(id, signature)) {
+            attempt++
+            val answer = confirm(id, signature)
+            log(
+                "send: check #$attempt after=${now() - started}ms " +
+                    "signature=${if (signature == null) "none" else "given"} result=${describe(answer)}"
+            )
+            when (answer) {
                 is Answer.Ok -> return SendResult.Sent(answer.value)
-                is Answer.Refused -> {
-                    val waiting = answer.reason == "not_confirmed" || answer.code >= SERVER_ERROR || answer.code == TOO_MANY
-                    if (!waiting) return SendResult.Stopped(DID_NOT_MATCH)
+                is Answer.Refused -> if (answer.code == MISMATCH || answer.code == NOT_YOURS) {
+                    return SendResult.Stopped(DID_NOT_MATCH)
                 }
                 is Answer.Unreachable -> Unit
             }
-            if (now() + POLL_MS > deadline) return SendResult.Stopped(NOT_CONFIRMED_YET)
-            sleep(POLL_MS)
+            if (attempt > waits.size) return SendResult.Stopped(NOT_CONFIRMED_YET)
+            sleep(waits[attempt - 1])
         }
     }
 
     companion object {
         const val LAND_TIMEOUT_MS = 60_000L
-        const val POLL_MS = 2_000L
-        private const val SERVER_ERROR = 500
-        private const val TOO_MANY = 429
+        private const val MISMATCH = 402
+        private const val NOT_YOURS = 403
 
-        /** What the wallet can end with even after a send went out. */
+        /** What the wallet can end with even after a send went out, a timeout among them. */
         private val UNSURE = setOf(WalletProblem.UNKNOWN, WalletProblem.TOOK_TOO_LONG)
 
         const val UNSURE_LINE =

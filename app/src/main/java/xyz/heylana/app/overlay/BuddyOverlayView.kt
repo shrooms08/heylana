@@ -416,8 +416,16 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     }
 
     /** Opens the box from code — passive, so a task never dims the screen. */
+    /**
+     * Opens the box for something Heylana says by itself — a notice, a send strip,
+     * the words of a spoken answer. Outside a task it always opens the one way a
+     * tap does: the disc flies to the top and the box is full width beneath it,
+     * from either dock side. It used to open the small task box beside the disc,
+     * which, docked on the right, had no room and wrapped every two words. Only
+     * a task keeps the box beside the disc, and a task is already open by then.
+     */
     fun ensurePanelOpen() {
-        if (mode == Mode.DOCKED || mode == Mode.CAPSULE) enterMode(Mode.HUD)
+        if (mode == Mode.DOCKED || mode == Mode.CAPSULE) openCompose(withKeyboard = false)
     }
 
     // ---------------------------------------------------------------- voice
@@ -482,8 +490,12 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * The disc travels first over the bare app; the blurred glass only arrives
      * once it has landed, so no window moves mid-flight.
      */
-    private fun openCompose() {
+    /** Whether the next compose opening brings the keyboard up: a tap does, a notice does not. */
+    private var keyboardOnCompose = true
+
+    private fun openCompose(withKeyboard: Boolean = true) {
         if (mode == Mode.COMPOSE) return
+        keyboardOnCompose = withKeyboard
         val flew = flyTo(composeScreenPosition()) { enterMode(Mode.COMPOSE) }
         if (!flew) enterMode(Mode.COMPOSE)
     }
@@ -574,7 +586,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                 scrim.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
                 growBoxOutOfDisc()
                 // A spoken question has no field to type in.
-                if (!panel.isVoiceMode) panel.focusInput()
+                if (!panel.isVoiceMode && keyboardOnCompose) panel.focusInput()
             }
         }
     }

@@ -29,6 +29,18 @@ val listenUrl: String = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }.getProperty("heylana.listenUrl").orEmpty().trim()
 
+/**
+ * Where "Get more" on the Skills screen reads the public skills index. A Gradle
+ * property wins (-Pheylana.skillsIndexUrl=… for a one-off test build), then
+ * local.properties, then the public repo the index is meant to live in.
+ */
+val skillsIndexUrl: String = (providers.gradleProperty("heylana.skillsIndexUrl").orNull
+    ?: Properties().apply {
+        val file = rootProject.file("local.properties")
+        if (file.exists()) file.inputStream().use { load(it) }
+    }.getProperty("heylana.skillsIndexUrl")
+    ?: "https://raw.githubusercontent.com/shrooms08/heylana-skills/main/index.json").trim()
+
 android {
     namespace = "xyz.heylana.app"
     compileSdk {
@@ -46,6 +58,7 @@ android {
 
         buildConfigField("String", "PROXY_URL", "\"$proxyUrl\"")
         buildConfigField("String", "LISTEN_URL", "\"$listenUrl\"")
+        buildConfigField("String", "SKILLS_INDEX_URL", "\"$skillsIndexUrl\"")
     }
 
     buildTypes {

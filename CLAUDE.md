@@ -61,7 +61,9 @@ xyz.heylana.app
 │   ├── Skill / SkillFile    the skills/<id>.md format: front matter, body under 400 tokens
 │   ├── SkillSanitiser       strips any line that reads like an order to the model
 │   ├── SkillCap / SkillLoader  which skills the plan allows; the one a request carries
-│   └── SkillStore           built-ins from the APK, installed ones in private storage
+│   ├── SkillStore           built-ins from the APK, installed ones in private storage
+│   ├── SkillIndex           the public index: read, checked, and each skill downloaded
+│   └── SkillsActivity       Settings → Skills: toggles, "n of cap active", Get more, Remove
 ├── net/                     everything that leaves the phone
 │   └── Proxy                the address, the device header, the shared client, the warmup
 ├── voice/                   Heylana's mouth and ears
@@ -373,6 +375,27 @@ or `skill=none`; task steps pick against the goal.
 switched-on skills in list order are active; the rest stay on but greyed, and an
 off skill cannot come on while every place is taken. Everything is on until the
 user switches it off, a new install included.
+
+**Built-ins are the files in `skills/`.** The build adds that folder to the APK's
+assets (`androidComponents` in `app/build.gradle.kts`), so the repo and the app
+cannot disagree. They can be switched off, never removed. Package names were
+checked against `pm list packages` on the Seeker; Kamino has no app of its own and
+lives in the Wallet, picked by its trigger words. Anything not walked on the phone
+is marked "(unverified)" for the operator to fix.
+
+**More skills come from a public index.** `skills-index/index.json` lists id,
+name, summary, version and url; a url may be relative to the index, so the folder
+can be copied to a public repo as it is. The address is
+`BuildConfig.SKILLS_INDEX_URL` (a `-Pheylana.skillsIndexUrl=` Gradle property, else
+`heylana.skillsIndexUrl` in local.properties, else the public repo). "Get more" is
+a plain GET with no Heylana headers, https only (loopback http in debug builds,
+for a local server over `adb reverse`), no redirects, 64 KB for the index and 16 KB
+a skill. Install parses, sanitises, refuses a built-in's id or a body over 400
+tokens, and stores the file; Remove deletes it. `skills-index/skills/chrome.md` is
+the test entry.
+
+**"Simulate Free plan"** (Settings → debug) counts skills against Free's 3 on any
+plan, so the greyed rows can be checked on a Judge account.
 
 ## How the pieces talk to each other
 

@@ -1,0 +1,11 @@
+{
+  "skills": [
+    {
+      "id": "chrome",
+      "name": "Chrome",
+      "summary": "Tabs, the address bar and menu, and spotting fake wallet sites.",
+      "version": "1",
+      "url": "skills/chrome.md"
+    }
+  ]
+}

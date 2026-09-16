@@ -206,6 +206,13 @@ private fun SettingsScreen(
             )
         }
 
+        val context = LocalContext.current
+        GlassButton(
+            text = "Skills",
+            onClick = { context.startActivity(Intent(context, xyz.heylana.app.skills.SkillsActivity::class.java)) },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         VoiceCard(settings = settings, onSample = onSample)
 
         SwitchCard(
@@ -913,6 +920,18 @@ private fun DebugSection(settings: HeylanaSettings) {
     var phoneVoice by remember { mutableStateOf(settings.forcePhoneVoice) }
 
     var saveTts by remember { mutableStateOf(settings.saveTtsStream) }
+    var simulateFree by remember { mutableStateOf(settings.simulateFreePlan) }
+
+    SwitchCard(
+        title = "Simulate Free plan",
+        detail = "Debug builds only. Skills count against the Free plan's 3 whatever the " +
+            "plan really is, so the greyed skills can be seen on a Judge account.",
+        checked = simulateFree,
+        onCheckedChange = {
+            simulateFree = it
+            settings.simulateFreePlan = it
+        }
+    )
 
     SwitchCard(
         title = "Save last tts stream",

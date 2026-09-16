@@ -51,6 +51,13 @@
             android:windowSoftInputMode="adjustResize" />
 
         <activity
+            android:name=".skills.SkillsActivity"
+            android:exported="false"
+            android:label="Skills"
+            android:parentActivityName=".settings.SettingsActivity"
+            android:theme="@style/Theme.Heylana" />
+
+        <activity
             android:name=".voice.MicPermissionActivity"
             android:excludeFromRecents="true"
             android:exported="false"

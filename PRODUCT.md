@@ -20,7 +20,13 @@ their way around but want a quick answer without leaving what they are doing.
 
 A talk is a question that got an answer; a refused or failed one does not count.
 Plans follow the wallet; without one, the phone is a Free account with no welcome
-talks. The skill cap is stored and shown, but there are no skills to install yet.
+talks. Skills are reference notes for one app each — where things are, how common tasks
+go, what to watch out for — loaded only while that app is on screen, one at a time.
+Five are built in (Seed Vault Wallet, Kamino Earn, Seed Vault signing, Solana dApp
+Store, Jupiter); more install from a public list in Settings → Skills. The plan's
+cap is how many can be active; the rest show greyed. A skill never acts for you:
+it cannot authorise a send, a sign or a tap, and anything in it that reads like an
+order is removed before it is stored.
 Separately, every phone has a daily budget guard: 150 questions, 150 spoken
 answers and 300 listens a day.
 
@@ -59,6 +65,11 @@ Exactly what leaves the phone, and where it goes:
 transfer is shown in Seed Vault, and only you can approve it there. A recipient only
 ever comes from your own words, never from the screen, and more than a quarter of a
 balance has to be asked for twice.
+
+8. **Skills, only when you tap Get more or Install** — the phone downloads the list
+   and the skill's text from GitHub. Nothing about you goes with it: no install id,
+   no wallet, no screen. A skill itself is text on the phone; it reads nothing and
+   sends nothing.
 
 Never: the screen never goes to Deepgram or Cartesia. No API key is ever stored
 on the phone. What Heylana reads off the screen is used for one request and then
@@ -108,6 +119,13 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
   names like bob.skr do.
 - **Task steps do not look things up.** Tools go with questions; a multi-step walk-through
   uses the screen only.
+
+- **Built-in skills are partly unverified.** Jupiter's notes come from its public docs
+  (the app was locked on the test phone), and some Wallet, Kamino, Seed Vault and dApp
+  Store labels are marked "(unverified)" until walked on a Seeker.
+- **The skills index must be public.** It lives in `skills-index/` in this repo for
+  now; Get more works once that folder is copied to a public repository at the
+  address the app is built with.
 
 ## Mainnet switch before submission
 

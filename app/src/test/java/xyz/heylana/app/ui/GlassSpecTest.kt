@@ -30,9 +30,11 @@ class GlassSpecTest {
         return t * t * (3 - 2 * t)
     }
 
-    // light=(-0.45, -0.89); ndotl = clip(nx*(-light[0]) + ny*(-light[1])); ndotb = clip(nx*light[0] + ny*light[1])
-    private fun rendererNdotl(nx: Double, ny: Double) = (nx * 0.45 + ny * 0.89).coerceIn(0.0, 1.0)
-    private fun rendererNdotb(nx: Double, ny: Double) = (nx * -0.45 + ny * -0.89).coerceIn(0.0, 1.0)
+    // light=(-0.45, -0.89). The renderer wrote ndotl = clip(nx*(-light[0]) + ny*(-light[1])), which
+    // lights the bottom-right; the light is top-left, so the corrected terms swap the sign:
+    // ndotl = clip(nx*light[0] + ny*light[1]); ndotb = clip(nx*(-light[0]) + ny*(-light[1])).
+    private fun rendererNdotl(nx: Double, ny: Double) = (nx * -0.45 + ny * -0.89).coerceIn(0.0, 1.0)
+    private fun rendererNdotb(nx: Double, ny: Double) = (nx * 0.45 + ny * 0.89).coerceIn(0.0, 1.0)
 
     @Test
     fun `distance field, smoothing and light terms are the renderer's`() {
@@ -85,23 +87,33 @@ class GlassSpecTest {
         assertEquals(0f, GlassSpec.pull(-e, e, 34f), 1e-4f)
     }
 
+    private val reach = 8f
+
     @Test
-    fun `gradient runs from +0,07 at the top to -0,04 at the bottom, by depth`() {
-        assertEquals(0.07f, GlassSpec.gradient(0f, -e, e), 1e-6f)
-        assertEquals(-0.04f, GlassSpec.gradient(1f, -2 * e, e), 1e-6f)
-        assertEquals(0.015f, GlassSpec.gradient(0.5f, -e, e), 1e-6f)
-        assertEquals(0f, GlassSpec.gradient(0f, 0f, e), 1e-6f)
-        assertEquals(0.035f, GlassSpec.gradient(0f, -e / 2, e), 1e-6f)
+    fun `gradient runs from +0,07 at the top to -0,04 at the bottom, full strength 8dp in`() {
+        assertEquals(0.07f, GlassSpec.gradient(0f, -reach, reach), 1e-6f)
+        assertEquals(-0.04f, GlassSpec.gradient(1f, -2 * reach, reach), 1e-6f)
+        assertEquals(0.015f, GlassSpec.gradient(0.5f, -reach, reach), 1e-6f)
+        assertEquals(0f, GlassSpec.gradient(0f, 0f, reach), 1e-6f)
+        assertEquals(0.035f, GlassSpec.gradient(0f, -reach / 2, reach), 1e-6f)
+    }
+
+    @Test
+    fun `no inner rectangle - past 8dp the gradient no longer changes with depth, only with height`() {
+        for (d in listOf(-8f, -12f, -30f, -60f)) {
+            assertEquals(GlassSpec.gradient(0.7f, -8f, reach), GlassSpec.gradient(0.7f, d, reach), 1e-6f)
+        }
+        assertEquals(8f, GlassSpec.GRADIENT_REACH_DP)
     }
 
     @Test
     fun `rim is 7,5 percent of E, adds 0,10 + 0,32 ndotl and takes 0,10 ndotb`() {
-        val lit = GlassSpec.rim(0f, e, 0.45f, 0.89f) // facing -LIGHT: ndotl 1, ndotb 0
-        assertEquals(0.10f + 0.32f * GlassSpec.ndotl(0.45f, 0.89f), lit, 1e-4f)
-        val far = GlassSpec.rim(0f, e, -0.45f, -0.89f) // facing LIGHT: ndotl 0, ndotb 1
-        assertEquals(0.10f - 0.10f * GlassSpec.ndotb(-0.45f, -0.89f), far, 1e-4f)
-        assertEquals(0f, GlassSpec.rim(-0.075f * e, e, 0.45f, 0.89f), 1e-6f)
-        assertEquals(0f, GlassSpec.rim(1f, e, 0.45f, 0.89f), 1e-6f)
+        val lit = GlassSpec.rim(0f, e, -0.45f, -0.89f) // the top-left, facing the light
+        assertEquals(0.10f + 0.32f * GlassSpec.ndotl(-0.45f, -0.89f), lit, 1e-4f)
+        val far = GlassSpec.rim(0f, e, 0.45f, 0.89f) // the bottom-right, facing away
+        assertEquals(0.10f - 0.10f * GlassSpec.ndotb(0.45f, 0.89f), far, 1e-4f)
+        assertEquals(0f, GlassSpec.rim(-0.075f * e, e, -0.45f, -0.89f), 1e-6f)
+        assertEquals(0f, GlassSpec.rim(1f, e, -0.45f, -0.89f), 1e-6f)
     }
 
     @Test
@@ -113,18 +125,24 @@ class GlassSpecTest {
 
     @Test
     fun `bottom shade is -0,06 ndotb over 0,9 E, and the hairline 0,30 (0,3 + 0,7 ndotl)`() {
-        assertEquals(-0.06f * GlassSpec.ndotb(-0.45f, -0.89f), GlassSpec.bottomShade(0f, e, -0.45f, -0.89f), 1e-5f)
-        assertEquals(0f, GlassSpec.bottomShade(-0.9f * e, e, -0.45f, -0.89f), 1e-6f)
-        assertEquals(0.30f * (0.3f + 0.7f * GlassSpec.ndotl(0.45f, 0.89f)), GlassSpec.hairline(0f, 0.45f, 0.89f), 1e-5f)
-        assertEquals(0.09f, GlassSpec.hairline(0f, -0.45f, -0.89f), 1e-4f)
-        assertEquals(0f, GlassSpec.hairline(-1f, 0.45f, 0.89f), 1e-6f)
+        // The bottom edge faces away from the light: that is where the inner shadow sits.
+        assertEquals(-0.06f * GlassSpec.ndotb(0f, 1f), GlassSpec.bottomShade(0f, e, 0f, 1f), 1e-5f)
+        assertEquals(0f, GlassSpec.bottomShade(0f, e, 0f, -1f), 1e-6f)
+        assertEquals(0f, GlassSpec.bottomShade(-0.9f * e, e, 0f, 1f), 1e-6f)
+        assertEquals(0.30f * (0.3f + 0.7f * GlassSpec.ndotl(-0.45f, -0.89f)), GlassSpec.hairline(0f, -0.45f, -0.89f), 1e-5f)
+        assertEquals(0.09f, GlassSpec.hairline(0f, 0.45f, 0.89f), 1e-4f)
+        assertEquals(0f, GlassSpec.hairline(-1f, -0.45f, -0.89f), 1e-6f)
     }
 
     @Test
-    fun `the rim reads brightest toward the bottom-right, as the reference renders do`() {
-        val bottomRight = GlassSpec.lighting(-0.5f, e, 0.7071f, 0.7071f, 1f)
-        val topLeft = GlassSpec.lighting(-0.5f, e, -0.7071f, -0.7071f, 0f)
-        assertTrue("bottom-right $bottomRight top-left $topLeft", bottomRight > topLeft)
+    fun `light from the top-left - brightest along the top and top-left corner, shaded bottom and bottom-right`() {
+        val top = GlassSpec.lighting(-0.5f, e, 0f, -1f, 0f, reach)
+        val topLeft = GlassSpec.lighting(-0.5f, e, -0.7071f, -0.7071f, 0f, reach)
+        val bottom = GlassSpec.lighting(-0.5f, e, 0f, 1f, 1f, reach)
+        val bottomRight = GlassSpec.lighting(-0.5f, e, 0.7071f, 0.7071f, 1f, reach)
+        assertTrue("top $top bottom $bottom", top > bottom)
+        assertTrue("top-left $topLeft bottom-right $bottomRight", topLeft > bottomRight)
+        assertTrue(GlassSpec.ndotl(0f, -1f) > 0.8f && GlassSpec.ndotb(0f, 1f) > 0.8f)
     }
 
     @Test
@@ -134,7 +152,11 @@ class GlassSpecTest {
         assertEquals(GlassSpec.Surface(32f, 16f, 24f, 0.96f), GlassSpec.DISC_DOCKED)
         assertEquals(GlassSpec.DISC_DOCKED, GlassSpec.disc(64f))
         assertEquals(GlassSpec.DISC_OPEN, GlassSpec.disc(80f))
-        assertEquals(0.04f, GlassSpec.FILL_WHITE)
+        assertEquals(0.12f, GlassSpec.FILL_BLACK)
+        assertEquals(0.30f, GlassSpec.DARKER_BASE_BLACK)
+        assertEquals(8f, GlassSpec.TEXT_SHADOW_RADIUS_DP)
+        assertEquals(0.40f, GlassSpec.TEXT_SHADOW_BLACK)
+        assertEquals(0.15f, GlassSpec.CHIP_SELECTED_OUTLINE_BLACK)
         assertEquals(1.18f, GlassSpec.SATURATION)
         assertEquals(8f, GlassSpec.BLUR_BEHIND_DP)
         assertEquals(0.22f, GlassSpec.SHADOW_ALPHA)

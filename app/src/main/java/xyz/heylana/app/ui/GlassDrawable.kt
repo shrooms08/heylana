@@ -21,8 +21,8 @@ import kotlin.math.hypot
  * One liquid-glass recipe, used by every glass surface: the message box, the
  * reply strip, the task HUD, their buttons and the buddy's disc.
  *
- * **Clear glass** ([GlassSpec], design-2d) is what draws: no colour anywhere, a 4%
- * white fill (over a 25% black base with "Darker glass"), the spec's band, gradient,
+ * **Clear glass** ([GlassSpec], design-2d) is what draws: no colour anywhere, a 12%
+ * black smoke fill (30% more black with "Darker glass"), the spec's band, gradient,
  * rim, lens line, inner shadow, specular and hairline — per pixel through [ClearGlass]
  * on API 33+ hardware canvases, as gradients below that — and a 7dp shadow cast
  * outside the shape only. Chips are flat: black 27%, or white 94% when selected.
@@ -307,7 +307,15 @@ class GlassDrawable(
                     HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.CHIP_UNSELECTED_BLACK)
                 }
                 canvas.drawRoundRect(body, r, r, clearFill)
-                drawHairline(canvas, r)
+                if (selected) {
+                    // A white chip over a white app still holds its shape.
+                    clearStroke.shader = null
+                    clearStroke.color = HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.CHIP_SELECTED_OUTLINE_BLACK)
+                    clearStroke.strokeWidth = GlassSpec.CHIP_SELECTED_OUTLINE_DP * scale
+                    insetRoundRect(canvas, r, clearStroke.strokeWidth / 2f, clearStroke)
+                } else {
+                    drawHairline(canvas, r)
+                }
             }
             Kind.PANEL -> {
                 if (GlassSpec.darkerGlass) {
@@ -321,13 +329,20 @@ class GlassDrawable(
         }
     }
 
-    /** API 33+: the spec per pixel. The layer it refracts is this surface's own 4% white fill. */
+    /** The surface's own backing, which the lens refracts: the 12% black smoke. Built once per size. */
+    private var smokeLayer: Shader? = null
+    private val smokeBounds = RectF()
+
+    /** API 33+: the spec per pixel. The layer it refracts is this surface's own 12% black smoke. */
     @android.annotation.SuppressLint("NewApi")
     private fun drawSpecShader(canvas: Canvas, glassAny: Any, r: Float) {
         val glass = glassAny as ClearGlass
-        val fill = HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.FILL_WHITE)
-        val layer = LinearGradient(body.left, body.top, body.left, body.bottom, fill, fill, Shader.TileMode.CLAMP)
-        glass.set(body.left, body.top, body.width(), body.height(), surface, r, layer, scale)
+        if (smokeLayer == null || smokeBounds != body) {
+            val smoke = HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.FILL_BLACK)
+            smokeLayer = LinearGradient(body.left, body.top, body.left, body.bottom, smoke, smoke, Shader.TileMode.CLAMP)
+            smokeBounds.set(body)
+        }
+        glass.set(body.left, body.top, body.width(), body.height(), surface, r, smokeLayer!!, scale)
         canvas.drawRect(body, glass.paint)
     }
 
@@ -339,7 +354,7 @@ class GlassDrawable(
     private fun drawSpecGradients(canvas: Canvas, r: Float) {
         val edge = surface.edgeDp * scale
         clearFill.shader = null
-        clearFill.color = HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.FILL_WHITE)
+        clearFill.color = HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.FILL_BLACK)
         canvas.drawRoundRect(body, r, r, clearFill)
 
         clearFill.shader = LinearGradient(
@@ -355,13 +370,13 @@ class GlassDrawable(
         canvas.drawRoundRect(body, r, r, clearFill)
         clearFill.shader = null
 
-        // Rim: 0.10 - 0.10 on the side facing the light, up to 0.10 + 0.32 on the far side.
+        // Rim: up to 0.10 + 0.32 on the top-left, facing the light, down to 0.10 - 0.10 at the bottom-right.
         val rimWidth = (GlassSpec.RIM_WIDTH * edge).coerceAtLeast(1f)
         clearStroke.strokeWidth = rimWidth
         clearStroke.shader = LinearGradient(
             body.left, body.top, body.right, body.bottom,
-            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.RIM_BASE - GlassSpec.RIM_SHADE),
             HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.RIM_BASE + GlassSpec.RIM_LIGHT),
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.RIM_BASE - GlassSpec.RIM_SHADE),
             Shader.TileMode.CLAMP
         )
         insetRoundRect(canvas, r, rimWidth / 2f, clearStroke)
@@ -374,13 +389,13 @@ class GlassDrawable(
         drawHairline(canvas, r)
     }
 
-    /** 1px at the boundary, white at 0.30 × (0.3 + 0.7 ndotl): dim top-left, full bottom-right. */
+    /** 1px at the boundary, white at 0.30 × (0.3 + 0.7 ndotl): full top-left, dim bottom-right. */
     private fun drawHairline(canvas: Canvas, r: Float) {
         clearStroke.strokeWidth = GlassSpec.HAIRLINE_PX
         clearStroke.shader = LinearGradient(
             body.left, body.top, body.right, body.bottom,
-            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.HAIRLINE * 0.3f),
             HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.HAIRLINE),
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.HAIRLINE * 0.3f),
             Shader.TileMode.CLAMP
         )
         insetRoundRect(canvas, r, GlassSpec.HAIRLINE_PX / 2f, clearStroke)

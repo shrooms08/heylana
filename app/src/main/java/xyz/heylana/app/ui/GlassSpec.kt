@@ -17,11 +17,13 @@ import kotlin.math.min
  * design-2d-clear-glass. There is no colour in the material anywhere: white and black
  * at low alphas over whatever is behind, and the system's own blur behind the window.
  *
- * Signs follow the renderer: `d` is the signed distance to the surface's edge in px,
- * negative inside; `n` is the outward normal; `ndotl` and `ndotb` are
- * `n · (-LIGHT)` and `n · LIGHT` clamped to [0, 1], exactly as the renderer computes
- * them in screen coordinates (y down) — which lights the rim toward the bottom-right,
- * as the reference renders show, with the specular glint near the top-left.
+ * `d` is the signed distance to the surface's edge in px, negative inside; `n` is the
+ * outward normal. Light comes from the top-left: `ndotl` is `n · LIGHT` and `ndotb`
+ * is `n · -LIGHT`, clamped to [0, 1], with LIGHT = (-0.45, -0.89) in screen
+ * coordinates (y down). So the rim is brightest along the top edge and the top-left
+ * corner and shaded along the bottom and bottom-right, with the specular near the top.
+ * (The renderer had the sign the other way round, lighting the bottom-right; that was
+ * wrong and is corrected here.)
  *
  * The Kotlin functions are the same expressions as [AGSL]; GlassSpecTest checks them
  * against the renderer's and the brief's formulas. [ClearGlass] runs them per pixel on
@@ -61,12 +63,15 @@ object GlassSpec {
     const val PULL_BASE = 0.45f
     const val PULL_DEPTH = 0.55f
 
-    const val FILL_WHITE = 0.04f
+    /** A permanent light smoke, no colour, so white text holds up over bright apps. */
+    const val FILL_BLACK = 0.12f
     const val SATURATION = 1.18f
     const val BAND_BRIGHTNESS = 0.05f
 
     const val GRADIENT_TOP = 0.07f
     const val GRADIENT_BOTTOM = -0.04f
+    /** The gradient is at full strength this far in from the edge. (The 30dp band is refraction only.) */
+    const val GRADIENT_REACH_DP = 8f
 
     const val RIM_WIDTH = 0.075f
     const val RIM_BASE = 0.10f
@@ -97,13 +102,16 @@ object GlassSpec {
     const val CHIP_UNSELECTED_BLACK = 0.27f
     const val CHIP_SELECTED_WHITE = 0.94f
     const val CHIP_SELECTED_TEXT = 0xFF1A1A24.toInt()
+    /** A 1dp outline on the white chips, so they hold their shape over white. */
+    const val CHIP_SELECTED_OUTLINE_BLACK = 0.15f
+    const val CHIP_SELECTED_OUTLINE_DP = 1f
 
     const val TEXT_SHADOW_DY_DP = 1f
-    const val TEXT_SHADOW_RADIUS_DP = 6f
-    const val TEXT_SHADOW_BLACK = 0.30f
+    const val TEXT_SHADOW_RADIUS_DP = 8f
+    const val TEXT_SHADOW_BLACK = 0.40f
 
-    /** "Darker glass" in Settings: a black base under everything, for light apps. */
-    const val DARKER_BASE_BLACK = 0.25f
+    /** "Darker glass" in Settings: up to 30% more black on top of the smoke, for light apps. */
+    const val DARKER_BASE_BLACK = 0.30f
 
     const val MARK_ACTIVE = 1.0f
     const val MARK_DOCKED = 0.7f
@@ -142,15 +150,20 @@ object GlassSpec {
         return strength * band(d, edge) * (PULL_BASE + PULL_DEPTH * deep)
     }
 
-    /** 0 at the edge, 1 from E in. */
-    fun depth(d: Float, edge: Float): Float = (-d / edge).coerceIn(0f, 1f)
+    /** 0 at the edge, 1 from [reach] px in. */
+    fun depth(d: Float, reach: Float): Float = (-d / reach).coerceIn(0f, 1f)
 
-    fun ndotl(nx: Float, ny: Float): Float = (nx * -LIGHT_X + ny * -LIGHT_Y).coerceIn(0f, 1f)
-    fun ndotb(nx: Float, ny: Float): Float = (nx * LIGHT_X + ny * LIGHT_Y).coerceIn(0f, 1f)
+    /** Facing the light (top-left): 1 on the top edge's top-left side. */
+    fun ndotl(nx: Float, ny: Float): Float = (nx * LIGHT_X + ny * LIGHT_Y).coerceIn(0f, 1f)
+    /** Facing away from the light: the bottom and bottom-right. */
+    fun ndotb(nx: Float, ny: Float): Float = (nx * -LIGHT_X + ny * -LIGHT_Y).coerceIn(0f, 1f)
 
-    /** +0.07 at the top fading to -0.04 at the bottom ([yRel] 0 to 1), scaled by depth. */
-    fun gradient(yRel: Float, d: Float, edge: Float): Float =
-        lerp(GRADIENT_TOP, GRADIENT_BOTTOM, yRel.coerceIn(0f, 1f)) * depth(d, edge)
+    /**
+     * +0.07 at the top fading to -0.04 at the bottom ([yRel] 0 to 1), at full strength
+     * [reach] px in from the edge (8dp), so there is no inner rectangle.
+     */
+    fun gradient(yRel: Float, d: Float, reach: Float): Float =
+        lerp(GRADIENT_TOP, GRADIENT_BOTTOM, yRel.coerceIn(0f, 1f)) * depth(d, reach)
 
     /** The rim, 7.5% of E wide: lit toward the light, shaded on the far side. */
     fun rim(d: Float, edge: Float, nx: Float, ny: Float): Float {
@@ -177,8 +190,8 @@ object GlassSpec {
     }
 
     /** Everything added to a pixel inside the surface, as signed white (+) or black (-) alpha. */
-    fun lighting(d: Float, edge: Float, nx: Float, ny: Float, yRel: Float): Float =
-        BAND_BRIGHTNESS * band(d, edge) + gradient(yRel, d, edge) + rim(d, edge, nx, ny) +
+    fun lighting(d: Float, edge: Float, nx: Float, ny: Float, yRel: Float, reach: Float): Float =
+        BAND_BRIGHTNESS * band(d, edge) + gradient(yRel, d, reach) + rim(d, edge, nx, ny) +
             lensLine(d, edge) + bottomShade(d, edge, nx, ny)
 
     private fun lerp(a: Float, b: Float, f: Float) = a + (b - a) * f
@@ -196,6 +209,7 @@ uniform float magnification;
 uniform float bandBlur;
 uniform float2 specCentre;
 uniform float2 specSize;
+uniform float gradientReach;
 
 const float2 LIGHT = float2(-0.45, -0.89);
 
@@ -222,12 +236,13 @@ half4 main(float2 fragCoord) {
         sdRoundBox(p + float2(0.0, 0.5), c, corner) - sdRoundBox(p - float2(0.0, 0.5), c, corner)
     );
     n = n / max(length(n), 1e-4);
-    float ndotl = clamp(dot(n, -LIGHT), 0.0, 1.0);
-    float ndotb = clamp(dot(n, LIGHT), 0.0, 1.0);
+    // Light from the top-left: the top edge faces it, the bottom faces away.
+    float ndotl = clamp(dot(n, LIGHT), 0.0, 1.0);
+    float ndotb = clamp(dot(n, -LIGHT), 0.0, 1.0);
 
     float t2 = -d / edge;
     float band = 1.0 - smoothstep(0.30, 0.80, t2);
-    float depth = clamp(t2, 0.0, 1.0);
+    float depth = clamp(-d / gradientReach, 0.0, 1.0);
 
     // Refraction of the surface's own layers: magnified toward the centre, pulled
     // outward along the normal in the band, with a 1dp blur there.
@@ -310,5 +325,6 @@ class ClearGlass {
         // The faint specular near the top-left: a wide, thin glint just under the top edge.
         shader.setFloatUniform("specCentre", left + width * 0.38f, top + 4f * density)
         shader.setFloatUniform("specSize", width * 0.30f, 3.5f * density)
+        shader.setFloatUniform("gradientReach", GlassSpec.GRADIENT_REACH_DP * density)
     }
 }

@@ -105,40 +105,48 @@ resource will not load, the tokens fall back to the platform's light sans.
 
 **The glass is clear, and its numbers are `ui/GlassSpec`.** Clear iOS-style liquid
 glass (design-2d), specified by `design/refs/liquid_glass_render.py` as tuned by the
-design brief, with no colour anywhere in the material. Every surface — the disc, the
+design briefs, with no colour anywhere in the material. Every surface — the disc, the
 box, the strip, the task HUD, the pills — draws through `ui/GlassDrawable`:
 
 - **Panels** (radius 20dp, edge band E 30dp, strength 34dp, magnification 0.985) and
   **the disc** (E 20dp, strength 30dp at 80dp; E 16dp, strength 24dp docked at 64dp;
-  magnification 0.96; interpolated as it swells): a 4% white fill, and on API 33+
-  hardware canvases `ClearGlass`, an AGSL shader running the spec per pixel — the band
-  `1 - smoothstep(0.30, 0.80, -d/E)`, the outward pull of the surface's own layer
+  magnification 0.96; interpolated as it swells): a **12% black smoke** backing (light,
+  permanent, no colour), and on API 33+ hardware canvases `ClearGlass`, an AGSL shader
+  running the spec per pixel — the band `1 - smoothstep(0.30, 0.80, -d/E)` (refraction
+  only), the outward pull of the surface's own backing
   (`strength × band × (0.45 + 0.55 clamp(1 - t2/0.80))`) with 1dp blur in the band and
-  saturation 1.18, band brightness +0.05, the gradient +0.07 → −0.04 by depth, the rim
-  (7.5% of E: +0.10 + 0.32 ndotl, −0.10 ndotb), the lens line (at 10% of E, 4.5% wide,
-  −0.03), the inner shadow (−0.06 ndotb over 0.9E), a 0.05 specular near the top-left
-  and the 1px hairline (0.30 × (0.3 + 0.7 ndotl)). `ndotl` and `ndotb` are the
-  renderer's `n·(−light)` and `n·light` for light (−0.45, −0.89) in screen
-  coordinates, which lights the rim toward the bottom-right, as the reference renders
-  do. Below API 33 or on a software canvas the same numbers are drawn as gradients
-  without the refraction. The layer it refracts is the surface's own fill — never the
-  screen. `GlassSpecTest` holds the maths to the renderer's and the brief's formulas.
+  saturation 1.18, band brightness +0.05, the gradient +0.07 → −0.04 at full strength
+  **8dp in from the edge** (so no inner rectangle), the rim (7.5% of E: +0.10 + 0.32
+  ndotl, −0.10 ndotb), the lens line (at 10% of E, 4.5% wide, −0.03), the inner shadow
+  (−0.06 ndotb over 0.9E), a 0.05 specular near the top and the 1px hairline
+  (0.30 × (0.3 + 0.7 ndotl)).
+- **Light comes from the top-left.** `ndotl = clamp(n · LIGHT)`, `ndotb = clamp(n · −LIGHT)`
+  with LIGHT (−0.45, −0.89) in screen coordinates: brightest rim along the top edge and
+  top-left corner, shade along the bottom and bottom-right. The reference renderer had
+  the sign reversed; `GlassSpecTest` compares against it with the corrected sign.
+  Below API 33 or on a software canvas the same numbers are gradients, no refraction.
+  The backing it refracts is the surface's own — never the screen.
 - **Shadow**: 7dp, black 22%, 8dp down, cast outside the shape only (clip-out plus a
   GPU shadow layer), so the glass stays clear and the view stays hardware rendered.
 - **Chips**: radius 14dp, at least 44dp tall; black 27% with white text, or selected —
-  the ask pill and confirm, and a primary Compose button — white 94% with #1A1A24 text.
-- **Text** on glass is white (secondary 72% white) with a soft shadow (0 1dp 6dp,
-  black 30%). The mark is white, 70% docked and 100% active.
+  the ask pill and confirm, and a primary Compose button — white 94% with #1A1A24 text
+  and a 1dp black 15% outline so they keep their shape over white.
+- **Text** on glass is white (secondary 72% white) with a soft shadow (0 1dp 8dp,
+  black 40%). The mark is white, 70% docked and 100% active.
 - **Blur behind** stays the system's FLAG_BLUR_BEHIND, at 8dp.
 
-Over black it reads as dark clear glass with a bright bottom-right rim; over a plain
-white page it is nearly invisible — white text and the white mark included — which is
-what "Darker glass" in Settings is for: a black 25% base under every panel and the
-disc (`HeylanaSettings.darkerGlass`, copied into `GlassSpec.darkerGlass` when the app
-starts and when the switch changes, and read by each surface as it draws). Debug
-states has a "darker glass" button to preview it, and `-e darker on` for adb. The purple band, the aurora under the disc
-face, the chromatic rim, the motion RGB split and the purple bloom (design-2c) are
-still in the code behind `GlassSpec.TINTED_EXTRAS`, off.
+**Legibility over white is still low.** Measured on the debug states screen (WCAG
+contrast): body text over the pane on a pure white page 1.32:1 (1.54:1 at the letter
+edge, against its own shadow halo), over black 17.8:1; the idle mark over white 1.19:1,
+over black 9.6:1. With "Darker glass" (30% more black) over white: text 2.61:1, mark
+1.97:1. White text reaches 4.5:1 only over a backing darker than about 54% black.
+"Darker glass" in Settings adds that 30% black (`HeylanaSettings.darkerGlass`, copied
+into `GlassSpec.darkerGlass` at start and when the switch changes, read by each surface
+as it draws). Debug states has a "darker glass" button and `-e darker on` for adb.
+
+The purple band, the aurora under the disc face, the chromatic rim, the motion RGB
+split and the purple bloom (design-2c) are still in the code behind
+`GlassSpec.TINTED_EXTRAS`, off.
 
 **Blur is asked for, never assumed.** `ui/GlassBlur` checks
 `isCrossWindowBlurEnabled` at the moment a window is shown and sets

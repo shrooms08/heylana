@@ -133,7 +133,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         )
         // A reply that starts a task is a spoken step: under 25 words.
         val startsTask = reply is BrainReply.Say && reply.task?.done == false
-        return limitLength(reply, if (startsTask) AnswerLength.STEP_WORDS else AnswerLength.capFor(route.explainsSigning))
+        return limitLength(reply, AnswerLength.capFor(route.explainsSigning, startsTask))
     }
 
     /** "Why?" on the step in hand: its reason and the step again. Quick model, no screen. */
@@ -196,7 +196,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         if (reply !is BrainReply.Say || reply.action != null) return reply
         val words = AnswerLength.words(reply.text)
         if (words <= cap) return reply
-        val shortened = shorten(reply.text, cap)
+        // The shorter wording is plain text by design; it still may not echo the prompt.
+        val shortened = shorten(reply.text, cap)?.let { ReplyParser.dedupe(it.trim()) }
+            ?.takeUnless { ReplyParser.looksLikeInstructions(it) || it.trimStart().startsWith("{") }
         val chosen = AnswerLength.better(reply.text, shortened)
         HeylanaLog.state(
             "answer: over cap words=$words cap=$cap asked_shorter=${if (shortened == null) "failed" else "ok"} " +
@@ -264,6 +266,47 @@ class ProxyClient(private val settings: HeylanaSettings) {
         signing: Boolean = false,
         quickRules: Boolean = false
     ): BrainReply = withContext(Dispatchers.IO) {
+        // A send or a quick action comes back with an empty say and the action (or none):
+        // an empty say is expected there, not a reply to ask for again.
+        val expectsAction = extra?.optString("intent").orEmpty().isNotEmpty()
+        when (val first = attempt(userMessage, mode, solana, tools, extra, skill, signing, quickRules, expectsAction)) {
+            is Attempt.Done -> first.reply
+            is Attempt.Unreadable -> {
+                HeylanaLog.state("reply: unreadable reason=${first.reason} retry=once")
+                logRawReply(first.raw)
+                val retry = attempt(
+                    userMessage + "\n\n" + ReplyParser.JSON_ONLY,
+                    mode, solana, tools, extra, skill, signing, quickRules, expectsAction
+                )
+                when (retry) {
+                    is Attempt.Done -> retry.reply.also { HeylanaLog.state("reply: retry readable") }
+                    is Attempt.Unreadable -> {
+                        HeylanaLog.state("reply: unreadable after retry reason=${retry.reason}")
+                        logRawReply(retry.raw)
+                        BrainReply.Say(ReplyParser.NOT_CAUGHT, null, null)
+                    }
+                }
+            }
+        }
+    }
+
+    /** One request and its reply: read, unreadable (with the raw text, for the debug log only), or failed. */
+    private sealed interface Attempt {
+        data class Done(val reply: BrainReply) : Attempt
+        data class Unreadable(val reason: String, val raw: String) : Attempt
+    }
+
+    private fun attempt(
+        userMessage: String,
+        mode: String,
+        solana: Boolean,
+        tools: Boolean,
+        extra: JSONObject?,
+        skill: Skill?,
+        signing: Boolean,
+        quickRules: Boolean,
+        expectsAction: Boolean
+    ): Attempt {
         val ownKey = settings.useOwnKey
         val system = HeylanaPrompt.system(solana, skill, signing, quickRules)
         val request = if (ownKey) {
@@ -272,12 +315,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
             proxyRequest(userMessage, mode, system, tools, extra)
         }
         if (request == null) {
-            return@withContext BrainReply.Failed(if (ownKey) NO_KEY else NO_PROXY)
+            return Attempt.Done(BrainReply.Failed(if (ownKey) NO_KEY else NO_PROXY))
         }
 
         val warmed = proxy.warm
         val started = SystemClock.elapsedRealtime()
-        try {
+        return try {
             Proxy.http.newCall(request).execute().use { response ->
                 // execute() returns as the response headers land, which is the
                 // first byte back — the part a warm connection actually changes.
@@ -285,16 +328,25 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 proxy.spendWarmth()
                 val body = response.body.string()
                 if (!response.isSuccessful) {
-                    return@withContext BrainReply.Failed(httpError(response.code, body))
+                    return Attempt.Done(BrainReply.Failed(httpError(response.code, body)))
                 }
                 logUsage(mode, body)
-                extractReply(body)
+                extractReply(body, expectsAction)
             }
         } catch (e: IOException) {
-            BrainReply.Failed("Couldn't reach Heylana: ${e.message ?: "no connection"}")
+            Attempt.Done(BrainReply.Failed("Couldn't reach Heylana: ${e.message ?: "no connection"}"))
         } catch (_: Exception) {
-            BrainReply.Failed("Something went wrong reading the reply.")
+            Attempt.Done(BrainReply.Failed("Something went wrong reading the reply."))
         }
+    }
+
+    /**
+     * Debug builds only: the raw reply that could not be read, so the operator can see
+     * what the model did. Addresses shortened; never in a release build, never spoken.
+     */
+    private fun logRawReply(raw: String) {
+        if (!BuildConfig.DEBUG) return
+        HeylanaLog.state("reply: raw chars=${raw.length} text=" + AddressText.shorten(raw).replace('\n', ' ').take(RAW_LOG_CHARS))
     }
 
     /** What the app sends: the kind of work, not the model. */
@@ -373,38 +425,39 @@ class ProxyClient(private val settings: HeylanaSettings) {
         return if (detail.isBlank()) "Something went wrong ($code)." else "Error $code: $detail"
     }
 
-    /** First text block → strip fences → parse the JSON → fall back to raw text. */
-    private fun extractReply(body: String): BrainReply {
-        val content = JSONObject(body).optJSONArray("content")
-            ?: return BrainReply.Say(AddressText.shorten(body.trim()), null, null)
-
-        var raw: String? = null
-        for (i in 0 until content.length()) {
-            val block = content.optJSONObject(i) ?: continue
-            if (block.optString("type") == "text") {
-                raw = block.optString("text")
-                break
+    /**
+     * Every text block, then [ReplyParser]: only the reply object's say is ever spoken
+     * or shown. Anything else — no object, an object with no say, a say echoing the
+     * prompt, or an empty say where words were due — is unreadable, never raw text.
+     */
+    private fun extractReply(body: String, expectsAction: Boolean): Attempt {
+        val content = runCatching { JSONObject(body).optJSONArray("content") }.getOrNull()
+            ?: return Attempt.Unreadable("no_content", body)
+        val text = buildString {
+            for (i in 0 until content.length()) {
+                val block = content.optJSONObject(i) ?: continue
+                if (block.optString("type") == "text") append(block.optString("text")).append('\n')
             }
-        }
-        val text = raw?.trim().orEmpty()
-        if (text.isEmpty()) {
-            return BrainReply.Say("Heylana had nothing to say about this screen.", null, null)
-        }
+        }.trim()
+        if (text.isEmpty()) return Attempt.Unreadable("empty", body)
 
-        val unfenced = stripFences(text)
-        val json = runCatching { JSONObject(unfenced) }.getOrNull()
-            ?: return BrainReply.Say(AddressText.shorten(unfenced), null, null)
+        val parsed = ReplyParser.parse(text)
+        if (parsed is ReplyParser.Result.Unreadable) return Attempt.Unreadable(parsed.reason, text)
+        parsed as ReplyParser.Result.Reply
+        val json = runCatching { JSONObject(parsed.objectText) }.getOrNull()
+            ?: return Attempt.Unreadable("json", text)
 
-        // Every word the model says is shortened here, once, before it is shown or spoken.
-        val say = json.optString("say").trim()
         val action = readAction(json)
         val quick = readQuick(json)
-        return if (say.isEmpty() && action == null && quick == null) {
-            BrainReply.Say(AddressText.shorten(unfenced), null, null)
-        } else {
-            // A send carries no words of its own: the app writes the confirmation.
-            BrainReply.Say(AddressText.shorten(say), readPointAt(json), readTask(json), action, quick)
+        val task = readTask(json)
+        if (parsed.say.isEmpty() && action == null && quick == null && !expectsAction) {
+            return Attempt.Unreadable("empty_say", text)
         }
+        val extraChars = text.length - parsed.objectText.length
+        if (extraChars > 0) HeylanaLog.state("reply: text outside the json chars=$extraChars dropped")
+        if (parsed.say.length < json.optString("say").trim().length) HeylanaLog.state("reply: repeated sentence dropped")
+        // Every word the model says is shortened here, once, before it is shown or spoken.
+        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), readPointAt(json), task, action, quick))
     }
 
     /**
@@ -464,15 +517,6 @@ class ProxyClient(private val settings: HeylanaSettings) {
         return if (id >= 0) id else null
     }
 
-    private fun stripFences(text: String): String {
-        if (!text.startsWith("```")) return text
-        return text
-            .removePrefix("```json")
-            .removePrefix("```")
-            .removeSuffix("```")
-            .trim()
-    }
-
     companion object {
         private const val ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages"
         private const val ANTHROPIC_VERSION = "2023-06-01"
@@ -482,6 +526,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         private const val SHORTEN_MAX_CHARS = 1_200
         private const val EXPLAIN_ADDRESS = "explain_address"
         private const val RECENT_ACTIVITY = "recent_activity"
+        /** The most of an unreadable raw reply the debug log carries. */
+        private const val RAW_LOG_CHARS = 600
 
         /** What the app is allowed to say about the work. The proxy picks the model. */
         const val MODE_QUICK = "quick"

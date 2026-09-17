@@ -657,6 +657,26 @@ else — a missing field, a null, a non-number, or an id that is not in the snap
 that was just taken — means "do not point at anything". The snapshot is kept alive
 until the reply comes back so the id can be turned into real screen bounds.
 
+**Only `say` is ever spoken or shown, through one parser.** Every reply — chat, plain,
+a quick action, a send, a task step, a why, a recap — goes through `brain/ReplyParser`:
+all the text blocks are joined, the first JSON object with a `say` (or an `action`) is
+found (braces inside strings minded, fences and prose around it ignored, its own small
+JSON reader so it is tested on the JVM as it runs), and only its `say` is used, with a
+sentence said twice kept once. No object, no `say`, an empty `say` where words were due
+(a send or quick action may be empty), or a `say` that echoes the contract or the prompt
+("point_at", "Reply with ONLY", "User asks:"…) is unreadable: the same request goes once
+more with `ReplyParser.JSON_ONLY` added, and if that is unreadable too Heylana says "I
+didn't catch that, say it again." Before this, a reply that did not parse was spoken
+whole — prose, JSON and all. The trace says `reply: unreadable reason=… retry=once`,
+`reply: text outside the json chars=N dropped`, `reply: repeated sentence dropped`. The
+one exception to "no answer in the log": in debug builds only, an unreadable reply's raw
+text (addresses shortened, 600 characters at most) is logged as `reply: raw`, so the
+operator can see what the model did; `HeylanaLog` is compiled out of release builds. A
+retry is a second /chat and counts as a talk. The shorter wording from a shorten call is
+de-duplicated too, and dropped if it echoes the prompt. Every route has the same caps
+(`AnswerLength.capFor`): 60 words, 40 for a signing explanation, 25 for a reply that
+starts a task — chat included.
+
 `task` is null for an ordinary one-shot question. It is an object when the request
 is something to *do*: `goal` restates it in one line and stays word-for-word
 identical across the whole task, `say` describes only the current step, and

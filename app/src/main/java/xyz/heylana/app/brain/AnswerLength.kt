@@ -15,7 +15,15 @@ object AnswerLength {
     /** A spoken task step, reason included when teaching. */
     const val STEP_WORDS = 25
 
-    fun capFor(explainsSigning: Boolean): Int = if (explainsSigning) SIGNING_WORDS else GENERAL_WORDS
+    /**
+     * The cap for a reply to a question, on every route alike — chat included: 40 for a
+     * signing explanation, 25 for a reply that starts a task (it is a spoken step), else 60.
+     */
+    fun capFor(explainsSigning: Boolean, startsTask: Boolean = false): Int = when {
+        explainsSigning -> SIGNING_WORDS
+        startsTask -> STEP_WORDS
+        else -> GENERAL_WORDS
+    }
 
     fun words(text: String): Int = text.split(Regex("\\s+")).count { it.any(Char::isLetterOrDigit) }
 

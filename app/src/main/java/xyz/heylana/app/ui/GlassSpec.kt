@@ -116,6 +116,70 @@ object GlassSpec {
     const val MARK_ACTIVE = 1.0f
     const val MARK_DOCKED = 0.7f
 
+    // ------------------------------------------------------ purple streak
+
+    /**
+     * A purple light streak behind the glass (variant C with motion, from
+     * design/refs/liquid_glass_motion_render.py): #8F5BFF at 75%, added into the
+     * surface's own backing and bent by the same lens. Its lines run at 122°, so it
+     * travels along 32° from off the top-left to off the bottom-right.
+     */
+    const val STREAK_R = 0x8F / 255f
+    const val STREAK_G = 0x5B / 255f
+    const val STREAK_B = 0xFF / 255f
+    const val STREAK_MIX = 0.75f
+    const val STREAK_ANGLE_DEG = 122f
+    const val STREAK_WIDTH_DP = 30f
+    const val STREAK_BREATH_DP = 8f
+    const val STREAK_TRAIL_BEHIND_DP = 90f
+    const val STREAK_TRAIL_STRENGTH = 0.35f
+    const val STREAK_TRAIL_WIDTH_DP = 55f
+    const val STREAK_PASS_MS = 6_000L
+    const val STREAK_THINKING_PASS_MS = 4_000L
+    const val STREAK_THINKING_STRENGTH = 0.95f
+    /** The disc's streak: weaker and narrower, and its width scales with the disc (18dp at 80dp). */
+    const val DISC_STREAK_STRENGTH = 0.6f
+    const val DISC_STREAK_WIDTH_DP = 18f
+    /** How much of a pane the streak may cover at once. */
+    const val STREAK_MAX_COVER = 1f / 3f
+    /** A gaussian of width w is visible over about ±2w. */
+    private const val STREAK_VISIBLE_WIDTHS = 4f
+
+    private val STREAK_TRAVEL_RAD = Math.toRadians((STREAK_ANGLE_DEG - 90f).toDouble())
+    val STREAK_COS = kotlin.math.cos(STREAK_TRAVEL_RAD).toFloat()
+    val STREAK_SIN = kotlin.math.sin(STREAK_TRAVEL_RAD).toFloat()
+
+    /** Distance along the streak's travel of a point ([x], [y]) from the surface's top-left. */
+    fun streakU(x: Float, y: Float): Float = x * STREAK_COS + y * STREAK_SIN
+
+    /** The furthest [streakU] reaches on a surface of this size. */
+    fun streakExtent(width: Float, height: Float): Float = width * STREAK_COS + height * STREAK_SIN
+
+    /** The breathing width at [phase] (0 to 1 through a pass). */
+    fun streakWidth(phase: Float, width: Float, breath: Float): Float =
+        width + breath * kotlin.math.sin(phase * 2f * Math.PI.toFloat())
+
+    /**
+     * How much to narrow the streak so its widest breath covers at most a third of a
+     * surface this far across: 1 when it already fits.
+     */
+    fun streakFit(extent: Float, width: Float, breath: Float): Float =
+        min(1f, extent * STREAK_MAX_COVER / (STREAK_VISIBLE_WIDTHS * (width + breath)))
+
+    /** Where the leading streak's centre is at [phase]: from fully off the top-left to the trail fully off the bottom-right. */
+    fun streakCentre(phase: Float, extent: Float, width: Float, trailBehind: Float, trailWidth: Float): Float {
+        val start = -2f * width
+        val end = extent + trailBehind + 2f * trailWidth
+        return start + (end - start) * phase
+    }
+
+    /** The streak's brightness at [u]: the leading gaussian plus the fainter trail 90dp behind. */
+    fun streak(u: Float, centre: Float, width: Float, trailBehind: Float, trailWidth: Float): Float {
+        val a = (u - centre) / width
+        val b = (u - centre + trailBehind) / trailWidth
+        return exp(-a * a) + STREAK_TRAIL_STRENGTH * exp(-b * b)
+    }
+
     /**
      * The purple band, the aurora under the disc face, the chromatic rim and the
      * velocity RGB split from design-2c. Kept, and off.
@@ -210,6 +274,11 @@ uniform float bandBlur;
 uniform float2 specCentre;
 uniform float2 specSize;
 uniform float gradientReach;
+uniform float streakCentre;
+uniform float streakWidth;
+uniform float streakTrailBehind;
+uniform float streakTrailWidth;
+uniform float streakStrength;
 
 const float2 LIGHT = float2(-0.45, -0.89);
 
@@ -256,6 +325,20 @@ half4 main(float2 fragCoord) {
         }
     }
     col /= 9.0;
+
+    // The purple streak lies behind the glass, in the backing the lens bends: it is
+    // evaluated where the lens samples, so it bends at the rim like everything else.
+    if (streakStrength > 0.0) {
+        float2 local = s - origin;
+        float u = local.x * 0.848048 + local.y * 0.529919;
+        float a = (u - streakCentre) / streakWidth;
+        float b = (u - streakCentre + streakTrailBehind) / streakTrailWidth;
+        float k = streakStrength * 0.75 * (exp(-a * a) + 0.35 * exp(-b * b));
+        col.rgb += half3(0.560784, 0.356863, 1.0) * k;
+        col.a = clamp(col.a + k, 0.0, 1.0);
+        col.rgb = min(col.rgb, half3(col.a));
+    }
+
     if (col.a > 0.0) {
         col.rgb = saturateColour(col.rgb / col.a, 1.18) * col.a;
     }
@@ -326,5 +409,14 @@ class ClearGlass {
         shader.setFloatUniform("specCentre", left + width * 0.38f, top + 4f * density)
         shader.setFloatUniform("specSize", width * 0.30f, 3.5f * density)
         shader.setFloatUniform("gradientReach", GlassSpec.GRADIENT_REACH_DP * density)
+    }
+
+    /** The streak for this frame, in px; [strength] 0 turns it off. Uniforms only: nothing is allocated. */
+    fun setStreak(centre: Float, width: Float, trailBehind: Float, trailWidth: Float, strength: Float) {
+        shader.setFloatUniform("streakCentre", centre)
+        shader.setFloatUniform("streakWidth", width.coerceAtLeast(1f))
+        shader.setFloatUniform("streakTrailBehind", trailBehind)
+        shader.setFloatUniform("streakTrailWidth", trailWidth.coerceAtLeast(1f))
+        shader.setFloatUniform("streakStrength", strength)
     }
 }

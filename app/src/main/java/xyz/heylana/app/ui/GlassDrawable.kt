@@ -85,6 +85,16 @@ class GlassDrawable(
     private val shadowInView: Boolean = true
 ) : Drawable() {
 
+    /** Where the purple streak is, 0 to 1 through a pass. Set every frame by the owner. */
+    var streakPhase: Float = 0f
+
+    /** How strong the purple streak is: 0 is off. Pills never draw one. */
+    var streakStrength: Float = 0f
+
+    /** The streak's width and breath in dp: 30 and 8 on panels; the disc scales 18 with its size. */
+    var streakWidthDp: Float = GlassSpec.STREAK_WIDTH_DP
+    var streakBreathDp: Float = GlassSpec.STREAK_BREATH_DP
+
     /** The clear-glass numbers for this surface. The disc updates it as it swells. */
     var surface: GlassSpec.Surface = GlassSpec.PANEL
         set(value) {
@@ -343,6 +353,22 @@ class GlassDrawable(
             smokeBounds.set(body)
         }
         glass.set(body.left, body.top, body.width(), body.height(), surface, r, smokeLayer!!, scale)
+        if (streakStrength > 0f) {
+            // Narrowed so its widest breath covers at most a third of this pane; the trail
+            // and its distance scale with the width, so the disc's streak keeps its shape.
+            val extent = GlassSpec.streakExtent(body.width(), body.height())
+            val baseWidth = streakWidthDp * scale
+            val breath = streakBreathDp * scale
+            val fit = GlassSpec.streakFit(extent, baseWidth, breath)
+            val ratio = streakWidthDp / GlassSpec.STREAK_WIDTH_DP * fit
+            val width = GlassSpec.streakWidth(streakPhase, baseWidth, breath) * fit
+            val trailBehind = GlassSpec.STREAK_TRAIL_BEHIND_DP * scale * ratio
+            val trailWidth = GlassSpec.STREAK_TRAIL_WIDTH_DP * scale * ratio
+            val centre = GlassSpec.streakCentre(streakPhase, extent, (baseWidth + breath) * fit, trailBehind, trailWidth)
+            glass.setStreak(centre, width, trailBehind, trailWidth, streakStrength)
+        } else {
+            glass.setStreak(0f, 1f, 0f, 1f, 0f)
+        }
         canvas.drawRect(body, glass.paint)
     }
 

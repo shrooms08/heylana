@@ -188,6 +188,7 @@ class DebugStatesActivity : Activity() {
         Triple("motion", "fast drag", ::fastDrag),
         Triple("panel", "panel edges", ::panelEdges),
         Triple("send", "send strip", ::sendStrip),
+        Triple("streak", "purple streak", ::purpleStreak),
         Triple("tapped", "tapped", ::tapped),
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
@@ -304,6 +305,15 @@ class DebugStatesActivity : Activity() {
         panel.showNotice(SEND_STRIP)
         panel.morphTo(ChatPanelView.Shape.STRIP)
         panel.showConfirm()
+    }
+
+    /**
+     * The box open with an answer, the disc beside it in its open look: the purple light
+     * streak loops behind both glasses, a 6 second pass, over black and white.
+     */
+    private fun purpleStreak() {
+        tapped()
+        panel.showAnswer(LONG_ANSWER)
     }
 
     /** A level that rises and falls like a voice, every frame until the next state. */

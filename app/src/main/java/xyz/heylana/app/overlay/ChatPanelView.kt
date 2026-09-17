@@ -377,6 +377,63 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
      * Rebuilds every glass surface for whether the window really got its blur.
      * Without blur the fill has to be heavier, or the box reads as a grey smear.
      */
+    // ------------------------------------------------------ purple streak
+
+    /** While thinking the streak runs faster (a 4s pass) and at 95%. */
+    private var streakThinking = false
+    private var streakPhase = 0f
+    private var streakLevel = 0f
+    private var streakTarget = 0f
+
+    /**
+     * One frame of the streak: advance the phase by the real frame time at this pass's
+     * speed, ease the level toward its target (it melts in and out over the glass fade),
+     * and hand both to the glass. Floats only — nothing is allocated per frame.
+     */
+    private val streakClock = android.animation.TimeAnimator().apply {
+        setTimeListener { animator, _, deltaMs ->
+            val pass = if (streakThinking) GlassSpec.STREAK_THINKING_PASS_MS else GlassSpec.STREAK_PASS_MS
+            streakPhase = (streakPhase + deltaMs.toFloat() / pass) % 1f
+            val step = deltaMs.toFloat() / HeylanaTokens.FADE_MS
+            streakLevel = if (streakLevel < streakTarget) {
+                (streakLevel + step).coerceAtMost(streakTarget)
+            } else {
+                (streakLevel - step).coerceAtLeast(streakTarget)
+            }
+            (background as? GlassDrawable)?.let { glass ->
+                glass.streakPhase = streakPhase
+                glass.streakStrength = streakLevel * (if (streakThinking) GlassSpec.STREAK_THINKING_STRENGTH else 1f)
+            }
+            invalidate()
+            if (streakLevel <= 0f && streakTarget <= 0f) animator.end()
+        }
+    }
+
+    private fun streakOn(on: Boolean) {
+        if (GlassSpec.TINTED_EXTRAS) return
+        streakTarget = if (on) 1f else 0f
+        if (!streakClock.isStarted && (on || streakLevel > 0f)) streakClock.start()
+    }
+
+    /** The panel is closing: the streak melts away with the glass. */
+    fun meltStreak() = streakOn(false)
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        streakOn(visibility == View.VISIBLE)
+    }
+
+    override fun onDetachedFromWindow() {
+        streakClock.end()
+        streakLevel = 0f
+        super.onDetachedFromWindow()
+    }
+
+    override fun onVisibilityChanged(changedView: View, visibility: Int) {
+        super.onVisibilityChanged(changedView, visibility)
+        if (changedView === this && isAttachedToWindow) streakOn(visibility == View.VISIBLE)
+    }
+
     fun applyGlass(blurBehind: Boolean) {
         this.blurBehind = blurBehind
         background = GlassDrawable(
@@ -591,6 +648,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     }
 
     fun showThinking() {
+        streakThinking = true
         // A spoken question has its own capsule beside the disc; the box shows
         // nothing at all until there is an answer to read.
         if (isVoiceMode) return
@@ -599,6 +657,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     }
 
     fun showAnswer(text: String) {
+        streakThinking = false
         say(text)
         enable(true)
         input.setText("")
@@ -606,6 +665,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     /** A notice or error — keeps whatever the user typed so they can retry. */
     fun showNotice(text: String) {
+        streakThinking = false
         // A problem is always worth reading, whatever the user asked for.
         answer.text = text
         answer.visibility = if (text.isBlank()) View.GONE else View.VISIBLE

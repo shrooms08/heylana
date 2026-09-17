@@ -875,6 +875,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     fun closePanel() {
         if (mode == Mode.DOCKED) return
+        panel.meltStreak()
         panel.releaseInput()
         if (mode != Mode.COMPOSE) {
             enterMode(Mode.DOCKED)

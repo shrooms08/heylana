@@ -144,6 +144,22 @@ over black 9.6:1. With "Darker glass" (30% more black) over white: text 2.61:1, 
 into `GlassSpec.darkerGlass` at start and when the switch changes, read by each surface
 as it draws). Debug states has a "darker glass" button and `-e darker on` for adb.
 
+**A purple light streak lies behind the glass.** Variant C with motion
+(`design/refs/liquid_glass_motion_render.py`, the GIF): #8F5BFF at 75% added into the
+surface's own backing, in the shader, where the lens samples — so the rim bends it like
+everything else. Its lines run at 122° and it travels along 32°: a gaussian 30dp wide
+breathing ±8dp once a pass, plus a trail 90dp behind at 35% and 55dp wide, from fully
+off the top-left to the trail fully off the bottom-right, linear, looping: a 6s pass
+while a panel is open, 4s at 95% while thinking. It melts in and out over the glass
+fade and away when the panel closes (`ChatPanelView.meltStreak`). The box, the strip
+and the task HUD have it (`ChatPanelView`'s `TimeAnimator` hands the glass a phase and
+a strength each frame: floats and uniforms, nothing allocated); pills do not. The disc
+has it at 60% and 18dp wide at 80dp, scaled with its size, while the box is open or
+Heylana is thinking. Each pane narrows it (`GlassSpec.streakFit`) so the leading streak
+at its widest breath covers at most a third of the pane; the trail scales with it. Not
+drawn below API 33, where there is no lens to bend it. `GlassStreakTest` holds it to
+the motion renderer's formulas. Debug states: "purple streak".
+
 The purple band, the aurora under the disc face, the chromatic rim, the motion RGB
 split and the purple bloom (design-2c) are still in the code behind
 `GlassSpec.TINTED_EXTRAS`, off.

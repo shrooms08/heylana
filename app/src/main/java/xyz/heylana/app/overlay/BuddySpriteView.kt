@@ -117,6 +117,31 @@ class BuddySpriteView(context: Context) : View(context) {
         liquidEdges = false, shadowInView = false
     )
 
+    // The disc's purple streak: while the box is open or Heylana is thinking.
+    private var discStreakPhase = 0f
+    private var discStreakLevel = 0f
+    private var discStreakNanos = 0L
+
+    /** Floats only: advances the streak by the frame's real time and eases it in or out. */
+    private fun stepDiscStreak() {
+        val now = System.nanoTime()
+        val deltaMs = if (discStreakNanos == 0L) 0f else ((now - discStreakNanos) / 1_000_000f).coerceAtMost(100f)
+        discStreakNanos = now
+        val thinking = expression == Expression.THINKING
+        val wanted = if (composing || thinking) 1f else 0f
+        val pass = if (thinking) GlassSpec.STREAK_THINKING_PASS_MS else GlassSpec.STREAK_PASS_MS
+        discStreakPhase = (discStreakPhase + deltaMs / pass) % 1f
+        val step = deltaMs / HeylanaTokens.FADE_MS
+        discStreakLevel = if (discStreakLevel < wanted) (discStreakLevel + step).coerceAtMost(wanted) else (discStreakLevel - step).coerceAtLeast(wanted)
+        clearDisc.streakPhase = discStreakPhase
+        clearDisc.streakStrength = discStreakLevel * GlassSpec.DISC_STREAK_STRENGTH *
+            (if (thinking) GlassSpec.STREAK_THINKING_STRENGTH else 1f)
+        // The disc's streak is 18dp at 80dp, and scales with the disc.
+        clearDisc.streakWidthDp = GlassSpec.DISC_STREAK_WIDTH_DP * discDp / HeylanaTokens.DISC_OPEN_DP
+        clearDisc.streakBreathDp = GlassSpec.STREAK_BREATH_DP * GlassSpec.DISC_STREAK_WIDTH_DP / GlassSpec.STREAK_WIDTH_DP *
+            discDp / HeylanaTokens.DISC_OPEN_DP
+    }
+
     /** Lifts the glass a touch once Heylana is awake. */
     private val discLift = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -402,6 +427,7 @@ class BuddySpriteView(context: Context) : View(context) {
             // Clear glass at the disc's own numbers, E and strength growing with the swell;
             // its shadow falls into the bloom room around the disc.
             clearDisc.surface = GlassSpec.disc(discDp)
+            stepDiscStreak()
             clearDisc.bounds = discGlass.bounds
             clearDisc.draw(canvas)
         }

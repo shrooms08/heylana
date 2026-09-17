@@ -52,6 +52,16 @@ class GuidanceSession(val goal: String) {
     var lastStepHadNoPointer: Boolean = false
         private set
 
+    /**
+     * Teach as it goes: each step opens with one short reason. Set by "teach me" or
+     * "show me how" at the start, or by a "why" asked on any step.
+     */
+    var teaching: Boolean = false
+
+    /** Every app a step was given in, for the recap's on-chain check. */
+    private val seenPackages = LinkedHashSet<String>()
+    val packages: Set<String> get() = seenPackages
+
     val stepNumber: Int get() = recorded.size
 
     /** True once the last allowed step has been given. */
@@ -63,6 +73,7 @@ class GuidanceSession(val goal: String) {
         recorded.add(GuidanceStep(say, elementLabel))
         pointedKey = elementKey
         pointedPackage = packageName
+        packageName?.let { seenPackages += it }
         stuck = repeated
         lastStepHadNoPointer = elementKey == null
         return repeated

@@ -668,6 +668,25 @@ when the panel closes, when the buddy stops, on any API error, or at 8 steps. If
 steps in a row point at the same element the session is treated as stuck: it says so
 and stops advancing itself until the user acts.
 
+**Teaching mode.** "Teach me…", "show me how…" or "explain each step" (`brain/Teaching`)
+starts a task that teaches: `HeylanaPrompt.TEACH_LINE` goes with the first question and
+every step (`GuidanceSession.teaching`), so each step's say opens with one short reason,
+then the instruction. "Why?" (a short why, ten words at most) asked while a task runs is
+about the step in hand, not a new question: the task, its box and its pointer stay, the
+model gets the goal and the steps with no screen (`brain: mode=quick why=teach_why`), the
+reason and the step are shown and spoken, and the rest of the task teaches too. Spoken
+steps are held under 25 words (`AnswerLength.STEP_WORDS`: a reply that starts a task,
+every next step and a why); a finished task's confirmation keeps 60. The system prompt
+carries the same rule in one line.
+
+**The recap.** When a task ends (done, Done, the panel closing, an error, the cap, or a new
+question), its goal and one-line steps are kept in memory as a `FinishedTask` for ten
+minutes. "What did I just do" in that window is answered from it with no screen read
+(`why=recap`). A task that used a Solana app or moved money (swap, send, stake…) is
+`on_chain`: that recap goes on the task model with the Solana rules and `tool_names`
+`recent_activity` only, so it says what actually landed and never invents amounts; any
+other recap is the quick model with the steps alone.
+
 **Short-term memory.** `Conversation` keeps the last three ordinary exchanges —
 question, answer and the app they happened in — in memory and nowhere else: never
 a file, never a log, never a preference. Each is forgotten ten minutes after it

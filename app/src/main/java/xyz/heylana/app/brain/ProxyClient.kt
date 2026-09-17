@@ -75,7 +75,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         greeting: String? = null,
         route: Routing.Route = Routing.PLAIN,
         knownAddresses: List<String> = emptyList(),
-        skill: Skill? = null
+        skill: Skill? = null,
+        teaching: Boolean = false
     ): BrainReply {
         val tools = route.toolsWanted && !settings.useOwnKey
         val quickAction = route.why == Routing.Why.QUICK_ACTION
@@ -113,8 +114,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         } else if (route.skipsScreen) {
             HeylanaPrompt.chatMessage(question, history, if (route.allowsGreeting) greeting else null)
         } else {
-            HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null)
+            HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching)
         }
+        if (teaching) HeylanaLog.state("teach: first step asked with reasons")
         // A send is never left to prose: the worker asks the model for the send only.
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
         // Nor is an alarm, a timer, an app, a page, a place or a number.
@@ -129,7 +131,39 @@ class ProxyClient(private val settings: HeylanaSettings) {
             signing = route.explainsSigning,
             quickRules = quickRules
         )
-        return limitLength(reply, AnswerLength.capFor(route.explainsSigning))
+        // A reply that starts a task is a spoken step: under 25 words.
+        val startsTask = reply is BrainReply.Say && reply.task?.done == false
+        return limitLength(reply, if (startsTask) AnswerLength.STEP_WORDS else AnswerLength.capFor(route.explainsSigning))
+    }
+
+    /** "Why?" on the step in hand: its reason and the step again. Quick model, no screen. */
+    suspend fun explainStep(goal: String, historyText: String, question: String): BrainReply {
+        HeylanaLog.state("brain: mode=$MODE_QUICK why=${Routing.Why.TEACH_WHY.log} screen=not_read")
+        val reply = send(HeylanaPrompt.whyMessage(goal, historyText, question), MODE_QUICK)
+        return limitLength(reply, AnswerLength.STEP_WORDS)
+    }
+
+    /**
+     * "What did I just do" right after a task. An on-chain one goes with the Solana rules
+     * and recent_activity alone, so the recap says what actually landed.
+     */
+    suspend fun recap(task: FinishedTask, question: String): BrainReply {
+        val route = Routing.recapRoute(task)
+        val tools = route.toolsWanted && !settings.useOwnKey
+        HeylanaLog.state(
+            "brain: mode=${route.mode} why=${route.why.log} on_chain=${task.onChain} " +
+                "tools=${if (tools) "sent names=$RECENT_ACTIVITY" else "not sent"} screen=not_read"
+        )
+        val extra = JSONObject()
+        if (tools) extra.put("tool_names", JSONArray(listOf(RECENT_ACTIVITY)))
+        val reply = send(
+            HeylanaPrompt.recapMessage(task.goal, task.historyText, task.onChain, question),
+            route.mode,
+            solana = route.solana != null,
+            tools = tools,
+            extra = extra
+        )
+        return limitLength(reply, AnswerLength.GENERAL_WORDS)
     }
 
     /** The next step of a task already under way. The proxy uses the stronger model. */
@@ -139,15 +173,18 @@ class ProxyClient(private val settings: HeylanaSettings) {
         screenText: String,
         stepNumber: Int,
         needPointerHint: Boolean,
-        skill: Skill? = null
+        skill: Skill? = null,
+        teaching: Boolean = false
     ): BrainReply {
-        HeylanaLog.state("brain: mode=$MODE_TASK why=task_step ${skillLog(skill)}")
+        HeylanaLog.state("brain: mode=$MODE_TASK why=task_step teaching=$teaching ${skillLog(skill)}")
         val reply = send(
-            HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber, needPointerHint),
+            HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber, needPointerHint, teaching),
             MODE_TASK,
             skill = skill
         )
-        return limitLength(reply, AnswerLength.GENERAL_WORDS)
+        // A step is spoken; a finished task's confirmation keeps the general line.
+        val done = reply is BrainReply.Say && reply.task?.done == true
+        return limitLength(reply, if (done) AnswerLength.GENERAL_WORDS else AnswerLength.STEP_WORDS)
     }
 
     /**
@@ -444,6 +481,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         /** The worker refuses a longer text to shorten; see worker/src/shorten.ts. */
         private const val SHORTEN_MAX_CHARS = 1_200
         private const val EXPLAIN_ADDRESS = "explain_address"
+        private const val RECENT_ACTIVITY = "recent_activity"
 
         /** What the app is allowed to say about the work. The proxy picks the model. */
         const val MODE_QUICK = "quick"

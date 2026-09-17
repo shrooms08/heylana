@@ -36,7 +36,8 @@ object HeylanaPrompt {
             "something needing more than one tap, task.goal restates it in one line, kept " +
             "word for word across every step. Then say is ONLY the single next step " +
             "from where they are now, point_at is that step's element, and done is false. " +
-            "Once the screen shows the goal reached: done true, say confirms briefly, point_at null."
+            "Once the screen shows the goal reached: done true, say confirms briefly, point_at null. " +
+            "Steps under 25 words. Asked to teach, show how, or why: each step's say starts with one short reason."
 
     /**
      * Everything the model is told for one request. The Solana block and its rules
@@ -81,15 +82,49 @@ object HeylanaPrompt {
         screenText: String,
         question: String,
         history: String? = null,
-        greeting: String? = null
+        greeting: String? = null,
+        teaching: Boolean = false
     ): String =
         buildString {
             greeting?.let { append(it).append("\n\n") }
             history?.let { append(it).append("\n\n") }
             append("Screen now:\n")
             append(screenText)
+            if (teaching) append("\n\n").append(TEACH_LINE)
             append("\n\nUser asks: ").append(question)
         }
+
+    /** Goes with the first question of a teaching task and with every one of its steps. */
+    const val TEACH_LINE: String =
+        "Teach as you go: say starts with one short reason, then the step, under 25 words in all."
+
+    /**
+     * "Why?" on a step: the reason for the step already given, then the step again.
+     * No screen: the step is already on it, and the pointer stays where it is.
+     */
+    fun whyMessage(goal: String, historyText: String, question: String): String = buildString {
+        append("Task in progress. Goal: ").append(goal).append('\n')
+        append(historyText).append('\n')
+        append("\nThe user asks about the last step: ").append(question).append('\n')
+        append("say: the reason for that step in one short sentence, then the step again, under 25 words in all. ")
+        append("task: the same goal, done false. point_at null.")
+    }
+
+    /**
+     * "What did I just do", right after a task: from its goal and steps, and for an
+     * on-chain task from the wallet's recent activity, looked up by the worker.
+     */
+    fun recapMessage(goal: String, historyText: String, onChain: Boolean, question: String): String = buildString {
+        append("A task just ended. Goal: ").append(goal).append('\n')
+        append(historyText).append('\n')
+        append("\nRecap what the user did, in order, in 1 to 3 short sentences. ")
+        if (onChain) {
+            append("Call recent_activity once and say what it shows landed, with amounts only as it gives them; ")
+            append("if it shows nothing matching, say it has not shown up yet. ")
+        }
+        append("Only what the steps and lookups show; never invent. task null, point_at null.")
+        append("\n\nUser asks: ").append(question)
+    }
 
     /**
      * A question that needs no screen (small talk, a joke, general knowledge): no
@@ -145,7 +180,8 @@ object HeylanaPrompt {
         historyText: String,
         screenText: String,
         stepNumber: Int,
-        needPointerHint: Boolean
+        needPointerHint: Boolean,
+        teaching: Boolean = false
     ): String = buildString {
         append("Task in progress. Goal: ").append(goal).append('\n')
         append(historyText).append('\n')
@@ -159,5 +195,6 @@ object HeylanaPrompt {
             append(" Your last step pointed at nothing — if any visible element applies to this " +
                 "step, give its id.")
         }
+        if (teaching) append(' ').append(TEACH_LINE)
     }
 }

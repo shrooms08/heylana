@@ -47,7 +47,9 @@ import xyz.heylana.app.wallet.SendResult
 import xyz.heylana.app.wallet.SendText
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.WalletProblem
+import xyz.heylana.app.brain.FinishedTask
 import xyz.heylana.app.brain.GuidanceSession
+import xyz.heylana.app.brain.Teaching
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
 import xyz.heylana.app.screen.Keyterms
@@ -431,6 +433,14 @@ class BuddyOverlayService : Service() {
         if (inFlight?.isActive == true) return
         exchange.asking()
 
+        // "Why?" on a step is about the step, not a new question: the task, its box and
+        // its pointer all stay, and the rest of the task teaches as it goes.
+        val running = session
+        if (running != null && Teaching.isWhy(question)) {
+            explainStep(running, question)
+            return
+        }
+
         // A new question drops whatever the last one left behind, including any
         // task that was running.
         mouth?.stop()
@@ -462,6 +472,13 @@ class BuddyOverlayService : Service() {
             exchange.over()
             view.endVoiceExchange()
             handleQuick(followUp, question)
+            return
+        }
+
+        // "What did I just do" right after a task: answered from that task, with no screen read.
+        val finished = lastTask?.takeIf { it.fresh(System.currentTimeMillis()) }
+        if (finished != null && Teaching.isRecap(question)) {
+            recapTask(finished, question)
             return
         }
 
@@ -501,7 +518,8 @@ class BuddyOverlayService : Service() {
             val greetingLine = if (route.allowsGreeting) greeting.lineFor(settings.callMe) else null
             HeylanaLog.state("greeting: ${if (greetingLine != null) "included" else "not included"} why=${route.why.log}")
             val skill = if (chat != null) null else skills.pick(snapshot.packageName, question)
-            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill)
+            val teaching = Teaching.wantsTeaching(question)
+            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
             when (reply) {
@@ -534,7 +552,7 @@ class BuddyOverlayService : Service() {
                     }
                     val task = reply.task
                     if (task != null && !task.done) {
-                        startSession(task.goal, reply, snapshot)
+                        startSession(task.goal, reply, snapshot, teaching)
                     } else {
                         conversation.record(question, reply.text, if (chat != null) null else snapshot.packageName)
                         showOneShot(reply, snapshot)
@@ -900,8 +918,9 @@ class BuddyOverlayService : Service() {
 
     // -------------------------------------------------------------- guidance
 
-    private fun startSession(goal: String, reply: BrainReply.Say, snapshot: ScreenSnapshot) {
-        session = GuidanceSession(goal)
+    private fun startSession(goal: String, reply: BrainReply.Say, snapshot: ScreenSnapshot, teaching: Boolean = false) {
+        session = GuidanceSession(goal).also { it.teaching = teaching }
+        if (teaching) HeylanaLog.state("teach: task started teaching=true")
         conversation.clear()
         // Screen-change events are switched on here and nowhere else.
         HeylanaAccessibilityService.watchScreenChanges { main.post { onScreenChanged() } }
@@ -987,7 +1006,8 @@ class BuddyOverlayService : Service() {
                 screenText = screenText,
                 stepNumber = current.stepNumber + 1,
                 needPointerHint = current.lastStepHadNoPointer,
-                skill = skills.pick(snapshot.packageName, current.goal)
+                skill = skills.pick(snapshot.packageName, current.goal),
+                teaching = current.teaching
             )
             view.setWorking(false)
             exchange.over()
@@ -1051,8 +1071,13 @@ class BuddyOverlayService : Service() {
 
     private fun endSession(clearBox: Boolean) {
         main.removeCallbacks(autoAdvanceCheck)
-        if (session == null) return
+        val ending = session ?: return
         session = null
+        // Kept in memory for "what did I just do": the goal and the one-line steps, nothing more.
+        if (ending.stepNumber > 0) {
+            lastTask = FinishedTask.of(ending)
+            HeylanaLog.state("teach: task kept for recap steps=${ending.stepNumber} on_chain=${lastTask?.onChain}")
+        }
         // Events go straight back off: no session, no listening.
         HeylanaAccessibilityService.watchScreenChanges(null)
         overlayView?.hideSession()
@@ -1060,6 +1085,54 @@ class BuddyOverlayService : Service() {
             stopTapWatch()
             highlight?.hide()
             overlayView?.stopLooking()
+        }
+    }
+
+    /** The task that ended last, for "what did I just do". Memory only; gone when the buddy stops. */
+    private var lastTask: FinishedTask? = null
+
+    /** "Why?" on a step: its reason is shown and spoken, and the task carries on, now teaching. */
+    private fun explainStep(running: GuidanceSession, question: String) {
+        val view = overlayView ?: return
+        running.teaching = true
+        HeylanaLog.state("teach: why on step=${running.stepNumber} teaching=true")
+        mouth?.stop()
+        view.showThinking()
+        view.hideKeyboard()
+        inFlight = scope.launch {
+            val reply = brain.explainStep(running.goal, running.historyText(), question)
+            exchange.over()
+            view.endVoiceExchange()
+            // The task may have moved on or ended while the reason was on its way.
+            if (session !== running) return@launch
+            when (reply) {
+                is BrainReply.Say -> {
+                    view.showAnswer(reply.text)
+                    view.showSession(running.stepNumber, GuidanceSession.MAX_STEPS)
+                    speak(reply.text)
+                }
+                is BrainReply.Failed -> view.showNotice(reply.message)
+            }
+        }
+    }
+
+    /** "What did I just do": the task that just ended, recapped; on chain, with what landed. */
+    private fun recapTask(task: FinishedTask, question: String) {
+        val view = overlayView ?: return
+        HeylanaLog.state("teach: recap on_chain=${task.onChain}")
+        view.showThinking()
+        view.hideKeyboard()
+        inFlight = scope.launch {
+            val reply = brain.recap(task, question)
+            exchange.over()
+            view.endVoiceExchange()
+            when (reply) {
+                is BrainReply.Say -> {
+                    conversation.record(question, reply.text, null)
+                    showOneShot(reply.copy(pointAt = null, task = null), ScreenSnapshot.empty())
+                }
+                is BrainReply.Failed -> view.showNotice(reply.message)
+            }
         }
     }
 

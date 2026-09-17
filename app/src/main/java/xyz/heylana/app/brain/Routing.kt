@@ -19,6 +19,10 @@ object Routing {
         QUICK_ACTION("quick_action"),
         /** Needs no screen: small talk, a joke, general knowledge. The screen is never read. */
         CHAT("chat"),
+        /** "Why?" on a task step: the step's reason, no screen read. */
+        TEACH_WHY("teach_why"),
+        /** "What did I just do" after a task: from its steps, and on chain from recent activity. */
+        RECAP("recap"),
         WALLET_SCREEN("wallet_screen"),
         SWAP_SCREEN("swap_screen"),
         PLAIN("plain")
@@ -37,7 +41,7 @@ object Routing {
         val allowsGreeting: Boolean get() = why == Why.PLAIN || why == Why.CHAT
 
         /** No screen was read for this question, and none goes with it. */
-        val skipsScreen: Boolean get() = why == Why.CHAT
+        val skipsScreen: Boolean get() = why == Why.CHAT || why == Why.TEACH_WHY || why == Why.RECAP
     }
 
     val PLAIN = Route(ProxyClient.MODE_QUICK, Why.PLAIN, null)
@@ -46,6 +50,18 @@ object Routing {
     val CHAT = Route(ProxyClient.MODE_QUICK, Why.CHAT, null)
 
     fun chatRoute(question: String): Route? = if (ChatQuestions.isChat(question)) CHAT else null
+
+    /** A step's reason is a short answer about a step already given: the quick model will do. */
+    val TEACH_WHY = Route(ProxyClient.MODE_QUICK, Why.TEACH_WHY, null)
+
+    /**
+     * A recap of an on-chain task looks at the wallet's recent activity, which is a money
+     * answer: the task model, with the Solana rules and only that one lookup. Otherwise the
+     * steps alone, on the quick model.
+     */
+    fun recapRoute(task: FinishedTask): Route =
+        if (task.onChain) Route(ProxyClient.MODE_TASK, Why.RECAP, SolanaCore.Load.ROUTE)
+        else Route(ProxyClient.MODE_QUICK, Why.RECAP, null)
 
     private val SEND = Regex("(?<![\\p{L}])(send|transfer)(?![\\p{L}])", RegexOption.IGNORE_CASE)
 

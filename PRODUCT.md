@@ -4,6 +4,11 @@ Heylana is a small glass buddy that floats over every app on the Solana Seeker.
 Hold it and talk, or tap it and type, and it answers out loud about whatever is on
 your screen — and points at the exact button you need. Ask it to help you *do* something and it walks you there one tap at a time.
 
+Say "teach me how to…" or "show me how…" and every step comes with a one-line reason
+before the instruction; ask "why?" on any step to hear the reason for that one. When
+it is over, "what did I just do?" gets a short recap — and for a swap, a send or
+anything else on chain, what your wallet's recent activity shows actually happened.
+
 It is good company too: say hello, ask for a joke, what it thinks, or who won the
 World Cup, and it answers like a friend in a sentence or two — without reading your
 screen, since none of that needs it.

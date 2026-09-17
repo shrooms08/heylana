@@ -3,13 +3,17 @@ package xyz.heylana.app.brain
 /**
  * How long a spoken answer may be. A signing explanation is read while a finger is
  * over Approve: two sentences, under 40 words. Anything else keeps the prompt's 1
- * to 3 short sentences, with 60 words as the line the app enforces. An answer over
+ * to 3 short sentences, with 60 words as the line the app enforces; a task step is
+ * kept under 25, its reason included. An answer over
  * its line is sent back once to be said in fewer words; never twice.
  */
 object AnswerLength {
 
     const val SIGNING_WORDS = 40
     const val GENERAL_WORDS = 60
+
+    /** A spoken task step, reason included when teaching. */
+    const val STEP_WORDS = 25
 
     fun capFor(explainsSigning: Boolean): Int = if (explainsSigning) SIGNING_WORDS else GENERAL_WORDS
 

@@ -568,17 +568,38 @@ class BuddyOverlayService : Service() {
      * Heylana says one short line. Heylana itself taps nothing.
      */
     private fun handleQuick(action: QuickAction, question: String, aloud: Boolean = true) {
-        val line = when (val verdict = QuickGuard.check(action, question)) {
+        val outcome = when (val verdict = QuickGuard.check(action, question)) {
             is QuickGuard.Verdict.Refused -> {
                 HeylanaLog.state("action: guard verdict=refused intent=${action.intent} reason=${verdict.reason}")
-                verdict.line
+                QuickActionRunner.Outcome(verdict.line, fired = false)
             }
             is QuickGuard.Verdict.Allowed -> {
                 HeylanaLog.state("action: guard verdict=allowed ${QuickLog.describe(verdict.action)}")
-                quickRunner.run(verdict.action).line
+                quickRunner.run(verdict.action)
             }
         }
-        if (aloud) sayLine(line) else overlayView?.showNotice(line)
+        when {
+            outcome.fired -> afterQuickAction(outcome.line, aloud)
+            !aloud -> overlayView?.showNotice(outcome.line)
+            else -> sayLine(outcome.line)
+        }
+    }
+
+    /**
+     * The phone's own app is in front now, so nothing of Heylana's may sit over it:
+     * the box melts away at once, the line is spoken, and the disc settles to idle a
+     * second after the speech ends — the same beat as a spoken answer. With no voice
+     * the line shows for that second instead, and then the box goes.
+     */
+    private fun afterQuickAction(line: String, aloud: Boolean) {
+        val view = overlayView ?: return
+        HeylanaLog.state("action: box melts, line aloud=$aloud")
+        view.closePanel()
+        if (!aloud || !speak(line)) {
+            view.showNotice(line)
+            main.postDelayed({ overlayView?.closePanel() }, SETTLE_MS)
+            settleSoon()
+        }
     }
 
     // ------------------------------------------------------------------ sending

@@ -39,6 +39,23 @@ class QuickGuardTest {
     }
 
     @Test
+    fun `7am rule - hour 19 becomes 7 unless pm, evening, tonight or night was said`() {
+        for (said in listOf("set an alarm for 7 tomorrow", "wake me up tomorrow at 7", "alarm 7:00", "alarm for seven tomorrow")) {
+            assertEquals(said, 7, (allowed(QuickAction.Alarm(19, 0, null), said) as QuickAction.Alarm).hour)
+        }
+        for (said in listOf("alarm at 7 pm", "alarm at 7 this evening", "alarm for 7 tonight", "alarm at 7 at night")) {
+            assertEquals(said, 19, (allowed(QuickAction.Alarm(19, 0, null), said) as QuickAction.Alarm).hour)
+        }
+    }
+
+    @Test
+    fun `the dialer line reads out no digits`() {
+        assertEquals("Opening the dialer.", QuickText.line(QuickAction.Dial("08001234567", null), java.time.LocalTime.NOON))
+        assertTrue(QuickText.line(QuickAction.Dial("+2348012345678", null), java.time.LocalTime.NOON).none(Char::isDigit))
+        assertEquals("Opening the dialer. Search for Mum there.", QuickText.line(QuickAction.Dial(null, "Mum"), java.time.LocalTime.NOON))
+    }
+
+    @Test
     fun `the line says the morning for 7 tomorrow`() {
         val allowedAlarm = allowed(QuickAction.Alarm(19, 0, null), "set an alarm for 7 tomorrow")!!
         assertEquals("Alarm set for 7 AM tomorrow.", QuickText.line(allowedAlarm, java.time.LocalTime.of(21, 0)))

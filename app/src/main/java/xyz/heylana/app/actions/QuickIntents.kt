@@ -69,10 +69,11 @@ object QuickText {
         is QuickAction.OpenUrl -> "Opening ${hostOf(action.url)}."
         is QuickAction.Navigate -> "Opening maps for ${action.query}."
         is QuickAction.Dial ->
-            if (action.number != null) "Opening the dialer with ${action.number}."
-            else "Opening the dialer. Search for ${action.name} there."
+            // Never the digits: a number read aloud is slow to hear and nobody's business nearby.
+            if (action.number != null) DIALER else "$DIALER Search for ${action.name} there."
     }
 
+    const val DIALER = "Opening the dialer."
     const val NO_APP = "I couldn't find an app with that name."
     const val NO_ACTION = "I didn't catch what to do. Try again, like \"set a timer for 5 minutes\"."
     fun ambiguous(first: String, second: String) = "I found $first and $second. Say which one."

@@ -427,7 +427,13 @@ open_url: `ACTION_VIEW`, https only. navigate: `ACTION_VIEW` on `geo:0,0?q=`. di
 `ACTION_DIAL` only — `ACTION_CALL` is never built, so no call is ever placed — with the
 number, or an empty dialer and "Search for Mum there" for a name (Heylana has no
 contacts permission). Heylana then says one short line: "Alarm set for 7 AM
-tomorrow.", "Opening Wallet.".
+tomorrow.", "Opening Wallet.", "Opening the dialer." (never the digits).
+
+**Nothing is left over the app it opened.** Once an action fires, the box melts
+away at once (`afterQuickAction`), the line is spoken, and the disc settles to idle
+a second after the speech ends, the same beat as a spoken answer. With no voice the
+line shows for that second and then the box goes. A refused action still says why
+in the box.
 
 **Quick actions are deterministic, like sends.** Left to prose, the model said
 "setting an alarm for 7pm" and wrote no action, and "open the wallet" pointed at the

@@ -30,7 +30,8 @@ import xyz.heylana.app.ui.HeylanaTokens
 class DebugStatesActivity : Activity() {
 
     private lateinit var stage: FrameLayout
-    private lateinit var sprite: BuddySpriteView
+    private lateinit var sprite: DiscPair
+    private lateinit var discRow: LinearLayout
     private lateinit var panel: ChatPanelView
     private lateinit var capsule: VoiceCapsuleView
     private lateinit var fakeHighlight: View
@@ -66,13 +67,27 @@ class DebugStatesActivity : Activity() {
             }
         )
 
-        sprite = BuddySpriteView(this)
+        // Both sizes side by side, driven together: docked (64dp) and open (80dp).
+        val docked = BuddySpriteView(this).apply { discDp = HeylanaTokens.DISC_DP }
+        val open = BuddySpriteView(this).apply { discDp = HeylanaTokens.DISC_OPEN_DP }
+        sprite = DiscPair(docked, open)
+        discRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val dockedView = dp(HeylanaTokens.discViewDp(HeylanaTokens.DISC_DP))
+            val openView = dp(HeylanaTokens.discViewDp(HeylanaTokens.DISC_OPEN_DP))
+            addView(docked, LinearLayout.LayoutParams(dockedView, dockedView))
+            addView(open, LinearLayout.LayoutParams(openView, openView))
+        }
         stage.addView(
-            sprite,
+            discRow,
             FrameLayout.LayoutParams(
-                dp(HeylanaTokens.DISC_DP + 2 * HeylanaTokens.DISC_BLEED_DP),
-                dp(HeylanaTokens.DISC_DP + 2 * HeylanaTokens.DISC_BLEED_DP)
-            ).apply { gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL }
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                // Clear of the status bar, so both discs are whole.
+                topMargin = dp(HeylanaTokens.SPACE_6_DP)
+            }
         )
 
         capsule = VoiceCapsuleView(this).apply { visibility = View.GONE }
@@ -177,11 +192,10 @@ class DebugStatesActivity : Activity() {
      */
     private fun composeFromDock(fromLeft: Boolean) {
         reset()
-        val discWidth = (sprite.layoutParams as FrameLayout.LayoutParams).width
-        val edge = (stage.width - discWidth) / 2f
-        sprite.translationX = if (fromLeft) -edge else edge
-        sprite.translationY = dp(360f).toFloat()
-        sprite.animate()
+        val edge = (stage.width - discRow.width) / 2f
+        discRow.translationX = if (fromLeft) -edge else edge
+        discRow.translationY = dp(360f).toFloat()
+        discRow.animate()
             .translationX(0f)
             .translationY(0f)
             .setDuration(HeylanaTokens.FADE_MS)
@@ -435,4 +449,31 @@ class DebugStatesActivity : Activity() {
         const val EXTRA_STATE = "state"
         const val EXTRA_BACKDROP = "backdrop"
     }
+}
+
+/** The two debug discs, 64dp and 80dp, told the same thing at once. */
+private class DiscPair(private val docked: BuddySpriteView, private val open: BuddySpriteView) {
+    private val both = listOf(docked, open)
+
+    var expression: BuddySpriteView.Expression
+        get() = open.expression
+        set(value) = both.forEach { it.expression = value }
+
+    var talking: Boolean
+        get() = open.talking
+        set(value) = both.forEach { it.talking = value }
+
+    var composing: Boolean
+        get() = open.composing
+        set(value) = both.forEach { it.composing = value }
+
+    var micLevel: Float
+        get() = open.micLevel
+        set(value) = both.forEach { it.micLevel = value }
+
+    var pointTarget: PointF?
+        get() = open.pointTarget
+        set(value) = both.forEach { it.pointTarget = value }
+
+    fun refreshState() = both.forEach { it.refreshState() }
 }

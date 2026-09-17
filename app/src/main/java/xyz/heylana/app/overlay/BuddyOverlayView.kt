@@ -15,6 +15,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import androidx.dynamicanimation.animation.DynamicAnimation
+import androidx.dynamicanimation.animation.FloatValueHolder
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import xyz.heylana.app.HeylanaLog
@@ -106,14 +107,18 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     private val windowManager = context.getSystemService(WindowManager::class.java)
 
-    /** The buddy's view: the disc plus the room its bloom needs on every side. */
-    private val discSize = dp(HeylanaTokens.DISC_DP + 2 * HeylanaTokens.DISC_BLEED_DP)
+    /** The buddy's view, docked: the 64dp disc plus the room its bloom needs on every side. */
+    private val discSize = dp(HeylanaTokens.discViewDp(HeylanaTokens.DISC_DP))
+
+    /** The buddy's view at the top centre while the box is open: the 80dp disc and its bleed. */
+    private val openDiscSize = dp(HeylanaTokens.discViewDp(HeylanaTokens.DISC_OPEN_DP))
 
     /**
      * The dock inset is measured to the visible disc, not to the view, so the
      * bloom's transparent margin does not read as a gap at the screen edge.
      */
-    private val dockInset = dp(HeylanaTokens.DOCK_INSET_DP - HeylanaTokens.DISC_BLEED_DP)
+    private val dockInset = dp(HeylanaTokens.DISC_DP * HeylanaTokens.DOCK_INSET_RATIO) -
+        dp(HeylanaTokens.discBleedDp(HeylanaTokens.DISC_DP))
     /**
      * The gutter is measured to the visible pane. The panel carries its own
      * shadow margin, so that much is taken off the layout margin or the box
@@ -184,6 +189,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     private var flightX: SpringAnimation? = null
     private var flightY: SpringAnimation? = null
+    private var flightSize: SpringAnimation? = null
     private var flying = false
     private var attached = false
 
@@ -496,7 +502,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun openCompose(withKeyboard: Boolean = true) {
         if (mode == Mode.COMPOSE) return
         keyboardOnCompose = withKeyboard
-        val flew = flyTo(composeScreenPosition()) { enterMode(Mode.COMPOSE) }
+        val flew = flyTo(composeScreenPosition(), HeylanaTokens.DISC_OPEN_DP) { enterMode(Mode.COMPOSE) }
         if (!flew) enterMode(Mode.COMPOSE)
     }
 
@@ -615,9 +621,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         // and the capsule move; they are never the ones being touched.
         content.removeView(panel)
         content.removeView(capsule)
-        if (content.indexOfChild(sprite) < 0) {
-            content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
-        }
+        dockSizedSprite()
         val discIndex = content.indexOfChild(sprite)
         if (panelOnLeft) {
             content.addView(capsule, discIndex, capsuleParams)
@@ -625,6 +629,22 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         } else {
             content.addView(panel, discIndex + 1, boxParams)
             content.addView(capsule, discIndex + 2, capsuleParams)
+        }
+    }
+
+    /**
+     * The disc at its docked size, in the row. Resizing it changes only its layout
+     * params and never detaches it, so a gesture it is holding survives.
+     */
+    private fun dockSizedSprite() {
+        sprite.discDp = HeylanaTokens.DISC_DP
+        if (content.indexOfChild(sprite) < 0) {
+            content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
+        } else if (sprite.layoutParams.width != discSize) {
+            sprite.layoutParams = (sprite.layoutParams as LinearLayout.LayoutParams).apply {
+                width = discSize
+                height = discSize
+            }
         }
     }
 
@@ -641,9 +661,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         content.removeView(panel)
         content.removeView(capsule)
         capsule.visibility = View.GONE
+        sprite.discDp = HeylanaTokens.DISC_OPEN_DP
         content.addView(
             sprite,
-            LinearLayout.LayoutParams(discSize, discSize).apply {
+            LinearLayout.LayoutParams(openDiscSize, openDiscSize).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         )
@@ -709,7 +730,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** Where the disc sits on the display while composing: top centre. */
     private fun composeScreenPosition(): PointF = PointF(
-        (usableLeft + (usableWidth - discSize) / 2).toFloat(),
+        (usableLeft + (usableWidth - openDiscSize) / 2).toFloat(),
         (usableTop + dp(HeylanaTokens.SPACE_5_DP)).toFloat()
     )
 
@@ -721,7 +742,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * Returns false when there is no stage to fly on, so the caller can simply
      * arrive instead of pretending to travel.
      */
-    private fun flyTo(target: PointF, onLanded: () -> Unit): Boolean {
+    /**
+     * [target] is the top-left of the buddy's view where it lands, at the size of a
+     * [targetDiscDp] disc. The stand-in is always the open-sized view, so it can
+     * swell or shrink its disc on the way without its window-sized box changing:
+     * its position is offset by half the difference at both ends.
+     */
+    private fun flyTo(target: PointF, targetDiscDp: Float, onLanded: () -> Unit): Boolean {
         val stage = flightStage ?: return false
         val from = spriteScreenPosition()
         if (from.x == 0f && from.y == 0f) return false
@@ -734,13 +761,26 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         flyer.expression = sprite.expression
         flyer.talking = sprite.talking
         flyer.composing = sprite.composing
+        flyer.discDp = sprite.discDp
         flyer.refreshState()
 
-        stage.addFlyer(flyer, discSize)
+        stage.addFlyer(flyer, openDiscSize)
         val origin = stage.stageOrigin()
-        flyer.translationX = from.x - origin.x
-        flyer.translationY = from.y - origin.y
+        val fromView = sprite.width.takeIf { it > 0 } ?: discSize
+        val toView = dp(HeylanaTokens.discViewDp(targetDiscDp))
+        flyer.translationX = from.x - (openDiscSize - fromView) / 2f - origin.x
+        flyer.translationY = from.y - (openDiscSize - fromView) / 2f - origin.y
         sprite.visibility = View.INVISIBLE
+
+        // The disc swells (or settles back) on the same spring as the flight.
+        flightSize = SpringAnimation(FloatValueHolder(flyer.discDp)).apply {
+            spring = SpringForce(targetDiscDp).apply {
+                stiffness = HeylanaTokens.SPRING_STIFFNESS
+                dampingRatio = HeylanaTokens.SPRING_DAMPING
+            }
+            addUpdateListener { _, value, _ -> flyer.discDp = value }
+            start()
+        }
 
         var settled = 0
         val land = {
@@ -755,8 +795,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             }
         }
 
-        flightX = spring(DynamicAnimation.TRANSLATION_X, target.x - origin.x, land)
-        flightY = spring(DynamicAnimation.TRANSLATION_Y, target.y - origin.y, land)
+        val landingOffset = (openDiscSize - toView) / 2f
+        flightX = spring(DynamicAnimation.TRANSLATION_X, target.x - landingOffset - origin.x, land)
+        flightY = spring(DynamicAnimation.TRANSLATION_Y, target.y - landingOffset - origin.y, land)
         return true
     }
 
@@ -776,6 +817,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun cancelFlight() {
         flightX?.cancel(); flightX = null
         flightY?.cancel(); flightY = null
+        flightSize?.cancel(); flightSize = null
         if (flying) {
             flying = false
             leaveStage()
@@ -801,7 +843,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         // The glass goes first, then the disc flies home over the bare app.
         scrim.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
         panel.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
-        val flew = flyTo(dockedScreenPosition()) {
+        val flew = flyTo(dockedScreenPosition(), HeylanaTokens.DISC_DP) {
             enterMode(Mode.DOCKED)
             onPanelClosed?.invoke()
         }
@@ -940,7 +982,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         val targetTop = clamp(spriteTop, dockInset, usableHeight - discSize - dockInset)
 
         val flew = flyTo(
-            PointF((usableLeft + targetLeft).toFloat(), (usableTop + targetTop).toFloat())
+            PointF((usableLeft + targetLeft).toFloat(), (usableTop + targetTop).toFloat()),
+            HeylanaTokens.DISC_DP
         ) {
             spriteLeft = targetLeft
             spriteTop = targetTop
@@ -999,9 +1042,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         val boxParams = LinearLayout.LayoutParams(
             panel.hudWidth, LinearLayout.LayoutParams.WRAP_CONTENT
         )
-        if (content.indexOfChild(sprite) < 0) {
-            content.addView(sprite, LinearLayout.LayoutParams(discSize, discSize))
-        }
+        dockSizedSprite()
         val discIndex = content.indexOfChild(sprite)
         if (panelOnLeft) {
             content.addView(panel, discIndex, boxParams)

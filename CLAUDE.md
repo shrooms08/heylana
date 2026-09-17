@@ -647,6 +647,14 @@ the app underneath has been given a moment to lay itself out again. With the
 keyboard up, the bottom of the app is squeezed off screen — which is exactly where
 the button the answer is about usually lives.
 
+**The disc is 64dp docked and 80dp open.** It swells on the way to the top centre
+and settles back on the way home, on the same spring as the flight: the flying
+stand-in is always the 80dp-sized view and springs its `discDp`, offset by half the
+size difference at take-off and landing. Bleed, bloom and dock inset are ratios of
+the disc (`DISC_BLEED_RATIO`, `GLOW_BLUR_RATIO`, `DOCK_INSET_RATIO`, the old 20, 40
+and 8dp around 88dp), so they scale with it. Resizing the docked disc only changes
+its layout params, never detaches it. Debug states shows both sizes side by side.
+
 **The overlay window has three modes, and everything follows from which one.**
 Docked, it is a small window holding just the disc, so touches anywhere else
 reach the app underneath. Composing, it takes the whole screen: the app behind

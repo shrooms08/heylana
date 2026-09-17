@@ -149,24 +149,33 @@ object HeylanaTokens {
     const val SPACE_6_DP = 32f
     const val SPACE_7_DP = 48f
 
-    /** The buddy disc itself. */
-    const val DISC_DP = 88f
+    /** The buddy disc, docked at the screen edge. */
+    const val DISC_DP = 64f
+
+    /** The disc once it has flown to the top centre and the box is open. */
+    const val DISC_OPEN_DP = 80f
 
     /**
-     * Room around the disc for its bloom to spill into. The buddy's view is this
-     * much bigger than the disc on every side, since the window is wrapped
-     * tightly around the view and would otherwise clip the glow off.
+     * Room around the disc for its bloom, as a share of the disc: the buddy's view
+     * is this much bigger on every side, since the window is wrapped tightly around
+     * the view and would otherwise clip the glow off. (20dp around the old 88dp.)
      */
-    const val DISC_BLEED_DP = 20f
+    const val DISC_BLEED_RATIO = 20f / 88f
 
     /** How much of the disc the mark fills. */
     const val MARK_FRACTION = 0.62f
 
-    /** How far the resting buddy is held off the screen edge. */
-    const val DOCK_INSET_DP = 8f
+    /** How far the resting buddy is held off the screen edge, as a share of the disc. (8dp at 88.) */
+    const val DOCK_INSET_RATIO = 8f / 88f
 
-    /** The bloom behind an active disc. */
-    const val GLOW_BLUR_DP = 40f
+    /** The bloom behind an active disc, as a share of the disc. (40dp at 88.) */
+    const val GLOW_BLUR_RATIO = 40f / 88f
+
+    /** The bleed around a disc of [discDp]. */
+    fun discBleedDp(discDp: Float): Float = discDp * DISC_BLEED_RATIO
+
+    /** The whole buddy view for a disc of [discDp]: the disc and its bleed on both sides. */
+    fun discViewDp(discDp: Float): Float = discDp + 2 * discBleedDp(discDp)
 
     // ------------------------------------------------------------- motion
 

@@ -19,7 +19,8 @@ import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.HeylanaTokens
 
 /**
- * The buddy: the brand mark riding inside an 88dp disc of dark glass.
+ * The buddy: the brand mark riding inside a disc of dark glass, 64dp docked and
+ * 80dp while the box is open.
  *
  * Resting, the mark is knocked back and the disc is dark, breathing slowly.
  * The moment Heylana is doing anything — composing, thinking, listening,
@@ -130,8 +131,20 @@ class BuddySpriteView(context: Context) : View(context) {
     private var ringPhase = 0f
     private var ringAnimator: ValueAnimator? = null
 
-    private val discDiameter = HeylanaTokens.dp(context, HeylanaTokens.DISC_DP)
-    private val glowBlur = HeylanaTokens.dp(context, HeylanaTokens.GLOW_BLUR_DP)
+    /**
+     * The disc's diameter in dp: [HeylanaTokens.DISC_DP] docked, swelling to
+     * [HeylanaTokens.DISC_OPEN_DP] on the way to the top centre. The bloom scales with it.
+     */
+    var discDp: Float = HeylanaTokens.DISC_DP
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
+
+    private val discDiameter: Float get() = HeylanaTokens.dp(context, discDp)
+    private val glowBlur: Float get() = discDiameter * HeylanaTokens.GLOW_BLUR_RATIO
     private val spriteLocation = IntArray(2)
 
     /** The resting breath, and how far through it we are. */

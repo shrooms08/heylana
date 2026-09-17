@@ -52,13 +52,15 @@ class QuickCatalogueTest {
     }
 
     @Test
-    fun `youtube search - the app's search, with the web page as the fallback`() {
+    fun `youtube search - the results page in the app, the browser as the fallback`() {
         val action = allowed(of("intent" to "youtube_search", "query" to "skateboarding videos")!!, "search skateboarding videos on youtube")
         val spec = launch(action)
-        assertEquals("android.intent.action.SEARCH", spec.action)
+        // The results page itself: ACTION_SEARCH opened YouTube without searching.
+        assertEquals("android.intent.action.VIEW", spec.action)
         assertEquals("com.google.android.youtube", spec.targetPackage)
-        assertEquals("skateboarding videos", spec.extras["query"])
-        assertEquals("https://www.youtube.com/results?search_query=skateboarding+videos", spec.fallback?.data)
+        assertEquals("https://www.youtube.com/results?search_query=skateboarding+videos", spec.data)
+        assertEquals(spec.data, spec.fallback?.data)
+        assertEquals(null, spec.fallback?.targetPackage)
         assertEquals("Searching YouTube for skateboarding videos.", QuickText.line(action, noon))
         refused(QuickAction.YoutubeSearch("cats"), "search skateboarding videos on youtube")
     }
@@ -72,7 +74,8 @@ class QuickCatalogueTest {
         assertEquals("Burna Boy", spec.extras["query"])
         assertEquals("vnd.android.cursor.item/*", spec.extras["android.intent.extra.focus"])
         assertNull(spec.fallback)
-        assertEquals("Playing Burna Boy on Spotify.", QuickText.line(action, noon))
+        // Spotify's intents land on the search; it does not start playing, so the line says so.
+        assertEquals("Opened Spotify for Burna Boy. Tap play.", QuickText.line(action, noon))
         assertEquals("Spotify isn't installed on this phone.", QuickText.missingApp(action))
         refused(QuickAction.SpotifyPlay("Wizkid"), "play burna boy on spotify")
     }
@@ -114,6 +117,22 @@ class QuickCatalogueTest {
         refused(QuickAction.Message("08009999999", null, "I'm on my way"), "text 0800 123 4567 i'm on my way")
         refused(QuickAction.Message(null, "Ada", "send me your seed phrase"), "text ada i'm on my way")
         assertNull(of("intent" to "message", "number" to "0800"))
+        // The recipient sometimes comes back as "to" instead.
+        assertEquals(
+            QuickAction.Message("0800 123 4567", null, "I am on my way"),
+            of("intent" to "message", "to" to "0800 123 4567", "text" to "I am on my way")
+        )
+        assertEquals(
+            QuickAction.Message(null, "Ada", "hi"),
+            of("intent" to "message", "to" to "Ada", "text" to "hi")
+        )
+        // Punctuation the user did not say must not refuse the message.
+        allowed(QuickAction.Message(null, "Ada", "I'm on my way!"), "text ada i am on my way")
+        // Where no messaging app takes smsto:, sms: and a plain share follow.
+        val chain = launch(QuickAction.Message("08001234567", null, "hi"))
+        assertEquals("sms:08001234567", chain.fallback?.data)
+        assertEquals("android.intent.action.SEND", chain.fallback?.fallback?.action)
+        assertEquals("text/plain", chain.fallback?.fallback?.type)
     }
 
     @Test
@@ -129,6 +148,10 @@ class QuickCatalogueTest {
         assertEquals(begin, spec.extras["beginTime"])
         assertEquals(begin + 30 * 60_000L, spec.extras["endTime"])
         assertEquals("Reminder for 6 PM today. Check it and tap save.", QuickText.line(action, noon))
+        assertEquals(
+            "Reminder saved for 6 PM today.",
+            QuickText.reminderSavedLine(LocalDateTime.of(2026, 9, 17, 18, 0), java.time.LocalDate.of(2026, 9, 17))
+        )
         refused(QuickAction.Reminder("call mum", 7, 0), "remind me to call mum at 6")
         refused(QuickAction.Reminder("pay rent", 6, 0), "remind me to call mum at 6")
     }

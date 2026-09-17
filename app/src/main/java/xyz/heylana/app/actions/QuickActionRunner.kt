@@ -10,6 +10,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.view.KeyEvent
 import xyz.heylana.app.HeylanaLog
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 /**
@@ -20,6 +21,9 @@ import java.time.LocalTime
  * media keys and the flashlight, are pressed and switched here.
  */
 class QuickActionRunner(private val context: Context) {
+
+    /** How long before a saved reminder the phone gives its nudge. */
+    private val REMINDER_ALERT_MINUTES = 10
 
     /** What to say, and whether an app was actually opened. */
     data class Outcome(val line: String, val fired: Boolean)
@@ -45,6 +49,11 @@ class QuickActionRunner(private val context: Context) {
             }
         }
 
+        // A reminder is saved straight into the calendar once that is allowed; the
+        // calendar's own screen is the fallback, and what is asked for the first time.
+        if (action is QuickAction.Reminder) {
+            saveReminder(action)?.let { return it }
+        }
         return when (val effect = QuickIntents.effect(action, launchPackage)) {
             is QuickEffect.Launch -> launch(action, effect.intent, label)
             is QuickEffect.MediaKey -> mediaKey(action, effect.keyCode)
@@ -75,6 +84,91 @@ class QuickActionRunner(private val context: Context) {
         } catch (e: SecurityException) {
             HeylanaLog.state("action: refused by the system intent=${action.intent} error=${e::class.simpleName}")
             Outcome(QuickText.NOTHING_HANDLES, fired = false)
+        }
+    }
+
+    /**
+     * Writes the reminder into the calendar itself, so nothing is left for the user to
+     * save. Null means it was not written — no permission yet (which is asked for, once),
+     * no calendar to write to, or the write failed — and the calendar's own new-event
+     * screen opens instead.
+     */
+    private fun saveReminder(action: QuickAction.Reminder): Outcome? {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.WRITE_CALENDAR
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            HeylanaLog.state("action: reminder needs the calendar, asking")
+            askForCalendar()
+            return null
+        }
+        val now = LocalDateTime.now()
+        val start = QuickIntents.reminderStart(action, now)
+        val zone = java.time.ZoneId.systemDefault()
+        val beginMs = start.atZone(zone).toInstant().toEpochMilli()
+        return runCatching {
+            val calendarId = writableCalendarId() ?: return null.also { HeylanaLog.state("action: no calendar to write to") }
+            val values = android.content.ContentValues().apply {
+                put(android.provider.CalendarContract.Events.CALENDAR_ID, calendarId)
+                put(android.provider.CalendarContract.Events.TITLE, action.text)
+                put(android.provider.CalendarContract.Events.DTSTART, beginMs)
+                put(android.provider.CalendarContract.Events.DTEND, beginMs + QuickIntents.REMINDER_MINUTES * 60_000L)
+                put(android.provider.CalendarContract.Events.EVENT_TIMEZONE, zone.id)
+            }
+            val uri = context.contentResolver.insert(android.provider.CalendarContract.Events.CONTENT_URI, values)
+                ?: return null.also { HeylanaLog.state("action: calendar refused the event") }
+            val eventId = uri.lastPathSegment?.toLongOrNull()
+            if (eventId != null) {
+                // A reminder that does not remind is no use: ten minutes before, as a notification.
+                runCatching {
+                    context.contentResolver.insert(
+                        android.provider.CalendarContract.Reminders.CONTENT_URI,
+                        android.content.ContentValues().apply {
+                            put(android.provider.CalendarContract.Reminders.EVENT_ID, eventId)
+                            put(android.provider.CalendarContract.Reminders.MINUTES, REMINDER_ALERT_MINUTES)
+                            put(android.provider.CalendarContract.Reminders.METHOD, android.provider.CalendarContract.Reminders.METHOD_ALERT)
+                        }
+                    )
+                }
+            }
+            HeylanaLog.state("action: fired intent=reminder saved=true")
+            Outcome(QuickText.reminderSavedLine(start, now.toLocalDate()), fired = true)
+        }.getOrElse { error ->
+            HeylanaLog.state("action: calendar write failed error=${error::class.simpleName}")
+            null
+        }
+    }
+
+    /** The first visible calendar the phone will let Heylana write to, preferring the primary one. */
+    private fun writableCalendarId(): Long? {
+        val columns = arrayOf(
+            android.provider.CalendarContract.Calendars._ID,
+            android.provider.CalendarContract.Calendars.IS_PRIMARY,
+            android.provider.CalendarContract.Calendars.CALENDAR_ACCESS_LEVEL
+        )
+        context.contentResolver.query(
+            android.provider.CalendarContract.Calendars.CONTENT_URI, columns,
+            "${android.provider.CalendarContract.Calendars.VISIBLE} = 1", null, null
+        )?.use { cursor ->
+            var fallback: Long? = null
+            while (cursor.moveToNext()) {
+                val id = cursor.getLong(0)
+                val access = cursor.getInt(2)
+                if (access < android.provider.CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR) continue
+                if (cursor.getInt(1) == 1) return id
+                if (fallback == null) fallback = id
+            }
+            return fallback
+        }
+        return null
+    }
+
+    /** The one-shot prompt, the same way the microphone is asked for. */
+    private fun askForCalendar() {
+        runCatching {
+            context.startActivity(
+                Intent(context, CalendarPermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
         }
     }
 
@@ -123,6 +217,7 @@ class QuickActionRunner(private val context: Context) {
         val intent = Intent(spec.action)
         spec.data?.let { intent.data = Uri.parse(it) }
         spec.targetPackage?.let { intent.setPackage(it) }
+        spec.type?.let { intent.type = it }
         spec.extras.forEach { (key, value) ->
             when (value) {
                 is Int -> intent.putExtra(key, value)

@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- Quick actions: asking the Clock app to set an alarm or a timer. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Quick actions: a reminder is saved straight into the calendar, once allowed. -->
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
 
     <!-- Package visibility: without these, the text-to-speech and speech
          recognition engines are invisible to us on Android 11 and up. -->
@@ -75,6 +78,13 @@
             android:label="Skills"
             android:parentActivityName=".settings.SettingsActivity"
             android:theme="@style/Theme.Heylana" />
+
+        <activity
+            android:name=".actions.CalendarPermissionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.Heylana.Invisible" />
 
         <activity
             android:name=".voice.MicPermissionActivity"

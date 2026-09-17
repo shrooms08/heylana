@@ -1,50 +1,71 @@
-# Smoke test — Heylana's voice is Gemini
+# Smoke test — teaching that moves, and four fixes
 
 For Minos, on the Seeker.
 
-**Live calls this test spends: 3 chat, 5 tts and 3 Deepgram listens** — one chat, one tts
-and one listen for each of the three voice chats, and one tts for each voice picked in
-Settings (it says a short sample line). One more chat for any reply that has to be asked for
-again (`reply: unreadable … retry=once`).
+**Live calls this test spends: 6 chat, about 10 tts and 6 Deepgram listens** if every step
+is asked by voice. Step 1 speaks one sentence per segment (up to 4 tts), the rest are one
+each. One more chat for any reply that has to be asked for again.
 
-## 0. Set up (once)
+## 0. Set up
 
-1. Get a key from Google AI Studio and put it in the worker:
-   `cd worker && npx wrangler secret put GEMINI_API_KEY`.
-2. Redeploy: `npx wrangler deploy`. (No `VOICE_PROVIDER` needed: unset means Gemini.)
-3. Install this build, run `./scripts/a11y.sh`, open Heylana, **Start buddy**, go to the
-   home screen. On the computer: `adb logcat -s HeylanaState`, and in `worker/`
-   `npx wrangler tail` to see the worker's lines.
+1. **Redeploy the worker**: `cd worker && npx wrangler deploy`. The model is only offered
+   the segmented answer and the message action after this.
+2. **Sign in to Spotify** on the phone (it is installed but sitting on its login screen).
+3. Install this build, run `./scripts/a11y.sh`, open Heylana, **Start buddy**.
+4. On the computer: `adb logcat -s HeylanaState`.
 
-## 1. Three voice chats
+## 1. Teaching that moves
 
-For each, **hold the disc**, say the words, let go, and listen to the whole answer:
+Open the **Wallet** app, on its home screen. Tap the disc, type **teach me how to swap**,
+tap **ask**.
 
-1. **"How's your day?"**
-2. **"Tell me a joke."**
-3. **"What's the capital of Nigeria?"**
+Expected: Heylana explains in two to four short sentences, and **as each sentence is
+spoken the disc flies over to the thing it names**, in an arc, and stands beside it. A
+purple ring breathes around that element, and the words sit beside the disc. When the last
+sentence ends the disc flies back to the edge and the strip melts away.
 
-Expected for each:
-- Spoken **once**, in the Gemini voice (a warm woman's voice, Sulafat, unless Settings says
-  otherwise), with no sentence repeated.
-- Nothing that sounds like instructions.
-- Under 60 words.
-- Logcat: `voice=proxy voice=skylar`, then `speak: speaking=true` … `speak: speaking=false`,
-  and no `voice_failed`.
-- `wrangler tail`: a `"route":"tts"` line with `"provider":"gemini","voice":"Sulafat"`, and
-  a `"route":"tts_end"` line with `bytes` above zero.
+Logcat: `reply: segments=…`, then `teach: run segments=…`, a `teach: flight …ms` per hop,
+and `teach: run done, flying home`.
 
-If an answer is **shown but not spoken**, Logcat's `voice_failed reason=` says why
-(`429 daily_cap`, `quota`, `timeout` or `error`); that is the intended behaviour, with no
-phone voice.
+If the answer comes back as one sentence with no flight, that is the model choosing not to
+use segments — ask again with "teach me how to swap, step by step".
 
-## 2. The voice picker
+## 2. YouTube
 
-Heylana → Settings → **Voice**.
+Tap the disc, type **search cooking videos on youtube**, tap **ask**.
 
-Expected: exactly two choices, **Sulafat** and **Achird** — no "Skylar", "Archie" or
-"Phone voice". Tap **Achird**: a short line is said in a man's voice. Tap **Sulafat**: the
-same line in a woman's voice. Go back and hold the disc for one more question if you want
-to hear the switch in an answer (one more chat, tts and listen).
+Expected: YouTube opens **on the results for cooking videos**, not on its home screen.
 
-Settings → Debug has no "Force phone voice" switch any more.
+## 3. Spotify
+
+Tap the disc, type **play Burna Boy on Spotify**, tap **ask**.
+
+Expected: Spotify opens on Burna Boy, and Heylana says "Opened Spotify for Burna Boy. Tap
+play." Tap play yourself. (No Android intent can make Spotify start playing; see the note
+in PRODUCT.md.)
+
+## 4. A text
+
+Tap the disc, type **text 0800 123 4567 I'm on my way**, tap **ask**.
+
+Expected: Messages opens on 0800 123 4567 with the message typed in. Nothing is sent.
+Delete the draft.
+
+If it fails, **send me the Logcat lines that start with `action:`** — they now say which
+check refused it and by how much, without the words themselves.
+
+## 5. A reminder, saved
+
+Tap the disc, type **remind me to call mum at 6**, tap **ask**.
+
+Expected the first time: Android asks whether Heylana may use your calendar. **Allow it.**
+That first reminder opens the calendar's new-event screen (tap save, or discard it).
+
+Ask again: **remind me to call mum at 6**. Expected: nothing to tap — Heylana says
+"Reminder saved for 6 PM today." Check the Calendar app: the event is there, at the next
+6 o'clock, with a ten-minute nudge.
+
+## Optional
+
+Settings → Debug states → **teaching flight**: three sentences across three stand-in
+elements, the disc arcing between them with a ring around each.

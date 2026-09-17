@@ -518,20 +518,33 @@ tomorrow.", "Opening Wallet.", "Opening the dialer." (never the digits).
 
 **The catalogue.** Beyond those six (`QuickIntents.effect` builds each, as plain data
 tested per action in `QuickCatalogueTest`):
-- `youtube_search(query)`: `ACTION_SEARCH` with `query`, set to YouTube's package; if
-  YouTube is missing, its results page in the browser ("YouTube isn't installed, so
-  searching it in the browser.").
+- `youtube_search(query)`: `ACTION_VIEW` on `youtube.com/results?search_query=…` with
+  YouTube's package set, so YouTube opens on the results; the same page in the browser if
+  YouTube is missing. `ACTION_SEARCH` brought YouTube to the front having searched for
+  nothing, which is what it was doing before.
 - `spotify_play(query)`: `MEDIA_PLAY_FROM_SEARCH` with `query` and focus
   `vnd.android.cursor.item/*`, set to `com.spotify.music`; missing, "Spotify isn't
-  installed on this phone."
+  installed on this phone." **It does not start playing.** Tried on the Seeker:
+  play-from-search with the any-media and artist focuses, `spotify:search:<query>`, and
+  that URI with `:play` — each lands on the search results, none plays (Spotify's own
+  community reports the same, and an account has to be signed in at all). So the line is
+  "Opened Spotify for X. Tap play." rather than a claim it is playing.
 - `media_control(play|pause|next|previous)`: `AudioManager.dispatchMediaKeyEvent`, down
   and up, to whatever media session is playing. Pause with nothing playing says "Nothing is
   playing to control."
 - `message(number|name, text)`: `ACTION_SENDTO` `smsto:<digits>` with `sms_body` — the
   compose screen, filled in; Heylana never sends. With a name, Messages opens its contact
-  picker. The line reads neither the number nor the words.
-- `reminder(text, hour, minutes)`: `ACTION_INSERT` on calendar events with title, begin
-  and a 30-minute end — the new-event screen for the user to save. Unlike an alarm, a bare
+  picker. The line reads neither the number nor the words. A reply that puts the recipient
+  in `to` instead of `number`/`name` is read either way; the words are matched as words or
+  as one run (punctuation the user did not say cannot refuse it); and where nothing takes
+  `smsto:`, `sms:` and then a plain `ACTION_SEND` share follow. A refusal says which part
+  failed and by how many characters, never the words themselves.
+- `reminder(text, hour, minutes)`: saved into the calendar itself
+  (`CalendarContract.Events` on the primary writable calendar, plus a ten-minute alert),
+  so nothing is left to do: "Reminder saved for 6 PM today." The first one asks for
+  WRITE_CALENDAR through `CalendarPermissionActivity` — the invisible one-shot prompt the
+  microphone uses — and, that time or if it is refused, falls back to `ACTION_INSERT`,
+  the calendar's own new-event screen with title, begin and a 30-minute end. Unlike an alarm, a bare
   hour is the next time that clock reading comes round ("call mum at 6" at noon is 6 PM);
   "tomorrow at 6" is the first 6 from 7 AM on (6 PM). A said half of the day stands.
 - `flashlight(on|off)`: `CameraManager.setTorchMode` on the first camera with a flash. "Turn

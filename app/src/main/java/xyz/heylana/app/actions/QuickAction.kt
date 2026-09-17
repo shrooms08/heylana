@@ -145,9 +145,11 @@ sealed interface QuickAction {
                 SPOTIFY_PLAY -> text("query")?.let { SpotifyPlay(it) }
                 MEDIA_CONTROL -> text("command")?.lowercase()?.takeIf { it in MEDIA_COMMANDS }?.let { MediaControl(it) }
                 MESSAGE -> {
-                    val number = text("number")
-                    val name = text("name")
                     val body = text("text") ?: return null
+                    // Some replies put the recipient in "to" instead of number or name.
+                    val to = text("to")
+                    val number = text("number") ?: to?.takeIf { it.count(Char::isDigit) >= 3 }
+                    val name = text("name") ?: to?.takeIf { number == null }
                     if (number == null && name == null) null else Message(number, name, body)
                 }
                 REMINDER -> {

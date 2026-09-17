@@ -172,8 +172,9 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 - **Calling a contact by name opens an empty dialer.** Heylana has no access to
   contacts, so it says who to search for; a number said aloud is filled in.
-- **Spotify has to be installed** for "play … on Spotify"; without it Heylana says so.
-  Whether it starts playing at once or shows results is up to Spotify.
+- **Spotify opens, it does not play.** No Android intent makes Spotify start a song, so
+  "play Burna Boy on Spotify" opens Spotify on those results and Heylana says "Tap play."
+  Spotify has to be installed and signed in.
 - **A selfie asks for the front camera**, but the camera app decides; some open on the back
   camera.
 - **Texting a name opens the contact picker** with the message written, since Heylana has

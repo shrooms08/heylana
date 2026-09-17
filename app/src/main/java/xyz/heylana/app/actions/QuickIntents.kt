@@ -21,8 +21,10 @@ data class IntentSpec(
     val launchPackage: String? = null,
     /** Only this app may take the intent (YouTube, Spotify). */
     val targetPackage: String? = null,
-    /** Tried if nothing takes [action]: YouTube's and a web search's page in the browser. */
-    val fallback: IntentSpec? = null
+    /** Tried if nothing takes [action]: the browser, or another way of sending a message. */
+    val fallback: IntentSpec? = null,
+    /** The MIME type, where the intent needs one (a plain share). */
+    val type: String? = null
 )
 
 /** What the phone does for an action: start an activity, press a media key, or switch the torch. */
@@ -48,8 +50,11 @@ object QuickIntents {
     const val ACTION_MAIN = "android.intent.action.MAIN"
 
     const val ACTION_SEARCH = "android.intent.action.SEARCH"
+    const val YOUTUBE_RESULTS = "https://www.youtube.com/results?search_query="
     const val WEB_SEARCH_PAGE = "https://www.google.com/search?q="
     const val ACTION_SENDTO = "android.intent.action.SENDTO"
+    const val ACTION_SEND = "android.intent.action.SEND"
+    const val EXTRA_TEXT = "android.intent.extra.TEXT"
     const val ACTION_INSERT = "android.intent.action.INSERT"
     const val ACTION_MEDIA_PLAY_FROM_SEARCH = "android.media.action.MEDIA_PLAY_FROM_SEARCH"
     const val ACTION_STILL_IMAGE_CAMERA = "android.media.action.STILL_IMAGE_CAMERA"
@@ -135,11 +140,13 @@ object QuickIntents {
         is QuickAction.OpenUrl -> IntentSpec(ACTION_VIEW, data = action.url)
         is QuickAction.Navigate -> IntentSpec(ACTION_VIEW, data = "geo:0,0?q=" + URLEncoder.encode(action.query, "UTF-8").replace("+", "%20"))
         is QuickAction.Dial -> IntentSpec(ACTION_DIAL, data = action.number?.let { "tel:" + it })
+        // The results page, opened by YouTube itself. ACTION_SEARCH brought YouTube to the
+        // front with nothing searched for.
         is QuickAction.YoutubeSearch -> IntentSpec(
-            ACTION_SEARCH,
-            extras = mapOf(EXTRA_QUERY to action.query),
+            ACTION_VIEW,
+            data = YOUTUBE_RESULTS + encode(action.query),
             targetPackage = YOUTUBE_PACKAGE,
-            fallback = IntentSpec(ACTION_VIEW, data = "https://www.youtube.com/results?search_query=" + encode(action.query))
+            fallback = IntentSpec(ACTION_VIEW, data = YOUTUBE_RESULTS + encode(action.query))
         )
         is QuickAction.SpotifyPlay -> IntentSpec(
             ACTION_MEDIA_PLAY_FROM_SEARCH,
@@ -150,7 +157,18 @@ object QuickIntents {
         is QuickAction.Message -> IntentSpec(
             ACTION_SENDTO,
             data = "smsto:" + (action.number ?: ""),
-            extras = mapOf(EXTRA_SMS_BODY to action.text)
+            extras = mapOf(EXTRA_SMS_BODY to action.text),
+            // Not every messaging app answers smsto:; sms: and a plain share both do.
+            fallback = IntentSpec(
+                ACTION_VIEW,
+                data = "sms:" + (action.number ?: ""),
+                extras = mapOf(EXTRA_SMS_BODY to action.text),
+                fallback = IntentSpec(
+                    ACTION_SEND,
+                    extras = mapOf(EXTRA_TEXT to action.text),
+                    type = "text/plain"
+                )
+            )
         )
         // INSERT opens the calendar's new-event screen, filled in, for the user to save.
         is QuickAction.Reminder -> {
@@ -227,7 +245,8 @@ object QuickText {
             // Never the digits: a number read aloud is slow to hear and nobody's business nearby.
             if (action.number != null) DIALER else "$DIALER Search for ${action.name} there."
         is QuickAction.YoutubeSearch -> "Searching YouTube for ${action.query}."
-        is QuickAction.SpotifyPlay -> "Playing ${action.query} on Spotify."
+        // Spotify does not start playing from an intent: it lands on the search. Say so.
+        is QuickAction.SpotifyPlay -> "Opened Spotify for ${action.query}. Tap play."
         is QuickAction.MediaControl -> when (action.command) {
             "play" -> "Playing."
             "pause" -> "Paused."
@@ -248,10 +267,17 @@ object QuickText {
         is QuickAction.OpenSettings -> "Opening ${SETTINGS_NAMES.getValue(action.page)} settings."
     }
 
-    /** "Reminder for 6 PM today. Check it and tap save." */
-    fun reminderLine(start: LocalDateTime, today: java.time.LocalDate): String {
+    /** "Reminder for 6 PM today. Check it and tap save." — the calendar's own screen. */
+    fun reminderLine(start: LocalDateTime, today: java.time.LocalDate): String =
+        "Reminder for ${dayAndTime(start, today)}. Check it and tap save."
+
+    /** "Reminder saved for 6 PM today." — written straight into the calendar. */
+    fun reminderSavedLine(start: LocalDateTime, today: java.time.LocalDate): String =
+        "Reminder saved for ${dayAndTime(start, today)}."
+
+    private fun dayAndTime(start: LocalDateTime, today: java.time.LocalDate): String {
         val day = if (start.toLocalDate() == today) "today" else "tomorrow"
-        return "Reminder for ${clock(start.hour, start.minute)} $day. Check it and tap save."
+        return "${clock(start.hour, start.minute)} $day"
     }
 
     val SETTINGS_NAMES = mapOf(

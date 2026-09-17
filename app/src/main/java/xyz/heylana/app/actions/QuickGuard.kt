@@ -92,18 +92,26 @@ object QuickGuard {
     }
 
     private fun message(action: QuickAction.Message, text: String): Verdict {
-        if (!wordsSaid(action.text, text)) return Verdict.Refused(TEXT_NOT_SAID, "text_not_said")
+        if (!wordsSaid(action.text, text)) {
+            // The words as one run, in case splitting them tripped on punctuation.
+            val said = expand(text)
+            val written = expand(action.text).trim().trim('.', '!', '?', ',')
+            if (written.isEmpty() || !said.contains(written)) {
+                // The lengths say which side went wrong without ever logging the words.
+                return Verdict.Refused(TEXT_NOT_SAID, "text_not_said given_chars=${action.text.length} said_chars=${text.length}")
+            }
+        }
         if (action.number != null) {
             val number = normalNumber(action.number)
             val digits = number.filter(Char::isDigit)
             if (digits.length !in 3..15 || digits !in text.filter(Char::isDigit)) {
-                return Verdict.Refused(RECIPIENT_NOT_SAID, "number_not_said")
+                return Verdict.Refused(RECIPIENT_NOT_SAID, "number_not_said digits=${digits.length}")
             }
             return Verdict.Allowed(QuickAction.Message(number, null, action.text))
         }
         val name = action.name ?: return Verdict.Refused(RECIPIENT_NOT_SAID, "nobody_to_text")
-        return if (wordsSaid(name, text)) Verdict.Allowed(QuickAction.Message(null, name, action.text))
-        else Verdict.Refused(RECIPIENT_NOT_SAID, "name_not_said")
+        if (wordsSaid(name, text)) return Verdict.Allowed(QuickAction.Message(null, name, action.text))
+        return Verdict.Refused(RECIPIENT_NOT_SAID, "name_not_said chars=${name.length}")
     }
 
     /**

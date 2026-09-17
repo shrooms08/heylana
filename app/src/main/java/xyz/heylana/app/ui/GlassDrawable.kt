@@ -34,7 +34,13 @@ import kotlin.math.hypot
  * The outer shadow is drawn here too, but only when the view has left room for
  * it: a drawable is clipped to its view, so the pane is inset by the blur width
  * and the shadow is painted into the margin that leaves. Elevation is no use on
- * a translucent sheet — the platform paints a pale rectangle across it.
+ * a translucent sheet — the platform paints a pale rectangle across it. It is a
+ * shadow layer on the base, which renders on the GPU, so the pane can too.
+ *
+ * On API 33+ hardware canvases the edges are liquid ([LiquidGlass]): the rim, the
+ * lens line and a 12dp band along the top bend the surface's own fill and band
+ * through the lens and catch the light, with a chromatic fringe on the rim. The
+ * screen behind is never sampled; blur behind stays FLAG_BLUR_BEHIND.
  *
  * [Kind] picks which of those a surface wants. A question field takes only the
  * base, fill, rim and lens line; a primary button is the same glass with the
@@ -49,8 +55,8 @@ class GlassDrawable(
     private val bandColor: Int = HeylanaTokens.purpleBand,
     /**
      * Draws a shadow under the pane, inset far enough into the view that it is
-     * not clipped. The view must carry [shadowInsetPx] of padding on every side
-     * and be rendered in software, since a blur mask needs it.
+     * not clipped. The view must carry [shadowPadding] on every side. The shadow is
+     * a GPU shadow layer, so the view stays hardware rendered.
      */
     private val withShadow: Boolean = false,
     /**
@@ -59,7 +65,9 @@ class GlassDrawable(
      */
     private val withSheen: Boolean = kind == Kind.PANEL,
     /** The smoked base. The disc's face is a lens, so it smokes less than a panel. */
-    private val baseColor: Int = if (kind == Kind.INPUT) HeylanaTokens.inputBase else HeylanaTokens.glassBase
+    private val baseColor: Int = if (kind == Kind.INPUT) HeylanaTokens.inputBase else HeylanaTokens.glassBase,
+    /** Liquid edges on the rim and top band. Off for fields, and for the disc, whose whole face is a lens. */
+    private val liquidEdges: Boolean = kind != Kind.INPUT
 ) : Drawable() {
 
     enum class Kind {
@@ -115,16 +123,22 @@ class GlassDrawable(
         color = HeylanaTokens.glassLensLine
     }
 
-    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = HeylanaTokens.glassShadow
-        maskFilter = android.graphics.BlurMaskFilter(
-            HeylanaTokens.dp(context, HeylanaTokens.GLASS_SHADOW_DP) / 2f,
-            android.graphics.BlurMaskFilter.Blur.NORMAL
-        )
-    }
     private val shadowInset = HeylanaTokens.dp(context, HeylanaTokens.GLASS_SHADOW_DP)
     private val shadowDy = HeylanaTokens.dp(context, HeylanaTokens.GLASS_SHADOW_DY_DP)
-    private val shadowRect = RectF()
+
+    init {
+        // The shadow rides on the base itself as a shadow layer: GPU-drawn, so the pane
+        // needs no software layer and its edges can be liquid.
+        if (withShadow) basePaint.setShadowLayer(shadowInset / 2f, 0f, shadowDy, HeylanaTokens.glassShadow)
+    }
+
+    private val lens: Any? by lazy {
+        if (liquidEdges && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) LiquidGlass.Lens() else null
+    }
+    private var edgeLayer: Shader? = null
+    private val fringePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val lensRim = HeylanaTokens.dp(context, HeylanaTokens.EDGE_LENS_RIM_DP)
+    private val lensTop = HeylanaTokens.dp(context, HeylanaTokens.EDGE_LENS_TOP_DP)
 
     private val shape = Path()
     private val body = RectF()
@@ -179,6 +193,11 @@ class GlassDrawable(
             )
         }
 
+        // What the liquid edge bends: this surface's own fill and band, nothing behind it.
+        edgeLayer = fillPaint.shader?.let { fill ->
+            bandPaint.shader?.let { band -> ComposeShader(fill, band, PorterDuff.Mode.SRC_OVER) } ?: fill
+        }
+
         val sw = body.width() * HeylanaTokens.SPECULAR_WIDTH
         val sh = body.height() * HeylanaTokens.SPECULAR_HEIGHT
         val cx = body.left + body.width() * HeylanaTokens.SPECULAR_X
@@ -207,12 +226,6 @@ class GlassDrawable(
         if (!built) build()
         val r = effectiveRadius(bounds.width().toFloat(), bounds.height().toFloat())
 
-        if (withShadow) {
-            shadowRect.set(body)
-            shadowRect.offset(0f, shadowDy)
-            canvas.drawRoundRect(shadowRect, r, r, shadowPaint)
-        }
-
         canvas.drawRoundRect(body, r, r, basePaint)
         canvas.drawRoundRect(body, r, r, fillPaint)
 
@@ -238,6 +251,27 @@ class GlassDrawable(
         }
 
         drawRim(canvas, r)
+        if (liquidEdges && kind != Kind.INPUT && LiquidGlass.available(canvas)) drawLiquidEdges(canvas, r)
+    }
+
+    /** The lens and lighting on the rim and the top band, then the chromatic fringe. */
+    @android.annotation.SuppressLint("NewApi")
+    private fun drawLiquidEdges(canvas: Canvas, r: Float) {
+        val edgeLens = lens as? LiquidGlass.Lens ?: return
+        val layer = edgeLayer ?: return
+        val rim = minOf(lensRim, minOf(body.width(), body.height()) / 2f)
+        edgeLens.set(
+            bounds = body,
+            corner = r,
+            rim = rim,
+            layer = layer,
+            layerAlpha = HeylanaTokens.EDGE_LAYER_ALPHA,
+            light = HeylanaTokens.EDGE_LIGHT,
+            edgeOnly = true,
+            topBand = lensTop
+        )
+        canvas.drawRoundRect(body, r, r, edgeLens.paint)
+        LiquidGlass.drawFringe(canvas, density, body, r, fringePaint)
     }
 
     /** A soft band of light on a slant, wherever [sheenProgress] has it. */

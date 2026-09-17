@@ -195,8 +195,8 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         orientation = VERTICAL
         val pad = dp(HeylanaTokens.SPACE_4_DP) + shadowPad
         setPadding(pad, pad, pad, pad)
-        // A blur mask needs software rendering.
-        setLayerType(LAYER_TYPE_SOFTWARE, null)
+        // Hardware rendered: the glass's shadow is a GPU shadow layer, and its liquid
+        // edges are a RuntimeShader, which only runs on a hardware canvas.
 
         // ---------------------------------------------------- answer + mute
         // Packed to the end so the speaker stays in the corner even with no answer.

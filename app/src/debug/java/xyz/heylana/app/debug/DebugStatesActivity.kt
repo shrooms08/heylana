@@ -178,6 +178,7 @@ class DebugStatesActivity : Activity() {
         Triple("speaking", "speaking", ::speaking),
         Triple("back-to-idle", "back to idle", ::backToIdle),
         Triple("motion", "fast drag", ::fastDrag),
+        Triple("panel", "panel edges", ::panelEdges),
         Triple("tapped", "tapped", ::tapped),
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
@@ -275,6 +276,16 @@ class DebugStatesActivity : Activity() {
                 }.start()
             }
             .start()
+    }
+
+    /**
+     * The box with an answer and the task pills, still, so its liquid edges — the lit
+     * rim, the top band, the colour fringe — can be looked at over black and white.
+     */
+    private fun panelEdges() {
+        tapped()
+        panel.showAnswer(LONG_ANSWER)
+        panel.showSession(2, 4)
     }
 
     /** A level that rises and falls like a voice, every frame until the next state. */

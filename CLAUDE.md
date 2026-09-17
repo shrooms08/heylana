@@ -132,6 +132,16 @@ and blue copies added together, up to 3dp at 2500dp/s along the motion, and the 
 strokes part half as far; with no motion for 80ms it eases back together. Debug
 states: "fast drag".
 
+**Every overlay glass surface has liquid edges.** The box, the reply strip, the task
+HUD and the pills run the same lens (`edgeOnly`): only the rim (24dp in,
+`EDGE_LENS_RIM_DP`) and a 12dp band along the top (`EDGE_LENS_TOP_DP`) are drawn,
+bending the surface's own fill and band — never the screen — and lit by the
+reference's bands, with the chromatic fringe on the rim. Fields and the disc (whose
+whole face is a lens) opt out. The panel's shadow is now a GPU shadow layer on the
+base instead of a blur mask, so `ChatPanelView` no longer needs a software layer —
+a RuntimeShader only runs on a hardware canvas. Debug states: "panel edges", over
+black and white with the backdrop button.
+
 **Blur is asked for, never assumed.** `ui/GlassBlur` checks
 `isCrossWindowBlurEnabled` at the moment a window is shown and sets
 `FLAG_BLUR_BEHIND` only if the platform agrees. The answer picks the fill: thin

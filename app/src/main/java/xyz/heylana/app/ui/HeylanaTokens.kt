@@ -214,6 +214,14 @@ object HeylanaTokens {
     /** How bright the face's lighting bands are. */
     const val FACE_LIGHT = 1f
 
+    /** Liquid edges on panels and pills: how far in the lens reaches, and the lit top band. */
+    const val EDGE_LENS_RIM_DP = 24f
+    const val EDGE_LENS_TOP_DP = 12f
+
+    /** How strongly a panel's own fill and band show through its edge lens, and its light. */
+    const val EDGE_LAYER_ALPHA = 0.9f
+    const val EDGE_LIGHT = 0.6f
+
     /** How long the face's aurora takes to turn once. */
     const val FACE_AURORA_TURN_MS = 12_000L
 

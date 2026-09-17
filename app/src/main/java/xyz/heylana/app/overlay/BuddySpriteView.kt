@@ -104,7 +104,9 @@ class BuddySpriteView(context: Context) : View(context) {
         context, HeylanaTokens.RADIUS_FULL_DP, blurBehind = false,
         kind = GlassDrawable.Kind.PILL, withSheen = true,
         bandColor = HeylanaTokens.discBand,
-        baseColor = HeylanaTokens.discBase
+        baseColor = HeylanaTokens.discBase,
+        // The whole face is a lens already, with its own fringe.
+        liquidEdges = false
     )
 
     /** Lifts the glass a touch once Heylana is awake. */

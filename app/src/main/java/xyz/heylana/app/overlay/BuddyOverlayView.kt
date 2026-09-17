@@ -811,6 +811,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         }
 
         val landingOffset = (openDiscSize - toView) / 2f
+        flightVx = 0f
+        flightVy = 0f
         flightX = spring(DynamicAnimation.TRANSLATION_X, target.x - landingOffset - origin.x, land)
         flightY = spring(DynamicAnimation.TRANSLATION_Y, target.y - landingOffset - origin.y, land)
         return true
@@ -825,8 +827,32 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             stiffness = HeylanaTokens.SPRING_STIFFNESS
             dampingRatio = HeylanaTokens.SPRING_DAMPING
         }
+        // The flight's speed splits the mark's colours; landing settles them.
+        addUpdateListener { _, _, velocity ->
+            if (property === DynamicAnimation.TRANSLATION_X) flightVx = velocity else flightVy = velocity
+            flyer.setMotion(flightVx, flightVy)
+        }
         addEndListener { _, _, _, _ -> onEnd() }
         start()
+    }
+
+    private var flightVx = 0f
+    private var flightVy = 0f
+
+    /** The last drag sample, to turn finger movement into a speed. */
+    private var dragSampleX = 0f
+    private var dragSampleY = 0f
+    private var dragSampleTime = 0L
+
+    private fun trackDragSpeed(event: MotionEvent) {
+        val elapsed = event.eventTime - dragSampleTime
+        if (dragSampleTime != 0L && elapsed > 0) {
+            val seconds = elapsed / 1000f
+            sprite.setMotion((event.rawX - dragSampleX) / seconds, (event.rawY - dragSampleY) / seconds)
+        }
+        dragSampleX = event.rawX
+        dragSampleY = event.rawY
+        dragSampleTime = event.eventTime
     }
 
     private fun cancelFlight() {
@@ -932,8 +958,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                     startTop = spriteTop
                     downRawX = event.rawX
                     downRawY = event.rawY
+                    dragSampleTime = 0L
                 }
                 if (dragging) {
+                    trackDragSpeed(event)
                     spriteLeft = clamp(
                         startLeft + (event.rawX - downRawX).toInt(),
                         dockInset,

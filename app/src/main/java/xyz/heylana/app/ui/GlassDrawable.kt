@@ -57,7 +57,9 @@ class GlassDrawable(
      * Whether this surface sweeps a sheen. Off for small buttons, where the band
      * is narrower than its own rotation pivot and leaves a hard corner.
      */
-    private val withSheen: Boolean = kind == Kind.PANEL
+    private val withSheen: Boolean = kind == Kind.PANEL,
+    /** The smoked base. The disc's face is a lens, so it smokes less than a panel. */
+    private val baseColor: Int = if (kind == Kind.INPUT) HeylanaTokens.inputBase else HeylanaTokens.glassBase
 ) : Drawable() {
 
     enum class Kind {
@@ -101,9 +103,7 @@ class GlassDrawable(
             invalidateSelf()
         }
 
-    private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = if (kind == Kind.INPUT) HeylanaTokens.inputBase else HeylanaTokens.glassBase
-    }
+    private val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = baseColor }
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val specularPaint = Paint(Paint.ANTI_ALIAS_FLAG)

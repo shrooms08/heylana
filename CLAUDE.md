@@ -110,6 +110,28 @@ surface at different radii. In order: a fill, a soft purple refraction band at
 edges and dark up the bottom and right, then a hairline border. Primary buttons
 are that same glass with the band at full strength instead of a solid fill.
 
+**The disc's face is a liquid glass lens.** `ui/LiquidGlass` is the reference
+shader (`design/refs/liquid_glass.glsl`) ported to AGSL: the rounded-box mask, the
+rb1/rb2/rb3 bands, the lens pull, the gradient and the lighting terms, with the
+reference's own constants. The only change is the mask's input — the reference's
+`roundedBox * 10000` becomes a rounded-rect distance that is 1 at the surface's edge
+and falls inward over `rim` px — and `LiquidGlassMathTest` checks the bands and lens
+against the original formulas. It never samples the screen: on the disc it bends
+Heylana's own aurora (the aurora stops as a slowly turning sweep, clear in the
+centre, `FACE_AURORA_*`), drawn over the disc's `GlassDrawable` edge recipe (smoked
+base at `discBase`, faint `discBand`, specular, sheen, rim, lens line). API 33+ on a
+hardware canvas only; otherwise the disc is the plain recipe. Over black it reads as
+smoked glass with a lit rim, over white as translucent grey glass the page shows
+through.
+
+**A chromatic rim, and a colour split in motion.** Three 1dp strokes, red, green and
+blue at low alpha, each 0.6dp off the rim in its own direction
+(`LiquidGlass.drawFringe`). While the disc flies (the springs' velocities) or is
+dragged (finger speed), `BuddySpriteView.setMotion` splits the mark into red, green
+and blue copies added together, up to 3dp at 2500dp/s along the motion, and the rim
+strokes part half as far; with no motion for 80ms it eases back together. Debug
+states: "fast drag".
+
 **Blur is asked for, never assumed.** `ui/GlassBlur` checks
 `isCrossWindowBlurEnabled` at the moment a window is shown and sets
 `FLAG_BLUR_BEHIND` only if the platform agrees. The answer picks the fill: thin

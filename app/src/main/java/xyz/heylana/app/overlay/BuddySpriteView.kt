@@ -20,6 +20,7 @@ import xyz.heylana.app.orbs.OrbPainter
 import xyz.heylana.app.orbs.OrbState
 import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.HeylanaTokens
+import xyz.heylana.app.ui.LiquidGlass
 
 /**
  * The buddy: the brand mark riding inside a disc of dark glass, 64dp docked and
@@ -101,7 +102,9 @@ class BuddySpriteView(context: Context) : View(context) {
     /** The disc is the same sheet of glass as everything else, just round. */
     private val discGlass = GlassDrawable(
         context, HeylanaTokens.RADIUS_FULL_DP, blurBehind = false,
-        kind = GlassDrawable.Kind.PILL, withSheen = true
+        kind = GlassDrawable.Kind.PILL, withSheen = true,
+        bandColor = HeylanaTokens.discBand,
+        baseColor = HeylanaTokens.discBase
     )
 
     /** Lifts the glass a touch once Heylana is awake. */
@@ -114,6 +117,51 @@ class BuddySpriteView(context: Context) : View(context) {
     private val listenRing = HeylanaTokens.dp(context, 3f)
 
     private val orbPainter = OrbPainter()
+
+    // ------------------------------------------------------ liquid glass face
+
+    /** The lens over the face, on API 33+ hardware canvases only. */
+    private val lens: Any? by lazy {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) LiquidGlass.Lens() else null
+    }
+    private var aurora: android.graphics.Shader? = null
+    private var auroraSweep: android.graphics.SweepGradient? = null
+    private var auroraRadius = 0f
+    private var auroraCentre = android.graphics.PointF(Float.NaN, Float.NaN)
+    private val auroraMatrix = android.graphics.Matrix()
+    private val faceRect = RectF()
+    private val fringePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // ------------------------------------------------ motion colour split
+
+    private var splitX = 0f
+    private var splitY = 0f
+    private var splitTargetX = 0f
+    private var splitTargetY = 0f
+    private var lastMotionNanos = 0L
+    private val splitMax = HeylanaTokens.dp(context, HeylanaTokens.MOTION_SPLIT_MAX_DP)
+    private val splitFullSpeed = HeylanaTokens.dp(context, HeylanaTokens.MOTION_SPLIT_FULL_DP_PER_S)
+    private var markBitmap: android.graphics.Bitmap? = null
+    private val channelPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+    /**
+     * How fast the disc is moving, in px per second, while it flies or is dragged.
+     * The mark splits into red, green and blue along the motion, in proportion to
+     * the speed, and settles back together when the updates stop.
+     */
+    fun setMotion(vx: Float, vy: Float) {
+        val speed = kotlin.math.hypot(vx, vy)
+        if (speed < 1f) {
+            splitTargetX = 0f
+            splitTargetY = 0f
+        } else {
+            val amount = (speed / splitFullSpeed).coerceAtMost(1f) * splitMax
+            splitTargetX = vx / speed * amount
+            splitTargetY = vy / speed * amount
+        }
+        lastMotionNanos = System.nanoTime()
+        invalidate()
+    }
 
     /** The orb being shown, and the one it is cross-fading from. */
     private var orbState: OrbState? = null
@@ -341,6 +389,8 @@ class BuddySpriteView(context: Context) : View(context) {
             discLift.color = HeylanaTokens.withAlpha(Color.WHITE, 0.06f * activeAmount)
             canvas.drawCircle(cx, cy, discRadius, discLift)
         }
+        if (LiquidGlass.available(canvas)) drawFace(canvas, cx, cy, discRadius)
+        stepSplit()
 
         mark?.let { drawable ->
             val markSize = discRadius * 2f * HeylanaTokens.MARK_FRACTION
@@ -372,14 +422,107 @@ class BuddySpriteView(context: Context) : View(context) {
                     cx, cy
                 )
             }
-            drawable.draw(canvas)
+            if (kotlin.math.hypot(splitX, splitY) > SPLIT_VISIBLE_PX) {
+                drawSplitMark(canvas, drawable)
+            } else {
+                drawable.draw(canvas)
+            }
             canvas.restoreToCount(lean)
         }
 
         if (dissolve > 0.01f) drawOrb(canvas, cx, cy, discRadius)
 
+        // The chromatic rim, pulled a little further apart while moving.
+        faceRect.set(cx - discRadius, cy - discRadius, cx + discRadius, cy + discRadius)
+        LiquidGlass.drawFringe(canvas, context, faceRect, discRadius, fringePaint, splitX * 0.5f, splitY * 0.5f)
+
         canvas.restoreToCount(save)
-        if (dissolve > 0.01f) postInvalidateOnAnimation()
+        if (dissolve > 0.01f || kotlin.math.hypot(splitX, splitY) > SPLIT_SETTLED_PX) postInvalidateOnAnimation()
+    }
+
+    /**
+     * The face: Heylana's own aurora, turning slowly, bent by the lens and lit by the
+     * reference shader's bands. Only the aurora is refracted — never the screen.
+     */
+    @android.annotation.SuppressLint("NewApi")
+    private fun drawFace(canvas: Canvas, cx: Float, cy: Float, discRadius: Float) {
+        val faceLens = lens as? LiquidGlass.Lens ?: return
+        if (aurora == null || auroraCentre.x != cx || auroraCentre.y != cy || auroraRadius != discRadius) {
+            val stops = HeylanaTokens.auroraStops
+            val sweep = android.graphics.SweepGradient(cx, cy, stops + stops[0], null)
+            // Colour toward the rim only: the centre stays clear, as glass does, and the
+            // lens bends the coloured edge in.
+            val falloff = android.graphics.RadialGradient(
+                cx, cy, discRadius,
+                intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT, Color.WHITE),
+                floatArrayOf(0f, HeylanaTokens.FACE_AURORA_CLEAR, 1f),
+                android.graphics.Shader.TileMode.CLAMP
+            )
+            auroraSweep = sweep
+            aurora = android.graphics.ComposeShader(sweep, falloff, android.graphics.PorterDuff.Mode.DST_IN)
+            auroraCentre.set(cx, cy)
+            auroraRadius = discRadius
+        }
+        val turn = (System.currentTimeMillis() % HeylanaTokens.FACE_AURORA_TURN_MS).toFloat() /
+            HeylanaTokens.FACE_AURORA_TURN_MS * 360f
+        auroraMatrix.setRotate(turn, cx, cy)
+        auroraSweep?.setLocalMatrix(auroraMatrix)
+
+        faceRect.set(cx - discRadius, cy - discRadius, cx + discRadius, cy + discRadius)
+        val layerAlpha = HeylanaTokens.FACE_AURORA_IDLE +
+            (HeylanaTokens.FACE_AURORA_ACTIVE - HeylanaTokens.FACE_AURORA_IDLE) * activeAmount
+        faceLens.set(
+            bounds = faceRect,
+            corner = discRadius,
+            rim = discRadius,
+            layer = aurora!!,
+            layerAlpha = layerAlpha,
+            light = HeylanaTokens.FACE_LIGHT,
+            edgeOnly = false
+        )
+        canvas.drawCircle(cx, cy, discRadius, faceLens.paint)
+    }
+
+    /** Eases the split toward where the motion wants it, and back to nothing once motion stops. */
+    private fun stepSplit() {
+        if (System.nanoTime() - lastMotionNanos > MOTION_STALE_NANOS) {
+            splitTargetX = 0f
+            splitTargetY = 0f
+        }
+        splitX += (splitTargetX - splitX) * SPLIT_EASE
+        splitY += (splitTargetY - splitY) * SPLIT_EASE
+    }
+
+    /** The mark three times, red back, green in place, blue forward, added together. */
+    private fun drawSplitMark(canvas: Canvas, drawable: Drawable) {
+        val bounds = drawable.bounds
+        val w = bounds.width()
+        val h = bounds.height()
+        if (w <= 0 || h <= 0) return
+        val bitmap = markBitmap?.takeIf { it.width == w && it.height == h }
+            ?: android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888).also { made ->
+                val alpha = drawable.alpha
+                drawable.alpha = 255
+                val saved = drawable.copyBounds()
+                drawable.setBounds(0, 0, w, h)
+                drawable.draw(Canvas(made))
+                drawable.bounds = saved
+                drawable.alpha = alpha
+                markBitmap = made
+            }
+        channelPaint.alpha = drawable.alpha
+        channelPaint.blendMode = android.graphics.BlendMode.PLUS
+        val channels = intArrayOf(Color.RED, Color.GREEN, Color.BLUE)
+        for (i in 0 until 3) {
+            val motion = (i - 1).toFloat()
+            channelPaint.colorFilter = android.graphics.PorterDuffColorFilter(channels[i], android.graphics.PorterDuff.Mode.SRC_IN)
+            canvas.drawBitmap(
+                bitmap,
+                bounds.left + splitX * motion,
+                bounds.top + splitY * motion,
+                channelPaint
+            )
+        }
     }
 
     /**
@@ -431,6 +574,11 @@ class BuddySpriteView(context: Context) : View(context) {
         }
 
         private const val DISSOLVE_SWELL = 0.25f
+        private const val SPLIT_VISIBLE_PX = 0.3f
+        private const val SPLIT_SETTLED_PX = 0.05f
+        private const val SPLIT_EASE = 0.3f
+        /** No motion update for this long and the split starts settling. */
+        private const val MOTION_STALE_NANOS = 80_000_000L
         /** How far toward the centre the dots start as they come out of the mark. */
         private const val GATHER_FROM = 0.3f
         private const val LEVEL_EASE = 0.25f

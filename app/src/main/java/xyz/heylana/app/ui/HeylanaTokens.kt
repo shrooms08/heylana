@@ -97,6 +97,18 @@ object HeylanaTokens {
 
     val scrim = withAlpha(Color.BLACK, 0.35f)
 
+    /**
+     * The disc is a lens rather than a sheet: less smoke than a panel, so a bright
+     * page reads through it, and a fainter band, so it is glass and not a purple button.
+     */
+    val discBase = withAlpha(Color.BLACK, 0.5f)
+    val discBand = withAlpha(accent, 0.10f)
+
+    /** The chromatic rim: three thin strokes at low alpha. */
+    val fringeRed = withAlpha(Color.parseColor("#FF4D6D"), 0.32f)
+    val fringeGreen = withAlpha(Color.parseColor("#4DFFB0"), 0.26f)
+    val fringeBlue = withAlpha(Color.parseColor("#4D8DFF"), 0.32f)
+
     /** How far the mark is knocked back when the buddy is resting. */
     const val MARK_DULLED = 0.55f
     const val MARK_ACTIVE = 1.0f
@@ -183,6 +195,27 @@ object HeylanaTokens {
     const val BREATHE_MS = 3200L
     const val BREATHE_SCALE = 1.055f
 
+
+    /** How far each fringe stroke sits off the rim, and how thick it is. */
+    const val FRINGE_OFFSET_DP = 0.6f
+    const val FRINGE_STROKE_DP = 1f
+
+    /** The RGB split on the mark at full speed, and the speed that counts as full. */
+    const val MOTION_SPLIT_MAX_DP = 3f
+    const val MOTION_SPLIT_FULL_DP_PER_S = 2500f
+
+    /** The disc face's own aurora under the lens: resting, and awake. */
+    const val FACE_AURORA_IDLE = 0.35f
+    const val FACE_AURORA_ACTIVE = 0.5f
+
+    /** How much of the face, from the centre out, the aurora leaves clear. */
+    const val FACE_AURORA_CLEAR = 0.55f
+
+    /** How bright the face's lighting bands are. */
+    const val FACE_LIGHT = 1f
+
+    /** How long the face's aurora takes to turn once. */
+    const val FACE_AURORA_TURN_MS = 12_000L
 
     /** How long the mark takes to dissolve into the orb, and to reassemble from it. */
     const val ORB_DISSOLVE_MS = 300L

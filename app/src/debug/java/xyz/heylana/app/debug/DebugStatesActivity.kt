@@ -177,6 +177,7 @@ class DebugStatesActivity : Activity() {
         Triple("working", "working", ::working),
         Triple("speaking", "speaking", ::speaking),
         Triple("back-to-idle", "back to idle", ::backToIdle),
+        Triple("motion", "fast drag", ::fastDrag),
         Triple("tapped", "tapped", ::tapped),
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
@@ -246,6 +247,34 @@ class DebugStatesActivity : Activity() {
             sprite.playbackLevel = 0f
             sprite.talking = false
         }, BACK_TO_IDLE_MS)
+    }
+
+    /**
+     * The discs sweep across the stage and back, fast, as a quick drag would, and are
+     * told their speed each frame: the mark's colours split along the motion and
+     * settle when they stop.
+     */
+    private fun fastDrag() {
+        reset()
+        val travel = (stage.width - discRow.width) / 2f
+        var lastX = 0f
+        var lastTime = System.nanoTime()
+        discRow.animate()
+            .translationX(-travel)
+            .setDuration(DRAG_LEG_MS)
+            .setUpdateListener {
+                val now = System.nanoTime()
+                val seconds = (now - lastTime) / 1e9f
+                if (seconds > 0f) sprite.setMotion((discRow.translationX - lastX) / seconds, 0f)
+                lastX = discRow.translationX
+                lastTime = now
+            }
+            .withEndAction {
+                discRow.animate().translationX(0f).setDuration(DRAG_LEG_MS).withEndAction {
+                    discRow.animate().setUpdateListener(null)
+                }.start()
+            }
+            .start()
     }
 
     /** A level that rises and falls like a voice, every frame until the next state. */
@@ -436,6 +465,10 @@ class DebugStatesActivity : Activity() {
 
     private fun reset() {
         main.removeCallbacksAndMessages(null)
+        discRow.animate().cancel()
+        discRow.animate().setUpdateListener(null)
+        discRow.translationX = 0f
+        discRow.translationY = 0f
         sprite.talking = false
         sprite.composing = false
         sprite.pointTarget = null
@@ -484,6 +517,7 @@ class DebugStatesActivity : Activity() {
         const val THINKING_MS = 1_400L
         const val SPEAKING_MS = 1_600L
         const val BACK_TO_IDLE_MS = 2_000L
+        const val DRAG_LEG_MS = 260L
         const val PULSE_MS = 16L
 
         /** How long the silent hold lasts before the release. */
@@ -530,4 +564,6 @@ private class DiscPair(private val docked: BuddySpriteView, private val open: Bu
         set(value) = both.forEach { it.pointTarget = value }
 
     fun refreshState() = both.forEach { it.refreshState() }
+
+    fun setMotion(vx: Float, vy: Float) = both.forEach { it.setMotion(vx, vy) }
 }

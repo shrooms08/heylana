@@ -23,6 +23,24 @@ class HeylanaPromptTest {
     }
 
     @Test
+    fun `heylana is a buddy who chats as well as reads the screen`() {
+        val prompt = HeylanaPrompt.SYSTEM
+        assertTrue(prompt.contains("warm, quick, plain-spoken buddy"))
+        assertTrue(prompt.contains("Small talk, jokes, opinions, follow-ups and general knowledge are all welcome"))
+        assertTrue(prompt.contains("1 to 3 short plain sentences"))
+    }
+
+    @Test
+    fun `a chat question carries no screen, and no element to point at`() {
+        val message = HeylanaPrompt.chatMessage("how's your day going", "Earlier:\nUser: hi", "The user's name is Ada.")
+        assertFalse(message.contains("Screen now:"))
+        assertTrue(message.startsWith("The user's name is Ada."))
+        assertTrue(message.contains("Earlier:"))
+        assertTrue(message.contains(HeylanaPrompt.NO_SCREEN))
+        assertTrue(message.endsWith("User asks: how's your day going"))
+    }
+
+    @Test
     fun `system prompt forbids the self-promotion tail`() {
         val prompt = HeylanaPrompt.SYSTEM
         assertTrue("must tell it to stop after answering", prompt.contains("then stop"))
@@ -51,9 +69,7 @@ class HeylanaPromptTest {
     @Test
     fun `questions that are not about the screen are still answered`() {
         assertTrue(
-            HeylanaPrompt.SYSTEM.contains(
-                "If the question isn't about the screen, answer it from general knowledge."
-            )
+            HeylanaPrompt.SYSTEM.contains("from general knowledge when it isn't about the screen")
         )
     }
 
@@ -109,7 +125,7 @@ class HeylanaPromptTest {
 
     private companion object {
         /** Every request pays for this string, so it is capped deliberately. */
-        const val BUDGET = 1450
+        const val BUDGET = 1600
     }
 }
 
@@ -195,5 +211,14 @@ class SigningBudgetTest {
         // One round: only shortened addresses, so no tool definitions go and no second round is needed.
         assertTrue("sign explanation is about $tokens tokens", tokens < 2_600)
         assertTrue(found.addresses.isEmpty())
+    }
+}
+
+class PrintPromptTest {
+    /** The prompt as it is sent, for the report: `./gradlew :app:testDebugUnitTest -i`. */
+    @Test
+    fun `print the system prompt`() {
+        println("SYSTEM_PROMPT_CHARS=${HeylanaPrompt.SYSTEM.length}")
+        println("SYSTEM_PROMPT_BEGIN\n${HeylanaPrompt.SYSTEM}\nSYSTEM_PROMPT_END")
     }
 }

@@ -453,30 +453,22 @@ class BuddyOverlayService : Service() {
         // the app lay itself out again before reading the screen.
         view.hideKeyboard()
 
+        // Small talk, a joke, general knowledge: decided from the words alone, so the
+        // screen is never read and no listing goes with the question.
+        val chat = Routing.chatRoute(question)
+
         inFlight = scope.launch {
-            // The app under the box has to be readable for the moment of the read.
-            view.letScreenReadThrough(true)
-            val snapshot = try {
-                delay(KEYBOARD_SETTLE_MS)
+            val snapshot = if (chat != null) {
+                HeylanaLog.state("ask: screen not read why=chat")
+                ScreenSnapshot.empty(readingOff = false)
+            } else readScreenForQuestion(view)
 
-                // A screen with nothing readable on it is not a reason to refuse.
-                // Plenty of questions are not about the screen at all, and some apps
-                // hand us an empty tree however hard we look — Chrome does unless
-                // something is subscribed to its events, which Heylana deliberately
-                // is not. The model is told the screen was unreadable and answers
-                // from general knowledge. A task step is different: see advance().
-                val reading = HeylanaAccessibilityService.isConnected
-                HeylanaLog.state("ask: screen reading connected=$reading")
-                HeylanaAccessibilityService.snapshotOrNull()
-                    ?: ScreenSnapshot.empty(readingOff = !reading)
-            } finally {
-                view.letScreenReadThrough(false)
-            }
+            val screenText = if (chat != null) "" else snapshot.toPromptText()
+            if (chat == null) logScreenSize(snapshot, screenText)
 
-            val screenText = snapshot.toPromptText()
-            logScreenSize(snapshot, screenText)
+            // A chat question belongs to no app: it neither reads nor clears what came before.
+            val memory = conversation.asPromptText(if (chat != null) null else snapshot.packageName)
 
-            val memory = conversation.asPromptText(snapshot.packageName)
             // The second turn of a send over a quarter of the balance: said again, it
             // goes to the strip without asking the model anything.
             val waiting = overLimit
@@ -492,11 +484,11 @@ class BuddyOverlayService : Service() {
             }
 
             typedAddresses.record(question)
-            val route = Routing.forQuestion(snapshot.packageName, question, screenText, settings.walletSession?.pubkey)
+            val route = chat ?: Routing.forQuestion(snapshot.packageName, question, screenText, settings.walletSession?.pubkey)
             // No hello by name on a send or a signing explanation, and it is not used up by one.
             val greetingLine = if (route.allowsGreeting) greeting.lineFor(settings.callMe) else null
             HeylanaLog.state("greeting: ${if (greetingLine != null) "included" else "not included"} why=${route.why.log}")
-            val skill = skills.pick(snapshot.packageName, question)
+            val skill = if (chat != null) null else skills.pick(snapshot.packageName, question)
             val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
@@ -532,7 +524,7 @@ class BuddyOverlayService : Service() {
                     if (task != null && !task.done) {
                         startSession(task.goal, reply, snapshot)
                     } else {
-                        conversation.record(question, reply.text, snapshot.packageName)
+                        conversation.record(question, reply.text, if (chat != null) null else snapshot.packageName)
                         showOneShot(reply, snapshot)
                     }
                 }
@@ -542,6 +534,28 @@ class BuddyOverlayService : Service() {
                     view.showNotice(reply.message)
                 }
             }
+        }
+    }
+
+    /** The ordinary read for a question: the app under the box, after the keyboard has gone. */
+    private suspend fun readScreenForQuestion(view: BuddyOverlayView): ScreenSnapshot {
+        // The app under the box has to be readable for the moment of the read.
+        view.letScreenReadThrough(true)
+        return try {
+            delay(KEYBOARD_SETTLE_MS)
+
+            // A screen with nothing readable on it is not a reason to refuse.
+            // Plenty of questions are not about the screen at all, and some apps
+            // hand us an empty tree however hard we look — Chrome does unless
+            // something is subscribed to its events, which Heylana deliberately
+            // is not. The model is told the screen was unreadable and answers
+            // from general knowledge. A task step is different: see advance().
+            val reading = HeylanaAccessibilityService.isConnected
+            HeylanaLog.state("ask: screen reading connected=$reading")
+            HeylanaAccessibilityService.snapshotOrNull()
+                ?: ScreenSnapshot.empty(readingOff = !reading)
+        } finally {
+            view.letScreenReadThrough(false)
         }
     }
 

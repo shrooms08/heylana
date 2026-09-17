@@ -735,6 +735,19 @@ or tells the user to switch screen reading on if the question needed the screen.
 Only a task step — which cannot work without a screen — refuses outright, and only
 when the service really is not running.
 
+**Chat needs no screen, so none is read.** Heylana is a buddy as well as a guide:
+small talk, jokes, opinions, follow-ups and general knowledge are answered naturally in 1
+to 3 short sentences, and the no-self-promotion rule still holds. `brain/ChatQuestions`
+decides from the words alone, before anything is read, whether a question is chat
+(greetings, how are you, a joke, what do you think, who are you, who won / what is the
+capital / how far…). It is deliberately narrow: "this", "here", a button, an app, "how do
+I", "why", a Solana word, a send, a signing question or a quick action all take the
+ordinary path. A chat question skips the screen read entirely (`ask: screen not read
+why=chat`), goes on the quick model with no Solana block, tools or skill (`brain:
+mode=quick why=chat`), carries `HeylanaPrompt.NO_SCREEN` instead of a listing, may carry
+the greeting, and is remembered without an app so it neither clears nor is cleared by the
+screen conversation around it.
+
 **Enabled is not running.** Android keeps a service's name in the accessibility
 setting after the app crashes with that service bound, and simply stops binding
 it. So "is Heylana in the list" is the wrong question: onboarding ticks the row

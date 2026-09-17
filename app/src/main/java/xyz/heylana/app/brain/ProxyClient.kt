@@ -80,7 +80,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val tools = route.toolsWanted && !settings.useOwnKey
         val quickAction = route.why == Routing.Why.QUICK_ACTION
         // A send or a quick action is one forced tool call that writes nothing: app notes would only cost.
-        val carried = skill.takeUnless { route.why == Routing.Why.SEND_QUESTION || quickAction }
+        val carried = skill.takeUnless { route.why == Routing.Why.SEND_QUESTION || quickAction || route.skipsScreen }
         // Through the worker the action tool is forced; only the own-key path has to ask in words.
         val quickRules = quickAction && settings.useOwnKey
         HeylanaLog.state(
@@ -110,6 +110,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 extra.put("tool_names", JSONArray(if (found.addresses.isNotEmpty()) listOf(EXPLAIN_ADDRESS) else emptyList()))
             }
             HeylanaPrompt.signingMessage(screenText, question, found)
+        } else if (route.skipsScreen) {
+            HeylanaPrompt.chatMessage(question, history, if (route.allowsGreeting) greeting else null)
         } else {
             HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null)
         }

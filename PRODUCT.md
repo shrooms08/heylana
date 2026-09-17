@@ -4,6 +4,10 @@ Heylana is a small glass buddy that floats over every app on the Solana Seeker.
 Hold it and talk, or tap it and type, and it answers out loud about whatever is on
 your screen — and points at the exact button you need. Ask it to help you *do* something and it walks you there one tap at a time.
 
+It is good company too: say hello, ask for a joke, what it thinks, or who won the
+World Cup, and it answers like a friend in a sentence or two — without reading your
+screen, since none of that needs it.
+
 It can also get the phone's own apps to do simple things you ask for: set an alarm
 or a timer, open an app or a website, show a place on the map, or put a number in
 the dialer. Every part of the request has to be in your own words, the phone's own

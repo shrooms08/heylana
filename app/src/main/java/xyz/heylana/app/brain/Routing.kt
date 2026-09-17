@@ -17,6 +17,8 @@ object Routing {
         EXPLAIN_QUESTION("explain_question"),
         SEND_QUESTION("send_question"),
         QUICK_ACTION("quick_action"),
+        /** Needs no screen: small talk, a joke, general knowledge. The screen is never read. */
+        CHAT("chat"),
         WALLET_SCREEN("wallet_screen"),
         SWAP_SCREEN("swap_screen"),
         PLAIN("plain")
@@ -32,10 +34,18 @@ object Routing {
          * Only a plain question greets by name. A send, a signing explanation, or
          * anything on a wallet or swap screen is about money: no hello on those.
          */
-        val allowsGreeting: Boolean get() = why == Why.PLAIN
+        val allowsGreeting: Boolean get() = why == Why.PLAIN || why == Why.CHAT
+
+        /** No screen was read for this question, and none goes with it. */
+        val skipsScreen: Boolean get() = why == Why.CHAT
     }
 
     val PLAIN = Route(ProxyClient.MODE_QUICK, Why.PLAIN, null)
+
+    /** Chat, decided from the words alone and before the screen is read: quick model, no Solana, no tools. */
+    val CHAT = Route(ProxyClient.MODE_QUICK, Why.CHAT, null)
+
+    fun chatRoute(question: String): Route? = if (ChatQuestions.isChat(question)) CHAT else null
 
     private val SEND = Regex("(?<![\\p{L}])(send|transfer)(?![\\p{L}])", RegexOption.IGNORE_CASE)
 

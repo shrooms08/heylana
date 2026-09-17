@@ -22,20 +22,23 @@ object HeylanaPrompt {
             "you can do, describe it in two sentences.\n" +
             "\n" +
             "Spoken aloud: 1 to 3 short plain sentences, no markdown or symbols. Name buttons by their " +
-            "visible label, never by number. Only describe what is in the list. You cannot tap or type " +
-            "for them, so say what to tap and never claim you did it. Never invent balances, prices or " +
-            "amounts.\n" +
+            "visible label, never by number, and only what is in the list. You cannot tap or type for " +
+            "them: say what to tap, never claim you did it. Never invent balances, prices or amounts.\n" +
             "\n" +
             "Reply with ONLY this JSON, no fences, no prose:\n" +
             "{\"say\":\"...\",\"point_at\":<id or null>,\"task\":{\"goal\":\"...\",\"done\":true|false}|null}\n" +
             "\n" +
-            "point_at: the id in brackets of the one element they should tap, type into or " +
-            "look at, else null; only ids from the list.\n" +
+            "say: the words. Showing how something works, use up to 4 pieces — " +
+            "[{\"text\":\"one sentence\",\"point_at\":<id or null>}] — point_at on each sentence " +
+            "naming a button, so the pointer moves as you talk.\n" +
             "\n" +
-            "task: null for a question you can answer in one go. If they asked you to help DO " +
-            "something needing more than one tap, task.goal restates it in one line, kept " +
-            "word for word across every step. Then say is ONLY the single next step " +
-            "from where they are now, point_at is that step's element, and done is false. " +
+            "point_at: the id in brackets of the element to tap, type into or look at, else " +
+            "null; ids from the list only.\n" +
+            "\n" +
+            "task: null for a question you can answer in one go. Asked to help DO something " +
+            "needing more than one tap: task.goal restates it in one line, word for word " +
+            "across every step, say is ONLY the next single step from where they are, " +
+            "point_at is that step's element, done is false. " +
             "Once the screen shows the goal reached: done true, say confirms briefly, point_at null. " +
             "Steps under 25 words. Asked to teach, show how, or why: each step's say starts with one short reason."
 
@@ -96,13 +99,15 @@ object HeylanaPrompt {
 
     /** Goes with the first question of a teaching task and with every one of its steps. */
     const val TEACH_LINE: String =
-        "Teach as you go: say starts with one short reason, then the step, under 25 words in all."
+        "Teach as you go: say starts with one short reason, then the step, under 25 words in all. " +
+            "Use say pieces, one sentence each, with point_at on every sentence that names a button."
 
     /**
      * "Why?" on a step: the reason for the step already given, then the step again.
      * No screen: the step is already on it, and the pointer stays where it is.
      */
     fun whyMessage(goal: String, historyText: String, question: String): String = buildString {
+        // A why is one short answer about the step already given: no new walk of the screen.
         append("Task in progress. Goal: ").append(goal).append('\n')
         append(historyText).append('\n')
         append("\nThe user asks about the last step: ").append(question).append('\n')
@@ -142,6 +147,10 @@ object HeylanaPrompt {
 
     const val SIGNING_LOOKUP: String =
         "Call explain_address on each full address; shortened ones are checked for you below. "
+
+    /** Explanations walk the screen: a piece per sentence, pointing as it goes. */
+    const val SEGMENTS_LINE: String =
+        "Answer in say pieces, one sentence each, with point_at on every sentence that names a button on screen."
 
     const val SIGNING_INSTRUCTIONS: String =
         "Answer in two sentences, under 40 words in all: what this request does, with each amount exactly as " +

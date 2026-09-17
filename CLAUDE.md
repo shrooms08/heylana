@@ -675,6 +675,21 @@ else — a missing field, a null, a non-number, or an id that is not in the snap
 that was just taken — means "do not point at anything". The snapshot is kept alive
 until the reply comes back so the id can be turned into real screen bounds.
 
+**`say` is one line, or up to four pieces that walk the screen.** The contract's `say` is
+either a string, as it always was, or `[{"text": "one sentence", "point_at": <id or null>}]`
+— at most four (`SaySegment`, `brain/SaySegment.kt`). The prompt asks for pieces when the
+answer shows how something works, with `point_at` on each sentence that names a button, and
+`HeylanaPrompt.TEACH_LINE` and `SEGMENTS_LINE` ask for them on a teaching task and an
+explanation. The worker checks them before they reach the phone (`worker/src/say.ts`,
+`checkedBody` on every reply that is not a forced tool call): a piece with no text is
+dropped, a `point_at` that is not a whole number at least zero becomes null, more than four
+are cut, one piece pointing at nothing collapses back to a plain string, and nothing usable
+leaves an empty `say` — which the phone treats as unreadable and asks for once more. The
+chat log carries `say_segments` when there is more than one. On the phone the pieces keep
+the same words as `text`, so the word cap, the strip, the memory and the shorten retry are
+unchanged; a shortened answer is one piece again. `BrainReply.Say.teaches` is true when an
+answer walks the screen.
+
 **Only `say` is ever spoken or shown, through one parser.** Every reply — chat, plain,
 a quick action, a send, a task step, a why, a recap — goes through `brain/ReplyParser`:
 all the text blocks are joined, the first JSON object with a `say` (or an `action`) is

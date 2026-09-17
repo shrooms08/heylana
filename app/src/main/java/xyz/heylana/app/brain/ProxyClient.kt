@@ -34,8 +34,16 @@ sealed interface BrainReply {
         /** A send the model proposed. Checked by SendGuard before anything happens. */
         val action: SendAction? = null,
         /** An alarm, timer, app, page, place or number. Checked by QuickGuard first. */
-        val quick: QuickAction? = null
-    ) : BrainReply
+        val quick: QuickAction? = null,
+        /**
+         * How it is spoken: one piece, or up to four with an element each, so the disc can
+         * walk the screen while it explains. Always says the same words as [text].
+         */
+        val segments: List<SaySegment> = emptyList()
+    ) : BrainReply {
+        /** True when the answer walks the screen: more than one piece, or one that points. */
+        val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
+    }
 
     data class Failed(val message: String) : BrainReply
 }
@@ -204,7 +212,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
             "answer: over cap words=$words cap=$cap asked_shorter=${if (shortened == null) "failed" else "ok"} " +
                 "now=${AnswerLength.words(chosen)}"
         )
-        return reply.copy(text = AddressText.shorten(chosen))
+        val shortened_text = AddressText.shorten(chosen)
+        // Shortening rewrites the whole answer, so it is one piece again; where it pointed, it still does.
+        return reply.copy(
+            text = shortened_text,
+            segments = listOf(SaySegment(shortened_text, reply.segments.firstOrNull()?.pointAt ?: reply.pointAt))
+        )
     }
 
     /** The shorter wording, or null if it could not be had. Never counted as a talk. */
@@ -441,7 +454,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         }.trim()
         if (text.isEmpty()) return Attempt.Unreadable("empty", body)
 
-        val parsed = ReplyParser.parse(text)
+        val parsed = ReplyParser.parse(text, expectsAction)
         if (parsed is ReplyParser.Result.Unreadable) return Attempt.Unreadable(parsed.reason, text)
         parsed as ReplyParser.Result.Reply
         val json = runCatching { JSONObject(parsed.objectText) }.getOrNull()
@@ -450,14 +463,17 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val action = readAction(json)
         val quick = readQuick(json)
         val task = readTask(json)
-        if (parsed.say.isEmpty() && action == null && quick == null && !expectsAction) {
-            return Attempt.Unreadable("empty_say", text)
-        }
         val extraChars = text.length - parsed.objectText.length
         if (extraChars > 0) HeylanaLog.state("reply: text outside the json chars=$extraChars dropped")
         if (parsed.say.length < json.optString("say").trim().length) HeylanaLog.state("reply: repeated sentence dropped")
+        if (parsed.segments.size > 1) {
+            HeylanaLog.state("reply: segments=${parsed.segments.size} points=${parsed.segments.count { it.pointAt != null }}")
+        }
         // Every word the model says is shortened here, once, before it is shown or spoken.
-        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), readPointAt(json), task, action, quick))
+        val segments = parsed.segments.map { it.copy(text = AddressText.shorten(it.text)) }
+        // One piece keeps point_at as it always did; segments carry their own.
+        val pointAt = if (parsed.segments.size <= 1) parsed.segments.firstOrNull()?.pointAt ?: readPointAt(json) else null
+        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments))
     }
 
     /**

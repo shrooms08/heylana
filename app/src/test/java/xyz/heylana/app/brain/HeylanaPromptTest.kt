@@ -125,7 +125,7 @@ class HeylanaPromptTest {
 
     private companion object {
         /** Every request pays for this string, so it is capped deliberately. */
-        const val BUDGET = 1600
+        const val BUDGET = 1750
     }
 }
 

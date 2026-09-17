@@ -25,6 +25,7 @@ import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.
 import { prepareSend } from './tools.ts'
 import { checkSend, type PreparedSend } from './send.ts'
 import { short } from './solana.ts'
+import { checkedBody } from './say.ts'
 import { GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, geminiPcmStream, geminiRequest, geminiVoiceFor, providerOf } from './voice.ts'
 import {
   type Account, type PlanName, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, planOf, spendTalk, standing,
@@ -391,6 +392,14 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     tokensOut = usage.output
   }
 
+  // The reply's say is checked here: segments the phone cannot use never reach it.
+  let saySegments = 0
+  if (status >= 200 && status < 300 && !actionIntent && !sendIntent) {
+    const checked = checkedBody(text)
+    text = checked.body
+    saySegments = checked.segments
+  }
+
   if (status >= 200 && status < 300) {
     await saveAccount(env, who.key, spent.account)
     await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
@@ -422,6 +431,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       }
       : {}),
     ...(toolTimeout ? { tool_timeout: true } : {}),
+    ...(saySegments > 1 ? { say_segments: saySegments } : {}),
     status,
     tokens_in: tokensIn,
     tokens_out: tokensOut,

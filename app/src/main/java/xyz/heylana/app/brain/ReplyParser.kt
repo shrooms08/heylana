@@ -12,8 +12,17 @@ package xyz.heylana.app.brain
 object ReplyParser {
 
     sealed interface Result {
-        /** [objectText] is the reply object alone; [say] is its say, cleaned and de-duplicated. */
-        data class Reply(val objectText: String, val fields: Map<String, Any?>, val say: String) : Result
+        /**
+         * [objectText] is the reply object alone; [say] is everything it says, cleaned
+         * and de-duplicated; [segments] is how it is spoken — one piece, or up to four
+         * with an element each.
+         */
+        data class Reply(
+            val objectText: String,
+            val fields: Map<String, Any?>,
+            val say: String,
+            val segments: List<SaySegment>
+        ) : Result
         /** No reply object, or one whose say is not something to speak. */
         data class Unreadable(val reason: String) : Result
     }
@@ -24,15 +33,28 @@ object ReplyParser {
     /** Added to the question for the one retry after an unreadable reply. */
     const val JSON_ONLY = "Reply with only the JSON object, nothing before or after it."
 
-    fun parse(text: String): Result {
+    /**
+     * [expectsAction] is set for a send or a quick action, where the words are the app's
+     * to write: only there is an empty say a reply rather than something to ask again for.
+     */
+    fun parse(text: String, expectsAction: Boolean = false): Result {
         val candidates = objects(text)
         if (candidates.isEmpty()) return Result.Unreadable("no_json")
-        // The first object that is a reply: it has a say, or an action.
-        val (objectText, fields) = candidates.firstOrNull { (_, map) -> map["say"] is String || map["action"] is Map<*, *> }
-            ?: return Result.Unreadable("no_reply_object")
-        val rawSay = (fields["say"] as? String).orEmpty()
+        // The first object that is a reply: it has a say (a string or segments), or an action.
+        val (objectText, fields) = candidates.firstOrNull { (_, map) ->
+            map["say"] is String || map["say"] is List<*> || map["action"] is Map<*, *>
+        } ?: return Result.Unreadable("no_reply_object")
+        val pointAt = (fields["point_at"] as? Number)?.toInt()?.takeIf { it >= 0 }
+        val segments = SaySegment.of(fields["say"], pointAt)
+        val rawSay = SaySegment.joined(segments)
         if (looksLikeInstructions(rawSay)) return Result.Unreadable("say_holds_instructions")
-        return Result.Reply(objectText, fields, dedupe(rawSay.trim()))
+        if (rawSay.isEmpty() && fields["action"] !is Map<*, *> && !expectsAction) {
+            return Result.Unreadable("empty_say")
+        }
+        val say = dedupe(rawSay)
+        // One segment is the old shape; the strip and the cap read the whole of it either way.
+        val spoken = if (segments.size <= 1) listOfNotNull(segments.firstOrNull()?.copy(text = say)) else segments
+        return Result.Reply(objectText, fields, say, spoken)
     }
 
     /**

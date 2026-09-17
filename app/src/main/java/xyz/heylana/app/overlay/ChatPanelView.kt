@@ -849,15 +849,27 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         gooA[4] = gooDisc.width() / 2f
         setBlob(layer, 0, gooA)
         (background as? GlassDrawable)?.hidden = true
+        var tookOff = false
+        val takeOff = {
+            if (!tookOff) {
+                tookOff = true
+                // Gone at once as the disc takes off: a fading silhouette left behind at
+                // the top reads as a second disc while the real one flies home.
+                gooeyRun?.cancel()
+                layer.animate().cancel()
+                layer.clear()
+                layer.visibility = View.GONE
+                onDone()
+            }
+        }
         gooeyRun = layer.spring({ t ->
             GooeySpec.growFromDisc(gooDisc, gooTo, panelRadius(), 1f - t, gooB)
             setBlob(layer, 1, gooB)
             contentAlpha((1f - t / 0.4f).coerceIn(0f, 1f))
-        }) {
-            layer.blobs[1].visible = false
-            layer.fadeAway()
-            onDone()
-        }
+            // The disc leaves as the box is all but in, not after the spring's long tail:
+            // a pause at the top between the two read as a second movement.
+            if (t >= TAKE_OFF_AT) post { takeOff() }
+        }) { takeOff() }
         return true
     }
 
@@ -897,6 +909,8 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         rail.visibility = saved[2]
         return h
     }
+
+    private val TAKE_OFF_AT = 0.9f
 
     /** The step chip and next/done come out of the pane's bottom edge as droplets. */
     private fun gooeyEmergeChips(): Boolean {

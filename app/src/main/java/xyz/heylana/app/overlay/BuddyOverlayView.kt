@@ -3,6 +3,7 @@ package xyz.heylana.app.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
+import android.os.Build
 import android.graphics.PointF
 import android.graphics.Rect
 import android.view.Gravity
@@ -165,6 +166,11 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         gravity = Gravity.TOP or Gravity.START
         softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN or
             WindowManager.LayoutParams.SOFT_INPUT_STATE_UNCHANGED
+        // The system slides a window to its new position over about 220ms. Heylana
+        // moves its window itself — the flight has already put the disc there — so that
+        // slide was a second movement after landing: from the full-screen box's origin
+        // to the dock. Android 14+ lets a window opt out; see flyTo for older phones.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) setCanPlayMoveAnimation(false)
     }
 
     private var mode = Mode.DOCKED
@@ -834,6 +840,11 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         flyer.composing = sprite.composing
         flyer.discDp = sprite.discDp
         flyer.refreshState()
+        if (targetDiscDp == HeylanaTokens.DISC_DP && flyer.composing) {
+            // Going home: the dim to its resting look plays during the flight, not after it.
+            flyer.composing = false
+            sprite.composing = false
+        }
 
         stage.addFlyer(flyer, openDiscSize)
         val origin = stage.stageOrigin()
@@ -859,16 +870,21 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             // Both axes have to stop before the disc is handed back.
             if (settled == 2 && flying) {
                 flying = false
+                // The swell or shrink ends exactly where the flight does.
+                flightSize?.cancel(); flightSize = null
+                flyer.discDp = targetDiscDp
                 onLanded()
                 // Only once the destination has been measured does the real disc
-                // reappear and the stand-in leave, so the two never disagree.
-                content.post {
+                // reappear and the stand-in leave, so the two never disagree. Where the
+                // window still slides to its new place (before Android 14), the stand-in
+                // stays in front until the slide is over.
+                content.postDelayed({
                     leaveStage()
                     // Where it really is once handed back, and again once any layout has run:
                     // both must equal the target, or the disc moved twice.
                     logDiscPosition("landed")
                     postDelayed({ logDiscPosition("settled") }, SETTLE_CHECK_MS)
-                }
+                }, if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) 0L else WINDOW_SLIDE_MS)
             }
         }
 
@@ -1257,6 +1273,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         /** Small window: invisible to touch and keyboard beyond its own bounds. */
         /** How long after landing the disc's position is checked again. */
         private const val SETTLE_CHECK_MS = 500L
+
+        /** How long the system's window slide lasts where it cannot be switched off. */
+        private const val WINDOW_SLIDE_MS = 250L
 
         private const val FLAGS_PASSIVE =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or

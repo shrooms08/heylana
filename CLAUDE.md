@@ -777,6 +777,20 @@ there and then being clamped was a second move.) Debug builds log
 must match. `adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es dock left|right`
 and `--ez toggle true` dock and open or close without touching the disc.
 
+**Nothing moves after landing.** A screen recording of a close showed the flight
+landing, then the disc vanishing and sliding back in from the box's old corner: the
+system's own window-move animation (about 220ms) as the full-screen box window became
+the small docked one. The window opts out (`setCanPlayMoveAnimation(false)`, Android
+14+); below 14 the flying stand-in stays in front for the 250ms slide. Also inside the
+flight now: the dim to the resting look (the stand-in stops composing as it takes off),
+the 80 → 64dp shrink (pinned to its final size at landing), and the goo silhouette, which
+disappears as the disc takes off rather than fading at the top as a ghost. The disc takes
+off when the draw-back is 90% done, so the two read as one motion.
+`scripts/landing_check.py right|left` drives a close with the debug broadcast and, on the
+phone, blocks on `flight: landed`, grabs a burst of frames straight after it and one from
++700ms, and fails if more than 8% of the disc's area differs (the idle breathing is 1–5%).
+Before the fix it measured 18–31%.
+
 **The overlay window has three modes, and everything follows from which one.**
 Docked, it is a small window holding just the disc, so touches anywhere else
 reach the app underneath. Composing, it takes the whole screen: the app behind

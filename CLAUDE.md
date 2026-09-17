@@ -496,6 +496,43 @@ number, or an empty dialer and "Search for Mum there" for a name (Heylana has no
 contacts permission). Heylana then says one short line: "Alarm set for 7 AM
 tomorrow.", "Opening Wallet.", "Opening the dialer." (never the digits).
 
+**The catalogue.** Beyond those six (`QuickIntents.effect` builds each, as plain data
+tested per action in `QuickCatalogueTest`):
+- `youtube_search(query)`: `ACTION_SEARCH` with `query`, set to YouTube's package; if
+  YouTube is missing, its results page in the browser ("YouTube isn't installed, so
+  searching it in the browser.").
+- `spotify_play(query)`: `MEDIA_PLAY_FROM_SEARCH` with `query` and focus
+  `vnd.android.cursor.item/*`, set to `com.spotify.music`; missing, "Spotify isn't
+  installed on this phone."
+- `media_control(play|pause|next|previous)`: `AudioManager.dispatchMediaKeyEvent`, down
+  and up, to whatever media session is playing. Pause with nothing playing says "Nothing is
+  playing to control."
+- `message(number|name, text)`: `ACTION_SENDTO` `smsto:<digits>` with `sms_body` — the
+  compose screen, filled in; Heylana never sends. With a name, Messages opens its contact
+  picker. The line reads neither the number nor the words.
+- `reminder(text, hour, minutes)`: `ACTION_INSERT` on calendar events with title, begin
+  and a 30-minute end — the new-event screen for the user to save. Unlike an alarm, a bare
+  hour is the next time that clock reading comes round ("call mum at 6" at noon is 6 PM);
+  "tomorrow at 6" is the first 6 from 7 AM on (6 PM). A said half of the day stands.
+- `flashlight(on|off)`: `CameraManager.setTorchMode` on the first camera with a flash. "Turn
+  it off/on" within five minutes of switching the flashlight is done in the app with no
+  model call (`action: follow-up intent=flashlight … model=not_asked`).
+- `camera` / `selfie`: `STILL_IMAGE_CAMERA`; a selfie adds the three front-camera extras
+  camera apps read (whether one honours them is up to the app).
+- `web_search(query)`: the Google search page with `ACTION_VIEW`, in the default browser.
+  `ACTION_WEB_SEARCH` put up a chooser on the Seeker (Chrome and the Google app both take it).
+- `settings(wifi|bluetooth|display|sound|battery|accessibility)`: that page's Settings action.
+
+Every argument is checked as before: queries, message words, reminder text and contact
+names word by word (contractions spelled out on both sides, since the model writes "I am"
+for "I'm"), numbers by their digits, the reminder time like an alarm's, and the command,
+state, camera or page by a word the user said ("skip", "off", "selfie", "wi-fi"). A missing
+app is named in one line (`QuickText.missingApp`). "Send a text to Ada" is a message, never
+a Solana send: `QuickActions.isMessage` is checked before the send route. The worker's
+`propose_action` offers all sixteen intents with `text`, `command`, `state` and `page`
+fields, and logs only intent, times, command, state and page. **The worker has to be
+redeployed** for the model to be offered the new intents.
+
 **Nothing is left over the app it opened.** Once an action fires, the box melts
 away at once (`afterQuickAction`), the line is spoken, and the disc settles to idle
 a second after the speech ends, the same beat as a spoken answer. With no voice the

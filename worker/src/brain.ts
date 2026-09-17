@@ -223,25 +223,44 @@ export const PROPOSE_ACTION = {
   input_schema: {
     type: 'object',
     properties: {
-      intent: { type: 'string', enum: ['alarm', 'timer', 'open_app', 'open_url', 'navigate', 'dial'] },
+      intent: {
+        type: 'string',
+        enum: [
+          'alarm', 'timer', 'open_app', 'open_url', 'navigate', 'dial', 'youtube_search', 'spotify_play',
+          'media_control', 'message', 'reminder', 'flashlight', 'camera', 'selfie', 'web_search', 'settings',
+        ],
+      },
       hour: {
         ...NULLABLE_INTEGER,
-        description: 'alarm: 0-23. A bare hour with no pm, evening, afternoon or tonight is the morning: "7 tomorrow" is 7.',
+        description: 'alarm, reminder: 0-23. A bare hour with no pm, evening, afternoon or tonight is the morning: "7 tomorrow" is 7.',
       },
-      minutes: { ...NULLABLE_INTEGER, description: 'alarm: 0-59, 0 if not said' },
+      minutes: { ...NULLABLE_INTEGER, description: 'alarm, reminder: 0-59, 0 if not said' },
       message: { ...NULLABLE_STRING, description: 'alarm: a label, only if the user gave one' },
       seconds: { ...NULLABLE_INTEGER, description: 'timer: the whole length in seconds' },
       app: { ...NULLABLE_STRING, description: 'open_app: the app name as the user said it' },
       url: { ...NULLABLE_STRING, description: 'open_url: the web address as the user said it' },
-      query: { ...NULLABLE_STRING, description: 'navigate: the place as the user said it' },
-      number: { ...NULLABLE_STRING, description: 'dial: the digits as the user said them' },
-      name: { ...NULLABLE_STRING, description: 'dial: the contact name as the user said it, if no number' },
+      query: {
+        ...NULLABLE_STRING,
+        description: 'navigate: the place; youtube_search, web_search: what to search for; spotify_play: the song, artist, playlist or genre. As the user said it.',
+      },
+      number: { ...NULLABLE_STRING, description: 'dial, message: the digits as the user said them' },
+      name: { ...NULLABLE_STRING, description: 'dial, message: the contact name as the user said it, if no number' },
+      text: { ...NULLABLE_STRING, description: 'message: the words to send; reminder: what to be reminded of. As the user said it.' },
+      command: { type: ['string', 'null'], enum: ['play', 'pause', 'next', 'previous', null], description: 'media_control' },
+      state: { type: ['string', 'null'], enum: ['on', 'off', null], description: 'flashlight' },
+      page: {
+        type: ['string', 'null'],
+        enum: ['wifi', 'bluetooth', 'display', 'sound', 'battery', 'accessibility', null],
+        description: 'settings: which page',
+      },
     },
     required: ['intent'],
   },
 }
 
-const ACTION_FIELDS = ['hour', 'minutes', 'message', 'seconds', 'app', 'url', 'query', 'number', 'name'] as const
+const ACTION_FIELDS = [
+  'hour', 'minutes', 'message', 'seconds', 'app', 'url', 'query', 'number', 'name', 'text', 'command', 'state', 'page',
+] as const
 
 export interface ActionProposal {
   status: number

@@ -220,3 +220,23 @@ test('a model that writes no action leaves none, with no words either', async ()
   assert.equal(answer.action, null)
   assert.equal(answer.say, '')
 })
+
+test('the catalogue: every new intent is offered, and a message logs neither its words nor its number', async () => {
+  for (const intent of ['youtube_search', 'spotify_play', 'media_control', 'message', 'reminder', 'flashlight', 'camera', 'selfie', 'web_search', 'settings']) {
+    assert.ok(PROPOSE_ACTION.input_schema.properties.intent.enum.includes(intent), intent)
+  }
+  script = [actionUse({ intent: 'message', number: '0800 123 4567', text: "I'm on my way", command: null })]
+  const res = await worker.fetch(ask({ mode: 'quick', intent: 'quick_action' }), env())
+  const answer = JSON.parse((await res.json()).content[0].text)
+  assert.deepEqual(answer.action, { type: 'intent', intent: 'message', number: '0800 123 4567', text: "I'm on my way" })
+  const line = logs.find((l) => l.includes('"route":"chat"'))!
+  assert.ok(line.includes('"quick_action":{"intent":"message"}'))
+  assert.equal(line.includes('0800'), false)
+  assert.equal(line.includes('on my way'), false)
+})
+
+test('media, flashlight and settings log their one word', async () => {
+  script = [actionUse({ intent: 'settings', page: 'wifi' })]
+  await worker.fetch(ask({ mode: 'quick', intent: 'quick_action' }), env())
+  assert.ok(logs.find((l) => l.includes('"route":"chat"'))!.includes('"quick_action":{"intent":"settings","page":"wifi"}'))
+})

@@ -22,6 +22,15 @@ object QuickGuard {
     const val URL_NOT_SAID = "I can only open a secure web address you say."
     const val PLACE_NOT_SAID = "Tell me where you want to go."
     const val NUMBER_NOT_SAID = "I can only dial a number or a name you say."
+    const val SEARCH_NOT_SAID = "Tell me what to search for."
+    const val PLAY_NOT_SAID = "Tell me what to play."
+    const val COMMAND_NOT_SAID = "Say play, pause, next or previous."
+    const val RECIPIENT_NOT_SAID = "I can only text a number or a name you say."
+    const val TEXT_NOT_SAID = "Tell me what the message should say."
+    const val REMINDER_NOT_SAID = "Tell me what to remind you about, and when."
+    const val STATE_NOT_SAID = "Say on or off."
+    const val CAMERA_NOT_SAID = "Tell me whether you want the camera or a selfie."
+    const val PAGE_NOT_SAID = "Tell me which settings to open."
 
     fun check(action: QuickAction, said: String): Verdict {
         val text = said.lowercase(Locale.US)
@@ -36,7 +45,93 @@ object QuickGuard {
             is QuickAction.Navigate ->
                 if (wordsSaid(action.query, text)) Verdict.Allowed(action) else Verdict.Refused(PLACE_NOT_SAID, "place_not_said")
             is QuickAction.Dial -> dial(action, text)
+            is QuickAction.YoutubeSearch ->
+                if (wordsSaid(action.query, text)) Verdict.Allowed(action) else Verdict.Refused(SEARCH_NOT_SAID, "query_not_said")
+            is QuickAction.WebSearch ->
+                if (wordsSaid(action.query, text)) Verdict.Allowed(action) else Verdict.Refused(SEARCH_NOT_SAID, "query_not_said")
+            is QuickAction.SpotifyPlay ->
+                if (wordsSaid(action.query, text)) Verdict.Allowed(action) else Verdict.Refused(PLAY_NOT_SAID, "query_not_said")
+            is QuickAction.MediaControl ->
+                if (anyWord(MEDIA_WORDS.getValue(action.command), text)) Verdict.Allowed(action)
+                else Verdict.Refused(COMMAND_NOT_SAID, "command_not_said")
+            is QuickAction.Message -> message(action, text)
+            is QuickAction.Reminder -> reminder(action, text)
+            is QuickAction.Flashlight ->
+                if (anyWord(listOf(if (action.on) "on" else "off"), text)) Verdict.Allowed(action)
+                else Verdict.Refused(STATE_NOT_SAID, "state_not_said")
+            is QuickAction.Camera ->
+                if (anyWord(if (action.selfie) SELFIE_WORDS else CAMERA_WORDS, text)) Verdict.Allowed(action)
+                else Verdict.Refused(CAMERA_NOT_SAID, "camera_not_said")
+            is QuickAction.OpenSettings ->
+                if (anyWord(PAGE_WORDS.getValue(action.page), text.replace(Regex("wi[\\s-]fi"), "wifi"))) Verdict.Allowed(action)
+                else Verdict.Refused(PAGE_NOT_SAID, "page_not_said")
         }
+    }
+
+    private val MEDIA_WORDS = mapOf(
+        "play" to listOf("play", "resume", "unpause", "continue"),
+        "pause" to listOf("pause", "stop"),
+        "next" to listOf("next", "skip"),
+        "previous" to listOf("previous", "last", "back", "rewind")
+    )
+    private val CAMERA_WORDS = listOf("camera", "photo", "picture", "pic", "selfie")
+    private val SELFIE_WORDS = listOf("selfie", "front")
+    private val PAGE_WORDS = mapOf(
+        "wifi" to listOf("wifi"),
+        "bluetooth" to listOf("bluetooth"),
+        "display" to listOf("display", "brightness", "screen"),
+        "sound" to listOf("sound", "sounds", "volume", "ringtone"),
+        "battery" to listOf("battery"),
+        "accessibility" to listOf("accessibility")
+    )
+
+    /** One of [words] was said as a word. */
+    private fun anyWord(words: List<String>, text: String): Boolean {
+        val said = text.split(Regex("[^\\p{L}\\p{N}]+")).toSet()
+        return words.any { it in said }
+    }
+
+    private fun message(action: QuickAction.Message, text: String): Verdict {
+        if (!wordsSaid(action.text, text)) return Verdict.Refused(TEXT_NOT_SAID, "text_not_said")
+        if (action.number != null) {
+            val number = normalNumber(action.number)
+            val digits = number.filter(Char::isDigit)
+            if (digits.length !in 3..15 || digits !in text.filter(Char::isDigit)) {
+                return Verdict.Refused(RECIPIENT_NOT_SAID, "number_not_said")
+            }
+            return Verdict.Allowed(QuickAction.Message(number, null, action.text))
+        }
+        val name = action.name ?: return Verdict.Refused(RECIPIENT_NOT_SAID, "nobody_to_text")
+        return if (wordsSaid(name, text)) Verdict.Allowed(QuickAction.Message(null, name, action.text))
+        else Verdict.Refused(RECIPIENT_NOT_SAID, "name_not_said")
+    }
+
+    /**
+     * What to be reminded of, and a time, both said. Unlike an alarm, a bare hour is
+     * not assumed to be the morning: "call mum at 6" is the next 6 o'clock to come.
+     */
+    private fun reminder(action: QuickAction.Reminder, text: String): Verdict {
+        if (!wordsSaid(action.text, text)) return Verdict.Refused(REMINDER_NOT_SAID, "text_not_said")
+        val numbers = TimeWords.numbers(text)
+        val hour12 = if (action.hour % 12 == 0) 12 else action.hour % 12
+        val hourSaid = action.hour in numbers || hour12 in numbers ||
+            (action.hour == 12 && "noon" in text) || (action.hour == 0 && "midnight" in text)
+        val minutesSaid = action.minutes == 0 || action.minutes in numbers ||
+            (action.minutes == 30 && Regex("\\bhalf\\b").containsMatchIn(text)) ||
+            (action.minutes in setOf(15, 45) && Regex("\\bquarter\\b").containsMatchIn(text))
+        if (!hourSaid || !minutesSaid) return Verdict.Refused(REMINDER_NOT_SAID, "time_not_said")
+        val morning = Regex("\\d\\s*(am|a\\.m\\.?)(?![\\p{L}])|\\bmorning\\b").containsMatchIn(text)
+        val evening = Regex("\\d\\s*(pm|p\\.m\\.?)(?![\\p{L}])|\\b(evening|afternoon|tonight|night)\\b").containsMatchIn(text)
+        val saidTwentyFour = action.hour in 13..23 && action.hour in numbers || action.hour == 0 && "midnight" in text
+        val bare = !morning && !evening && !saidTwentyFour && action.hour != 0
+        val hour = when {
+            evening && action.hour in 1..11 -> action.hour + 12
+            morning && action.hour in 13..23 -> action.hour - 12
+            bare -> hour12 % 12
+            else -> action.hour
+        }
+        val tomorrow = Regex("\\btomorrow\\b").containsMatchIn(text)
+        return Verdict.Allowed(QuickAction.Reminder(action.text, hour, action.minutes, bareHour = bare, tomorrow = tomorrow))
     }
 
     private fun alarm(action: QuickAction.Alarm, text: String): Verdict {
@@ -108,12 +203,30 @@ object QuickGuard {
 
     private val FILLER = setOf("the", "a", "an", "my", "app", "to", "of", "in", "at", "for", "me", "please")
 
-    /** Every meaningful word the model wrote down appears in what the user said. */
+    /**
+     * Every meaningful word the model wrote down appears in what the user said. Both
+     * sides are read with contractions spelled out, since the model writes "I am on my
+     * way" for "I'm on my way".
+     */
     fun wordsSaid(given: String, text: String): Boolean {
-        val words = given.lowercase(Locale.US).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() && it !in FILLER }
+        val words = expand(given).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() && it !in FILLER }
         if (words.isEmpty()) return false
-        val said = text.split(Regex("[^\\p{L}\\p{N}]+")).toSet()
+        val said = expand(text).split(Regex("[^\\p{L}\\p{N}]+")).toSet()
         return words.all { it in said }
+    }
+
+    private val CONTRACTIONS = listOf(
+        "can't" to "can not", "cannot" to "can not", "won't" to "will not", "n't" to " not", "'m" to " am",
+        "'re" to " are", "'ll" to " will", "'ve" to " have", "'d" to " would", "let's" to "let us",
+        "it's" to "it is", "that's" to "that is", "what's" to "what is", "there's" to "there is",
+        "he's" to "he is", "she's" to "she is", "who's" to "who is", "where's" to "where is"
+    )
+
+    /** Lower case, curly apostrophes straightened, contractions spelled out. */
+    fun expand(text: String): String {
+        var out = text.lowercase(Locale.US).replace('\u2019', '\'')
+        for ((short, long) in CONTRACTIONS) out = out.replace(short, long)
+        return out
     }
 }
 

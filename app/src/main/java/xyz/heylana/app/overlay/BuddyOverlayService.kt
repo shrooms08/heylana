@@ -59,6 +59,7 @@ import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.skills.SkillStore
 import xyz.heylana.app.actions.QuickAction
+import xyz.heylana.app.actions.QuickActions
 import xyz.heylana.app.actions.QuickActionRunner
 import xyz.heylana.app.actions.QuickGuard
 import xyz.heylana.app.actions.QuickLog
@@ -453,6 +454,17 @@ class BuddyOverlayService : Service() {
         // the app lay itself out again before reading the screen.
         view.hideKeyboard()
 
+        // "Turn it off" straight after the flashlight went on can only mean the torch:
+        // done here, with nothing asked of the model.
+        val followUp = QuickActions.flashlightFollowUp(question)
+        if (followUp != null && lastQuick?.let { it.intent == QuickAction.FLASHLIGHT && System.currentTimeMillis() - it.at < FOLLOW_UP_MS } == true) {
+            HeylanaLog.state("action: follow-up intent=flashlight state=${if (followUp.on) "on" else "off"} model=not_asked")
+            exchange.over()
+            view.endVoiceExchange()
+            handleQuick(followUp, question)
+            return
+        }
+
         // Small talk, a joke, general knowledge: decided from the words alone, so the
         // screen is never read and no listing goes with the question.
         val chat = Routing.chatRoute(question)
@@ -622,6 +634,10 @@ class BuddyOverlayService : Service() {
      * in the user's own words; then the phone's own app does it, in front, and
      * Heylana says one short line. Heylana itself taps nothing.
      */
+    /** The last action that fired, so "turn it off" can follow the flashlight. */
+    private data class LastQuick(val intent: String, val at: Long)
+    private var lastQuick: LastQuick? = null
+
     private fun handleQuick(action: QuickAction, question: String, aloud: Boolean = true) {
         val outcome = when (val verdict = QuickGuard.check(action, question)) {
             is QuickGuard.Verdict.Refused -> {
@@ -633,6 +649,7 @@ class BuddyOverlayService : Service() {
                 quickRunner.run(verdict.action)
             }
         }
+        if (outcome.fired) lastQuick = LastQuick(action.intent, System.currentTimeMillis())
         when {
             outcome.fired -> afterQuickAction(outcome.line, aloud)
             !aloud -> overlayView?.showNotice(outcome.line)
@@ -1307,6 +1324,9 @@ class BuddyOverlayService : Service() {
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
+
+        /** How long "turn it off" still means the flashlight that was just switched on. */
+        private const val FOLLOW_UP_MS = 5 * 60 * 1_000L
 
         /** Long enough for the keyboard to finish leaving and the app to re-layout. */
         private const val KEYBOARD_SETTLE_MS = 350L

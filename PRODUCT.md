@@ -9,9 +9,13 @@ World Cup, and it answers like a friend in a sentence or two — without reading
 screen, since none of that needs it.
 
 It can also get the phone's own apps to do simple things you ask for: set an alarm
-or a timer, open an app or a website, show a place on the map, or put a number in
-the dialer. Every part of the request has to be in your own words, the phone's own
-app does it in front of you, and Heylana never places a call.
+or a timer, open an app or a website, show a place on the map, put a number in the
+dialer, search YouTube or the web, play something on Spotify, pause or skip the music,
+write a text for you to send, fill in a calendar reminder for you to save, switch the
+flashlight, open the camera or a selfie, and open Wi-Fi, Bluetooth, display, sound,
+battery or accessibility settings. Every part of the request has to be in your own
+words, the phone's own app does it in front of you, and Heylana never places a call,
+sends a message or saves an event — you do.
 
 ## Who it is for
 
@@ -156,6 +160,14 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 - **Calling a contact by name opens an empty dialer.** Heylana has no access to
   contacts, so it says who to search for; a number said aloud is filled in.
+- **Spotify has to be installed** for "play … on Spotify"; without it Heylana says so.
+  Whether it starts playing at once or shows results is up to Spotify.
+- **A selfie asks for the front camera**, but the camera app decides; some open on the back
+  camera.
+- **Texting a name opens the contact picker** with the message written, since Heylana has
+  no access to contacts. A number goes straight to the conversation.
+- **Pause needs something playing.** The media keys go to whatever app is playing; with
+  nothing playing Heylana says so.
 - **Directions show the place, not turn-by-turn.** The map app opens on what you
   named, and you start navigation there.
 

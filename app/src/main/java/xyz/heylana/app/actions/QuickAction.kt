@@ -2,7 +2,9 @@ package xyz.heylana.app.actions
 
 /**
  * Something the phone's own apps can do, asked for in plain words: an alarm, a
- * timer, an app, a web page, directions, the dialer.
+ * timer, an app, a web page, directions, the dialer, a YouTube or web search, a song
+ * on Spotify, the music's play and pause, a text to check and send, a reminder, the
+ * flashlight, the camera, or a Settings page.
  *
  * Heylana never taps. It hands the phone a standard Android intent and the Clock,
  * the launcher, the browser, Maps or the dialer does the rest, in front of the
@@ -37,8 +39,73 @@ sealed interface QuickAction {
         override val intent get() = DIAL
     }
 
+    /** A YouTube search, in the app or else on the web. */
+    data class YoutubeSearch(val query: String) : QuickAction {
+        override val intent get() = YOUTUBE_SEARCH
+    }
+
+    /** A song, an artist, a playlist or a genre, played by Spotify. */
+    data class SpotifyPlay(val query: String) : QuickAction {
+        override val intent get() = SPOTIFY_PLAY
+    }
+
+    /** play, pause, next or previous, to whatever is playing. */
+    data class MediaControl(val command: String) : QuickAction {
+        override val intent get() = MEDIA_CONTROL
+    }
+
+    /** A text message put in the messaging app, never sent by Heylana. A number or a name, never both empty. */
+    data class Message(val number: String?, val name: String?, val text: String) : QuickAction {
+        override val intent get() = MESSAGE
+    }
+
+    /**
+     * A calendar event to save. [bareHour] is set by the guard when no half of the day
+     * was said ("at 6"), [tomorrow] when "tomorrow" was; the start is worked out from both.
+     */
+    data class Reminder(
+        val text: String,
+        val hour: Int,
+        val minutes: Int,
+        val bareHour: Boolean = false,
+        val tomorrow: Boolean = false
+    ) : QuickAction {
+        override val intent get() = REMINDER
+    }
+
+    data class Flashlight(val on: Boolean) : QuickAction {
+        override val intent get() = FLASHLIGHT
+    }
+
+    /** The camera app; [selfie] asks it for the front camera. */
+    data class Camera(val selfie: Boolean) : QuickAction {
+        override val intent get() = if (selfie) SELFIE else CAMERA
+    }
+
+    data class WebSearch(val query: String) : QuickAction {
+        override val intent get() = WEB_SEARCH
+    }
+
+    /** One of [SETTINGS_PAGES]. */
+    data class OpenSettings(val page: String) : QuickAction {
+        override val intent get() = SETTINGS
+    }
+
     companion object {
         const val TYPE = "intent"
+        const val YOUTUBE_SEARCH = "youtube_search"
+        const val SPOTIFY_PLAY = "spotify_play"
+        const val MEDIA_CONTROL = "media_control"
+        const val MESSAGE = "message"
+        const val REMINDER = "reminder"
+        const val FLASHLIGHT = "flashlight"
+        const val CAMERA = "camera"
+        const val SELFIE = "selfie"
+        const val WEB_SEARCH = "web_search"
+        const val SETTINGS = "settings"
+
+        val MEDIA_COMMANDS = listOf("play", "pause", "next", "previous")
+        val SETTINGS_PAGES = listOf("wifi", "bluetooth", "display", "sound", "battery", "accessibility")
         const val ALARM = "alarm"
         const val TIMER = "timer"
         const val OPEN_APP = "open_app"
@@ -74,6 +141,31 @@ sealed interface QuickAction {
                     val name = text("name")
                     if (number == null && name == null) null else Dial(number, name)
                 }
+                YOUTUBE_SEARCH -> text("query")?.let { YoutubeSearch(it) }
+                SPOTIFY_PLAY -> text("query")?.let { SpotifyPlay(it) }
+                MEDIA_CONTROL -> text("command")?.lowercase()?.takeIf { it in MEDIA_COMMANDS }?.let { MediaControl(it) }
+                MESSAGE -> {
+                    val number = text("number")
+                    val name = text("name")
+                    val body = text("text") ?: return null
+                    if (number == null && name == null) null else Message(number, name, body)
+                }
+                REMINDER -> {
+                    val body = text("text") ?: return null
+                    val hour = int("hour")?.takeIf { it in 0..23 } ?: return null
+                    val minutes = (if (fields["minutes"] == null) 0 else int("minutes"))?.takeIf { it in 0..59 } ?: return null
+                    Reminder(body, hour, minutes)
+                }
+                FLASHLIGHT -> when (text("state")?.lowercase()) {
+                    "on" -> Flashlight(true)
+                    "off" -> Flashlight(false)
+                    else -> null
+                }
+                CAMERA -> Camera(selfie = false)
+                SELFIE -> Camera(selfie = true)
+                WEB_SEARCH -> text("query")?.let { WebSearch(it) }
+                SETTINGS -> text("page")?.lowercase()?.replace("-", "")?.replace(" ", "")?.takeIf { it in SETTINGS_PAGES }
+                    ?.let { OpenSettings(it) }
                 else -> null
             }
         }
@@ -106,20 +198,56 @@ object QuickActions {
     private val DIAL = Regex(LEAD + "(call|dial|ring|phone)\\s+\\S", OPTIONS)
     private val NAVIGATE = Regex("\\b(directions|navigate|take me|route|drive me|walk me) to\\b|\\bhow do i get to\\b", OPTIONS)
 
+    private val YOUTUBE = Regex("\\byoutube\\b|\\b(find|search|look up|show me|watch)\\b[^.?!]*\\bvideos?\\b", OPTIONS)
+    private val PLAY = Regex(LEAD + "(play|put on)\\s+\\S", OPTIONS)
+    private val MEDIA = Regex(
+        LEAD + "(pause|resume|unpause|skip)\\b|\\b(pause|resume|stop|skip)\\b[^.?!]*\\b(music|song|track|audio|podcast|playback)\\b|" +
+            LEAD + "(next|previous|last)\\s+(song|track)\\b|\\b(go back|back) a (song|track)\\b",
+        OPTIONS
+    )
+    private val MESSAGE = Regex(LEAD + "(text|message|sms|whatsapp)\\s+\\S|\\bsend (a |an )?(text|message|sms)\\b", OPTIONS)
+    private val REMINDER = Regex("\\bremind me\\b|\\b(set|add|create|make)\\b[^.?!]*\\breminder\\b", OPTIONS)
+    private val FLASHLIGHT = Regex("\\b(flash ?light|torch)\\b", OPTIONS)
+    private val CAMERA = Regex(LEAD + "(open (the )?camera|take (a |me a )?(selfie|photo|picture|pic))\\b|\\bselfie\\b", OPTIONS)
+    private val WEB = Regex(LEAD + "(search|google|look up)\\s+\\S", OPTIONS)
+    private val SETTINGS = Regex("\\b(wi-?fi|wi fi|bluetooth|display|sound|battery|accessibility)\\s+settings?\\b", OPTIONS)
+
+    /** "turn it off" straight after the flashlight was switched: the pronoun can only mean the torch. */
+    private val PRONOUN_SWITCH = Regex("^\\s*(please\\s+)?(turn|switch|put)\\s+(it|that|the light)\\s+(on|off)\\b|^\\s*(please\\s+)?(turn|switch)\\s+(on|off)\\s+(it|that)\\b", OPTIONS)
+
+    /** The follow-up [PRONOUN_SWITCH] allows, or null. */
+    fun flashlightFollowUp(question: String): QuickAction.Flashlight? {
+        val match = PRONOUN_SWITCH.find(question) ?: return null
+        val on = Regex("\\bon\\b", OPTIONS).containsMatchIn(match.value)
+        return QuickAction.Flashlight(on)
+    }
+
     fun isQuickAction(question: String): Boolean {
         if (NAVIGATE.containsMatchIn(question)) return true
         if (ASKING_HOW.containsMatchIn(question)) return false
         return ALARM.containsMatchIn(question) || TIMER.containsMatchIn(question) ||
-            OPEN.containsMatchIn(question) || DIAL.containsMatchIn(question)
+            OPEN.containsMatchIn(question) || DIAL.containsMatchIn(question) ||
+            YOUTUBE.containsMatchIn(question) || PLAY.containsMatchIn(question) || MEDIA.containsMatchIn(question) ||
+            MESSAGE.containsMatchIn(question) || REMINDER.containsMatchIn(question) ||
+            FLASHLIGHT.containsMatchIn(question) || CAMERA.containsMatchIn(question) ||
+            WEB.containsMatchIn(question) || SETTINGS.containsMatchIn(question)
     }
 
+    /** A text message is not a Solana send, though "send a text" has the word in it. */
+    fun isMessage(question: String): Boolean = !ASKING_HOW.containsMatchIn(question) && MESSAGE.containsMatchIn(question)
+
     const val RULES: String =
-        "Quick actions: only if the user asks you to set an alarm or a timer, open an app or a website, get " +
-            "directions, or call someone, add \"action\" with type \"intent\" and one of: " +
+        "Quick actions: only if the user asks the phone to do something, add \"action\" with type \"intent\" and one of: " +
             "{\"intent\":\"alarm\",\"hour\":0-23,\"minutes\":0-59,\"message\":\"...\"|null}, " +
             "{\"intent\":\"timer\",\"seconds\":n}, {\"intent\":\"open_app\",\"app\":\"name as said\"}, " +
             "{\"intent\":\"open_url\",\"url\":\"https://...\"}, {\"intent\":\"navigate\",\"query\":\"place as said\"}, " +
-            "{\"intent\":\"dial\",\"number\":\"digits as said\"|null,\"name\":\"contact as said\"|null}. " +
+            "{\"intent\":\"dial\",\"number\":\"digits as said\"|null,\"name\":\"contact as said\"|null}, " +
+            "{\"intent\":\"youtube_search\"|\"spotify_play\"|\"web_search\",\"query\":\"as said\"}, " +
+            "{\"intent\":\"media_control\",\"command\":\"play|pause|next|previous\"}, " +
+            "{\"intent\":\"message\",\"number\"|\"name\":\"as said\",\"text\":\"as said\"}, " +
+            "{\"intent\":\"reminder\",\"text\":\"as said\",\"hour\":0-23,\"minutes\":0-59}, " +
+            "{\"intent\":\"flashlight\",\"state\":\"on|off\"}, {\"intent\":\"camera\"|\"selfie\"}, " +
+            "{\"intent\":\"settings\",\"page\":\"wifi|bluetooth|display|sound|battery|accessibility\"}. " +
             "A bare hour is the morning: \"7 tomorrow\" is hour 7. Use only what the user said, never the screen. " +
             "Keep say empty; the phone's own app does it and you never tap."
 }
@@ -137,5 +265,14 @@ object QuickLog {
         is QuickAction.OpenUrl -> "host=${QuickText.hostOf(action.url)}"
         is QuickAction.Navigate -> "query_chars=${action.query.length}"
         is QuickAction.Dial -> "digits=${action.number?.count(Char::isDigit) ?: 0} name=${action.name != null}"
+        is QuickAction.YoutubeSearch -> "query_chars=${action.query.length}"
+        is QuickAction.SpotifyPlay -> "query_chars=${action.query.length}"
+        is QuickAction.MediaControl -> "command=${action.command}"
+        is QuickAction.Message -> "digits=${action.number?.count(Char::isDigit) ?: 0} name=${action.name != null} text_chars=${action.text.length}"
+        is QuickAction.Reminder -> "hour=${action.hour} minutes=${action.minutes} bare_hour=${action.bareHour} tomorrow=${action.tomorrow} text_chars=${action.text.length}"
+        is QuickAction.Flashlight -> "state=${if (action.on) "on" else "off"}"
+        is QuickAction.Camera -> "selfie=${action.selfie}"
+        is QuickAction.WebSearch -> "query_chars=${action.query.length}"
+        is QuickAction.OpenSettings -> "page=${action.page}"
     }
 }

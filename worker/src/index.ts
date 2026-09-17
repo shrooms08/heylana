@@ -386,7 +386,14 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       : {}),
     // The kind of action and its times only: names, numbers, places and pages stay out of the log.
     ...(actionIntent
-      ? { quick_action: quickAction ? { intent: quickAction.intent, hour: quickAction.hour, minutes: quickAction.minutes, seconds: quickAction.seconds } : null }
+      ? {
+        quick_action: quickAction
+          ? {
+              intent: quickAction.intent, hour: quickAction.hour, minutes: quickAction.minutes, seconds: quickAction.seconds,
+              command: quickAction.command, state: quickAction.state, page: quickAction.page,
+            }
+          : null,
+      }
       : {}),
     ...(toolTimeout ? { tool_timeout: true } : {}),
     status,

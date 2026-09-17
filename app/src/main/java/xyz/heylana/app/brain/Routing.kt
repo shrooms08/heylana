@@ -70,6 +70,8 @@ object Routing {
         val why = when {
             SigningScan.looksLikeSigning(packageName, screenText, ownWallet) -> Why.SIGNING_SCREEN
             isExplainQuestion(question) -> Why.EXPLAIN_QUESTION
+            // "Send a text to Ada" is a message, not a Solana send.
+            QuickActions.isMessage(question) -> Why.QUICK_ACTION
             isSendQuestion(question) -> Why.SEND_QUESTION
             QuickActions.isQuickAction(question) -> Why.QUICK_ACTION
             app?.kind == SolanaApps.Kind.WALLET -> Why.WALLET_SCREEN

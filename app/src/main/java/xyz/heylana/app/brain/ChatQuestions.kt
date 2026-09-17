@@ -53,7 +53,7 @@ object ChatQuestions {
     fun isChat(question: String): Boolean {
         val q = question.trim()
         if (q.isEmpty()) return false
-        if (Routing.isSendQuestion(q) || Routing.isExplainQuestion(q)) return false
+        if (Routing.isSendQuestion(q) || Routing.isExplainQuestion(q) || QuickActions.isMessage(q)) return false
         if (QuickActions.isQuickAction(q)) return false
         if (SolanaCore.mentionsSolana(q)) return false
         if (SCREEN.containsMatchIn(q)) return false

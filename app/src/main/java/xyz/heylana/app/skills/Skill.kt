@@ -8,7 +8,11 @@ package xyz.heylana.app.skills
 data class Skill(
     val id: String,
     val name: String,
-    /** The one app this skill is for. It loads only while that app is in front. */
+    /**
+     * The one app this skill is for; it loads only while that app is in front. Or
+     * [SkillFile.ANY_APP], for a skill about something that turns up in any app (x402
+     * payments): that one loads only when its trigger words are in the question.
+     */
     val packageName: String,
     val version: String,
     val author: String,
@@ -25,6 +29,8 @@ data class Skill(
     val builtIn: Boolean
 ) {
     val tokens: Int get() = SkillFile.tokens(body)
+
+    val forAnyApp: Boolean get() = packageName == SkillFile.ANY_APP
 }
 
 /**
@@ -51,6 +57,9 @@ data class Skill(
 object SkillFile {
 
     const val MAX_BODY_TOKENS = 400
+
+    /** `package: any` — a skill for no one app, picked by its triggers alone. */
+    const val ANY_APP = "any"
 
     /** Big enough for any honest skill; a download larger than this is refused unread. */
     const val MAX_FILE_BYTES = 16_000
@@ -92,13 +101,17 @@ object SkillFile {
         val id = fields.getValue("id")
         val packageName = fields.getValue("package")
         if (!ID.matches(id)) return Parsed.Bad("bad_id")
-        if (!PACKAGE.matches(packageName)) return Parsed.Bad("bad_package")
+        if (packageName != ANY_APP && !PACKAGE.matches(packageName)) return Parsed.Bad("bad_package")
         if (REQUIRED.any { fields.getValue(it).length > MAX_LINE }) return Parsed.Bad("field_too_long")
 
         val clean = SkillSanitiser.clean(lines.subList(end + 1, lines.size).joinToString("\n"))
         val body = clean.text.trim()
         if (body.isEmpty()) return Parsed.Bad("empty_body")
         if (tokens(body) > MAX_BODY_TOKENS) return Parsed.Bad("body_too_long")
+
+        val triggers = fields["triggers"].orEmpty().split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() }
+        // A skill for any app with no trigger words would never load, or load everywhere.
+        if (packageName == ANY_APP && triggers.isEmpty()) return Parsed.Bad("any_app_needs_triggers")
 
         val skill = Skill(
             id = id,
@@ -108,7 +121,7 @@ object SkillFile {
             author = fields.getValue("author"),
             summary = fields.getValue("summary"),
             privacy = fields.getValue("privacy"),
-            triggers = fields["triggers"].orEmpty().split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() },
+            triggers = triggers,
             body = body,
             builtIn = builtIn
         )

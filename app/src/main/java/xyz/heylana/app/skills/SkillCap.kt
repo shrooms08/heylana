@@ -66,17 +66,18 @@ object SkillLoader {
 
     /**
      * The active skill for the app in front. When two are for the same app, the one
-     * whose trigger words are in the question wins; otherwise the app's main skill
-     * (the one with no triggers); otherwise the first.
+     * whose trigger words are in the question wins; next, a skill for any app whose
+     * trigger words are ("what is this 402 payment" in a browser); otherwise the app's
+     * main skill (the one with no triggers); otherwise the first.
      */
     fun pick(packageName: String?, question: String, active: List<Skill>): Skill? {
-        if (packageName.isNullOrEmpty()) return null
-        val forApp = active.filter { it.packageName == packageName }
-        if (forApp.size <= 1) return forApp.firstOrNull()
         val asked = question.lowercase()
-        return forApp.firstOrNull { skill -> skill.triggers.any { word(it).containsMatchIn(asked) } }
-            ?: forApp.firstOrNull { it.triggers.isEmpty() }
-            ?: forApp.first()
+        fun triggered(skill: Skill) = skill.triggers.any { word(it).containsMatchIn(asked) }
+        val forApp = if (packageName.isNullOrEmpty()) emptyList() else active.filter { it.packageName == packageName }
+        if (forApp.size > 1) forApp.firstOrNull(::triggered)?.let { return it }
+        active.firstOrNull { it.forAnyApp && triggered(it) }?.let { return it }
+        if (forApp.size <= 1) return forApp.firstOrNull()
+        return forApp.firstOrNull { it.triggers.isEmpty() } ?: forApp.first()
     }
 
     private fun word(trigger: String) = Regex("(?<![\\p{L}\\p{N}])${Regex.escape(trigger)}(?![\\p{L}\\p{N}])")

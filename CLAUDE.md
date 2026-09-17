@@ -613,6 +613,16 @@ switched-on skills in list order are active; the rest stay on but greyed, and an
 off skill cannot come on while every place is taken. Everything is on until the
 user switches it off, a new install included.
 
+**A skill for any app.** `package: any` is for something that turns up in every app
+rather than in one — x402 payment prompts, in a browser, a dApp or an agent. Such a skill
+must have trigger words (`any_app_needs_triggers` otherwise) and loads only when they are
+in the question: after a same-app skill whose own triggers match, before the app's main
+skill. Built in: `x402` (what a 402 payment request is; check amount, token, network and
+recipient; scam patterns), `youtube` (tabs and search checked on the Seeker, watch page
+unverified) and `spotify` (not installed on the test Seeker: all unverified). They come
+after the five Solana skills in `BUILT_IN_ORDER`, so on Free the first three places stay
+the Wallet, Kamino and Seed Vault signing.
+
 **Built-ins are the files in `skills/`.** The build adds that folder to the APK's
 assets (`androidComponents` in `app/build.gradle.kts`), so the repo and the app
 cannot disagree. They can be switched off, never removed. Package names were

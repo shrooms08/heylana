@@ -40,8 +40,9 @@ A talk is a question that got an answer; a refused or failed one does not count.
 Plans follow the wallet; without one, the phone is a Free account with no welcome
 talks. Skills are reference notes for one app each — where things are, how common tasks
 go, what to watch out for — loaded only while that app is on screen, one at a time.
-Five are built in (Seed Vault Wallet, Kamino Earn, Seed Vault signing, Solana dApp
-Store, Jupiter); more install from a public list in Settings → Skills. The plan's
+Eight are built in (Seed Vault Wallet, Kamino Earn, Seed Vault signing, Solana dApp
+Store, Jupiter, YouTube, Spotify, and x402 payments — that one is for no single app and
+loads whenever you ask about a 402 payment request); more install from a public list in Settings → Skills. The plan's
 cap is how many can be active; the rest show greyed. A skill never acts for you:
 it cannot authorise a send, a sign or a tap, and anything in it that reads like an
 order is removed before it is stored.
@@ -155,7 +156,9 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 - **Built-in skills are partly unverified.** Jupiter's notes come from its public docs
   (the app was locked on the test phone), and some Wallet, Kamino, Seed Vault and dApp
-  Store labels are marked "(unverified)" until walked on a Seeker.
+  Store labels are marked "(unverified)" until walked on a Seeker. Spotify's notes are all
+  from its help pages (it was not installed on the test phone), and YouTube's watch page
+  labels are unchecked.
 - **The skills index must be public.** It lives in `skills-index/` in this repo for
   now; Get more works once that folder is copied to a public repository at the
   address the app is built with.

@@ -41,6 +41,8 @@ The orbs the buddy turns into while it listens, thinks, works and speaks are a p
 of [thinking-orbs](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/thinking-orbs)
 by Jakub Antalik (MIT licence). The glow that laps the glass while it thinks, listens
 and speaks is a port of his [border-beam](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/border-beam)
+(MIT licence), and the way the box grows out of the disc like liquid follows his
+[liquid-gooey](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/liquid-gooey)
 (MIT licence).
 
 ## Privacy promises

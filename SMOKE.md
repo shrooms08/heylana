@@ -1,54 +1,46 @@
-# Smoke test — clear glass lit from the top-left, readable smoke, purple streak
+# Smoke test — one flight home, rim beam, gooey merges
 
 For Minos, on the Seeker.
 
-**Live calls this test spends: 0.** Everything is on the debug states screen.
-
-References in `design/refs`: `heylana_purple_motion.gif` (the streak). The two still PNGs
-(`heylana_liquid_glass.png`, `heylana_liquid_glass_dark.png`) were not in the repo when
-this was built; `liquid_glass_render.py` renders the same scene, but with the old light
-sign (its rim is lit at the bottom-right; this build lights the top-left, as asked).
+**Live calls this test spends: 0.** Steps 1 and 2 are on the debug states screen; step 3
+starts the buddy and opens and closes the box without asking anything. (A tap on the disc
+opens the connection to Heylana's proxy, but sends no question.)
 
 ## 0. Set up
 
 Install this build, run `./scripts/a11y.sh`. Heylana → Settings → scroll to the bottom →
-**Debug states**. **backdrop** flips the page between black and white.
+**Debug states**. **backdrop** flips black and white.
 
-## 1. Idle disc, black and white
+## 1. The beam, on the panel and the disc, black and white
 
-1. Tap **idle**. Over black: two dark clear discs, the rim brightest along the top and
-   top-left, fading to a faint shade at the bottom-right; a white mark at 70%; a soft
-   shadow below. No purple.
-2. **backdrop** (white): light grey smoked discs with the same top-lit rim and the shadow.
-   The white mark is faint (measured 1.19:1 against the face).
+1. Tap **beam thinking**. Expected: a soft aurora-coloured glow (violet into blue, teal,
+   orange) about a quarter of the rim long laps the box's rim and both discs' rims,
+   clockwise, once every 1.6 seconds, glowing a little past the edge. No purple streak
+   while it runs.
+2. Tap **beam speaking**. Expected: the same beam on the box and discs, its brightness
+   pulsing with a made-up voice.
+3. **backdrop**, and both again over white: the beam reads on white too.
+4. Tap **purple streak**: no beam, the streak drifts instead.
 
-## 2. Panel edges, black and white
+## 2. Gooey merges
 
-1. Tap **panel edges**. Over black: the top edge and top-left corner lit, the bottom and
-   bottom-right shaded, a 1px hairline, the top a touch lighter than the bottom. There
-   should be **no darker rectangle inside** the pane any more.
-2. **backdrop** (white): a light grey smoked pane with a shadow; white text with a soft
-   dark halo. Readable up close, but low contrast (measured 1.32:1).
+1. Tap **gooey open** (white backdrop is easiest to see). Expected: under the 80dp disc a
+   grey blob swells out of it — disc and blob one shape — and grows into the box, which
+   comes away from the disc, then the glass and the words fade in.
+2. Tap **gooey close**. After a moment the box draws back up into the disc as one blob and
+   disappears into it.
+3. Tap **strip to HUD**. Expected: the box pinches up into the one-line strip, a droplet
+   drawn back into it; then the strip grows into the task HUD and step 2, next and done
+   come out of its bottom edge.
 
-## 3. Send strip, black and white
+## 3. One movement home, both sides
 
-1. Tap **send strip**. The words, then **cancel** (black chip, white text) and **confirm**
-   (white chip, dark text, a thin dark outline). Over white the confirm chip keeps its
-   shape by that outline.
+1. Back out of Settings, **Start buddy**. Drag the disc to the right edge and let go:
+   it snaps to the edge in one movement.
+2. Tap the disc: it flies to the top, the box grows out of it. Tap outside the box: the box
+   draws back into the disc and **the disc flies straight to its dock in one movement** —
+   no second nudge sideways when it arrives.
+3. Drag the disc to the left edge and do the same.
 
-## 4. Purple streak, black and white
-
-1. Tap **purple streak**. Expected: the box and both discs show a purple band of light
-   behind the glass, slanting from lower-left to upper-right, sliding from the top-left
-   corner to the bottom-right and looping every 6 seconds, with a fainter band trailing
-   behind it. It brightens and bends where it crosses the rim. On the discs it is thinner
-   and weaker. The text stays readable over it, and most of the pane stays clear at any
-   moment.
-2. **backdrop** (white): the same, over the light smoke.
-3. Compare with `heylana_purple_motion.gif`: same direction, same drift, same trailing
-   band.
-
-## 5. Darker glass (optional)
-
-Tap **darker glass** on white over **panel edges**: the pane turns mid grey and the text
-is easier to read (measured 2.61:1). Tap again to turn it off.
+If you have Logcat: `adb logcat -s HeylanaState | grep flight:` shows `target`, `landed`
+and `settled` for every flight; the x and y must be the same on all three.

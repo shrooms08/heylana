@@ -175,6 +175,22 @@ works out its own. border-beam has no golden vectors (its ports were checked by 
 harness), so `BorderBeamTest` is a phase test plus the spec's stops. Debug states:
 "beam thinking", "beam speaking".
 
+**Shapes merge like goo.** `overlay/GooeyLayer` follows liquid-gooey (MIT): the merging
+shapes are drawn as plain grey blobs (`#8A8A8A` at 45%, so the goo reads over black and
+white) into one view whose RenderEffect is a 6dp blur followed by an alpha colour matrix
+with slope 18 and the library's intercept `0.5 − 18 × 5/12 = −7`, so touching shapes
+bridge and merge. Only the silhouette is filtered: while a merge runs the pane's glass
+(`GlassDrawable.hidden`) and the chips' glass step aside, and the words and the mark stay
+crisp in their own views. Merges, all on the shared spring (`SPRING_STIFFNESS`,
+`SPRING_DAMPING`): the box growing out of the disc as one blob and separating
+(`gooeyGrowFrom`, on open), drawing back into it before the disc flies home
+(`gooeyShrinkInto`), box to strip and strip to HUD (the body springs to the new height,
+measured up front, while a droplet pinches back in), and the step chip and next/done
+coming out of the HUD's bottom edge. API 31+; below it, the old scale and fade. Strip to
+HUD in the real overlay also changes window, so only the in-pane part is gooey there.
+`GooeySpecTest` holds the numbers to the library's. Debug states: "gooey open",
+"gooey close", "strip to HUD".
+
 The purple band, the aurora under the disc face, the chromatic rim, the motion RGB
 split and the purple bloom (design-2c) are still in the code behind
 `GlassSpec.TINTED_EXTRAS`, off.

@@ -513,6 +513,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             return
         }
         val from = shape
+        gooeyMorph(next)
         shape = next
         val glass = background as? GlassDrawable
 
@@ -751,8 +752,183 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
      * the HUD grows its controls rather than having them appear on top of it.
      */
     private fun growEdges() {
+        if (gooeyEmergeChips()) return
         growFromEdge(stepChip, pivot = 0f)
         for (pill in listOf(next, done)) growFromEdge(pill, pivot = 1f)
+    }
+
+    // -------------------------------------------------------- gooey merges
+
+    /**
+     * The silhouette layer behind this pane, set by whoever hosts it. While a merge runs
+     * the glass steps aside and the goo carries the shape; the words stay crisp here.
+     */
+    var gooey: GooeyLayer? = null
+
+    private var gooeyRun: SpringAnimation? = null
+    private val gooA = FloatArray(5)
+    private val gooB = FloatArray(5)
+    private val gooFrom = android.graphics.RectF()
+    private val gooTo = android.graphics.RectF()
+    private val gooDisc = android.graphics.RectF()
+    private val gooChip = android.graphics.RectF()
+
+    private val canGoo: Boolean
+        get() = gooey != null && GooeyLayer.available && !GlassSpec.TINTED_EXTRAS && isAttachedToWindow && width > 0
+
+    private fun setBlob(layer: GooeyLayer, index: Int, v: FloatArray) {
+        val blob = layer.blobs[index]
+        blob.rect.set(v[0], v[1], v[2], v[3])
+        blob.radius = v[4]
+        blob.visible = true
+    }
+
+    /** This pane's glass body in the layer: the view less its shadow room. */
+    private fun bodyIn(layer: GooeyLayer, out: android.graphics.RectF) {
+        layer.rectOf(this, out)
+        out.inset(shadowPad.toFloat(), shadowPad.toFloat())
+    }
+
+    /** The visible disc in the layer: its view less the bloom room around it. */
+    private fun discIn(layer: GooeyLayer, disc: View, out: android.graphics.RectF) {
+        layer.rectOf(disc, out)
+        val visible = out.width() / (1f + 2f * HeylanaTokens.DISC_BLEED_RATIO)
+        out.inset((out.width() - visible) / 2f, (out.height() - visible) / 2f)
+    }
+
+    private fun contentAlpha(value: Float) {
+        for (i in 0 until childCount) getChildAt(i).alpha = value
+    }
+
+    private fun panelRadius() = HeylanaTokens.dp(context, GlassSpec.PANEL.radiusDp)
+
+    /**
+     * The box grows out of the disc as one blob, then separates. Returns false where
+     * there is no goo (below API 31), so the caller does its plain scale instead.
+     */
+    fun gooeyGrowFrom(disc: View, onDone: () -> Unit = {}): Boolean {
+        val layer = gooey ?: return false
+        if (!canGoo) return false
+        gooeyRun?.cancel()
+        layer.clear()
+        discIn(layer, disc, gooDisc)
+        bodyIn(layer, gooTo)
+        gooA[0] = gooDisc.left; gooA[1] = gooDisc.top; gooA[2] = gooDisc.right; gooA[3] = gooDisc.bottom
+        gooA[4] = gooDisc.width() / 2f
+        setBlob(layer, 0, gooA)
+        (background as? GlassDrawable)?.hidden = true
+        contentAlpha(0f)
+        gooeyRun = layer.spring({ t ->
+            GooeySpec.growFromDisc(gooDisc, gooTo, panelRadius(), t, gooB)
+            setBlob(layer, 1, gooB)
+            contentAlpha(((t - 0.6f) / 0.4f).coerceIn(0f, 1f))
+        }) {
+            (background as? GlassDrawable)?.hidden = false
+            contentAlpha(1f)
+            layer.fadeAway()
+            onDone()
+        }
+        return true
+    }
+
+    /** After a merge that ended with the pane gone: the glass and the words are put back for next time. */
+    fun gooeyReset() {
+        (background as? GlassDrawable)?.hidden = false
+        contentAlpha(1f)
+    }
+
+    /** The box draws back into the disc as one blob. False where there is no goo. */
+    fun gooeyShrinkInto(disc: View, onDone: () -> Unit): Boolean {
+        val layer = gooey ?: return false
+        if (!canGoo) return false
+        gooeyRun?.cancel()
+        layer.clear()
+        discIn(layer, disc, gooDisc)
+        bodyIn(layer, gooTo)
+        gooA[0] = gooDisc.left; gooA[1] = gooDisc.top; gooA[2] = gooDisc.right; gooA[3] = gooDisc.bottom
+        gooA[4] = gooDisc.width() / 2f
+        setBlob(layer, 0, gooA)
+        (background as? GlassDrawable)?.hidden = true
+        gooeyRun = layer.spring({ t ->
+            GooeySpec.growFromDisc(gooDisc, gooTo, panelRadius(), 1f - t, gooB)
+            setBlob(layer, 1, gooB)
+            contentAlpha((1f - t / 0.4f).coerceIn(0f, 1f))
+        }) {
+            layer.blobs[1].visible = false
+            layer.fadeAway()
+            onDone()
+        }
+        return true
+    }
+
+    /**
+     * Box to strip, strip to HUD: the body springs to its new height and a droplet left
+     * at the old bottom pinches back into it. The target height is measured up front.
+     */
+    private fun gooeyMorph(next: Shape) {
+        val layer = gooey ?: return
+        if (!canGoo || visibility != View.VISIBLE) return
+        gooeyRun?.cancel()
+        layer.clear()
+        bodyIn(layer, gooFrom)
+        val targetHeight = measuredHeightFor(next) - 2 * shadowPad
+        gooTo.set(gooFrom.left, gooFrom.top, gooFrom.right, gooFrom.top + targetHeight)
+        (background as? GlassDrawable)?.hidden = true
+        gooeyRun = layer.spring({ t ->
+            GooeySpec.pinch(gooFrom, gooTo, panelRadius(), t, gooA, gooB)
+            setBlob(layer, 0, gooA)
+            setBlob(layer, 1, gooB)
+        }) {
+            (background as? GlassDrawable)?.hidden = false
+            layer.fadeAway()
+        }
+    }
+
+    /** How tall this pane will be in [next], measured with that shape's rows, then put back. */
+    private fun measuredHeightFor(next: Shape): Int {
+        val saved = listOf(inputRow.visibility, sessionRow.visibility, rail.visibility)
+        inputRow.visibility = if (next == Shape.BOX && !isVoiceMode) View.VISIBLE else View.GONE
+        sessionRow.visibility = if (next == Shape.HUD) View.VISIBLE else View.GONE
+        rail.visibility = if (next == Shape.HUD) View.VISIBLE else View.GONE
+        measure(MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+        val h = measuredHeight
+        inputRow.visibility = saved[0]
+        sessionRow.visibility = saved[1]
+        rail.visibility = saved[2]
+        return h
+    }
+
+    /** The step chip and next/done come out of the pane's bottom edge as droplets. */
+    private fun gooeyEmergeChips(): Boolean {
+        val layer = gooey ?: return false
+        if (!canGoo) return false
+        gooeyRun?.cancel()
+        layer.clear()
+        bodyIn(layer, gooFrom)
+        gooA[0] = gooFrom.left; gooA[1] = gooFrom.top; gooA[2] = gooFrom.right; gooA[3] = gooFrom.bottom
+        gooA[4] = panelRadius()
+        setBlob(layer, 0, gooA)
+        val chips = listOf(stepChip, next, done)
+        val rects = chips.map { chip -> android.graphics.RectF().also { layer.rectOf(chip, it) } }
+        chips.forEach { chip ->
+            (chip.background as? GlassDrawable)?.hidden = true
+            chip.alpha = 0f
+        }
+        val edge = gooFrom.bottom
+        gooeyRun = layer.spring({ t ->
+            rects.forEachIndexed { i, rect ->
+                GooeySpec.emerge(edge, rect, rect.height() / 2f, t, gooB)
+                setBlob(layer, i + 1, gooB)
+            }
+            chips.forEach { it.alpha = ((t - 0.5f) / 0.5f).coerceIn(0f, 1f) }
+        }) {
+            chips.forEach { chip ->
+                (chip.background as? GlassDrawable)?.hidden = false
+                chip.alpha = 1f
+            }
+            layer.fadeAway()
+        }
+        return true
     }
 
     private fun growFromEdge(view: View, pivot: Float) {

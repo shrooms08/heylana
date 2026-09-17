@@ -18,6 +18,9 @@ does and what leaves the phone, `CLAUDE.md` for how it is built, and
   listens and speaks is a port of the border geometry of
   [border-beam](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/border-beam)
   by Jakub Antalik, MIT licence (`app/src/main/assets/licenses/border-beam.txt`).
+- **Gooey merges** — the box growing out of the disc and pinching between shapes follows
+  the technique of [liquid-gooey](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/liquid-gooey)
+  by Jakub Antalik, MIT licence (`app/src/main/assets/licenses/liquid-gooey.txt`).
 - **Liquid glass reference shader** — `design/refs/liquid_glass.glsl`, from
   [Shadertoy WftXD2](https://www.shadertoy.com/view/WftXD2).
 - **The proxy** — shaped after [Farza's Clicky worker](https://github.com/farzaa/clicky) (MIT).

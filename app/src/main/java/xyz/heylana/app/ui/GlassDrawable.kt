@@ -270,8 +270,17 @@ class GlassDrawable(
     /** How much padding a view needs so this drawable's shadow is not clipped. */
     fun shadowPadding(): Int = if (withShadow) shadowInset.toInt() else 0
 
+    /** While a gooey merge carries this surface's shape, the glass itself steps aside. */
+    var hidden: Boolean = false
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidateSelf()
+            }
+        }
+
     override fun draw(canvas: Canvas) {
-        if (bounds.isEmpty) return
+        if (bounds.isEmpty || hidden) return
         if (!built) build()
         if (GlassSpec.TINTED_EXTRAS) drawTinted(canvas) else drawClear(canvas)
     }

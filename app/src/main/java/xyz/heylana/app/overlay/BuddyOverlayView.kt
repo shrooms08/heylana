@@ -128,6 +128,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         dp(HeylanaTokens.GLASS_SHADOW_DP)).coerceAtLeast(0)
 
     private val sprite = BuddySpriteView(context)
+    private val gooey = GooeyLayer(context)
     private val capsule = VoiceCapsuleView(context)
 
     /**
@@ -233,6 +234,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         )
 
         addView(scrim, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        // The goo's silhouette sits under the glass and the words, over the dim.
+        addView(gooey, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        panel.gooey = gooey
         addView(content, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
 
         scrim.setOnClickListener { closePanel() }
@@ -745,6 +749,14 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * just under it out to full size, on the same spring as the flight.
      */
     private fun growBoxOutOfDisc() {
+        // The box grows out of the disc as one blob, then separates (API 31+).
+        if (GooeyLayer.available) {
+            panel.alpha = 1f
+            panel.scaleX = 1f
+            panel.scaleY = 1f
+            panel.post { if (panel.gooeyGrowFrom(sprite)) panel.sweepSheen() }
+            return
+        }
         panel.alpha = 0f
         panel.post {
             // Pivot at the top centre of the box, which is where the disc is.
@@ -933,9 +945,21 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             onPanelClosed?.invoke()
             return
         }
-        // The glass goes first, then the disc flies home over the bare app.
+        // The glass goes first — drawn back into the disc as one blob where there is goo,
+        // faded where there is not — then the disc flies home over the bare app.
         scrim.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
+        val shrinking = panel.gooeyShrinkInto(sprite) {
+            panel.alpha = 0f
+            panel.gooeyReset()
+            flyHome()
+        }
+        if (shrinking) return
         panel.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
+        flyHome()
+    }
+
+    /** The disc's flight back to its dock after the box has gone. */
+    private fun flyHome() {
         // The exact dock, worked out before take-off; the disc lands on it and stays.
         spriteLeft = dockedLeft(spriteLeft)
         spriteTop = dockedTop(spriteTop)

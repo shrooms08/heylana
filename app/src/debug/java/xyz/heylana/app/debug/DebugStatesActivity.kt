@@ -32,6 +32,8 @@ class DebugStatesActivity : Activity() {
     private lateinit var stage: FrameLayout
     private lateinit var sprite: DiscPair
     private lateinit var discRow: LinearLayout
+    private lateinit var openDisc: BuddySpriteView
+    private lateinit var gooey: xyz.heylana.app.overlay.GooeyLayer
     private lateinit var panel: ChatPanelView
     private lateinit var capsule: VoiceCapsuleView
     private lateinit var fakeHighlight: View
@@ -70,6 +72,7 @@ class DebugStatesActivity : Activity() {
         // Both sizes side by side, driven together: docked (64dp) and open (80dp).
         val docked = BuddySpriteView(this).apply { discDp = HeylanaTokens.DISC_DP }
         val open = BuddySpriteView(this).apply { discDp = HeylanaTokens.DISC_OPEN_DP }
+        openDisc = open
         sprite = DiscPair(docked, open)
         discRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -101,10 +104,15 @@ class DebugStatesActivity : Activity() {
             }
         )
 
+        // The goo's silhouette, under the panel and the discs, as in the overlay.
+        gooey = xyz.heylana.app.overlay.GooeyLayer(this)
+        stage.addView(gooey, 0, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+
         panel = ChatPanelView(this).apply {
             visibility = View.GONE
             applyGlass(blurBehind = false)
         }
+        panel.gooey = gooey
         stage.addView(
             panel,
             FrameLayout.LayoutParams(
@@ -190,6 +198,9 @@ class DebugStatesActivity : Activity() {
         Triple("send", "send strip", ::sendStrip),
         Triple("streak", "purple streak", ::purpleStreak),
         Triple("beam", "beam thinking", ::beamThinking),
+        Triple("gooey-open", "gooey open", ::gooeyOpen),
+        Triple("gooey-close", "gooey close", ::gooeyClose),
+        Triple("gooey-hud", "strip to HUD", ::gooeyStripToHud),
         Triple("beam-speaking", "beam speaking", ::beamSpeaking),
         Triple("tapped", "tapped", ::tapped),
         Triple("typed", "typed answer", ::typedAnswer),
@@ -335,6 +346,41 @@ class DebugStatesActivity : Activity() {
             sprite.playbackLevel = level
             panel.setBeam(ChatPanelView.Beam.SPEAKING, level)
         }
+    }
+
+    /** The box grows out of the 80dp disc as one blob, then separates. */
+    private fun gooeyOpen() {
+        tapped()
+        panel.showAnswer(ANSWER)
+        panel.post { panel.gooeyGrowFrom(openDisc) }
+    }
+
+    /** The box draws back into the disc, then it is gone. */
+    private fun gooeyClose() {
+        tapped()
+        panel.showAnswer(ANSWER)
+        main.postDelayed({
+            panel.gooeyShrinkInto(openDisc) {
+                panel.visibility = View.GONE
+                panel.gooeyReset()
+                sprite.composing = false
+            }
+        }, GOO_HOLD_MS)
+    }
+
+    /** Box pinches into the strip, the strip grows into the task HUD, and its chips come out of the edge. */
+    private fun gooeyStripToHud() {
+        tapped()
+        panel.showAnswer(ANSWER)
+        main.postDelayed({
+            caption.text = "strip to HUD · box to strip"
+            panel.morphTo(ChatPanelView.Shape.STRIP)
+        }, GOO_HOLD_MS)
+        main.postDelayed({
+            caption.text = "strip to HUD · strip to HUD"
+            panel.showAnswer("Tap Receive to show your address.")
+            panel.showSession(2, 4)
+        }, GOO_HOLD_MS * 3)
     }
 
     /** A level that rises and falls like a voice, every frame until the next state. */
@@ -583,6 +629,7 @@ class DebugStatesActivity : Activity() {
         const val THINKING_MS = 1_400L
         const val SPEAKING_MS = 1_600L
         const val BACK_TO_IDLE_MS = 2_000L
+        const val GOO_HOLD_MS = 900L
         const val SEND_STRIP = "Send 0.05 USDC to 7c2y…SxSv. Confirm?"
         const val DRAG_LEG_MS = 260L
         const val PULSE_MS = 16L

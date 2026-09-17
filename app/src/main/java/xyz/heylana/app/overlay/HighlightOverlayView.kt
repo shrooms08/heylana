@@ -71,6 +71,9 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
     }
 
     private val strokeWidth = dp(4f)
+    /** The teaching ring: 3dp of accent, breathing 2dp in and out. */
+    private val ringStroke = dp(3f)
+    private val ringBreath = dp(2f)
     private val inset = dp(4f)
     private val corner = dp(10f)
 
@@ -154,9 +157,10 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
      * fading after a few seconds — during a task the user needs it to stay put
      * while they find the thing it is pointing at.
      */
-    fun point(bounds: Rect, buddyCenter: PointF, persistent: Boolean = false) {
+    fun point(bounds: Rect, buddyCenter: PointF?, persistent: Boolean = false) {
         if (!attached || bounds.isEmpty) return
         cancelEverything()
+        ringOnly = false
 
         targetOnScreen.set(bounds)
         buddyOnScreen = buddyCenter
@@ -180,6 +184,20 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
         if (!persistent) postDelayed(autoHide, VISIBLE_MS)
         invalidate()
     }
+
+    /**
+     * A breathing ring around [bounds] and nothing else: what the disc is talking
+     * about while it stands beside it and explains. No arrow — the disc is right there —
+     * and it stays until the next segment replaces it or the flight ends.
+     */
+    fun ring(bounds: Rect) {
+        point(bounds, null, persistent = true)
+        ringOnly = true
+        invalidate()
+    }
+
+    /** True while the pointer is a teaching ring rather than the box and arrow. */
+    private var ringOnly = false
 
     /**
      * The user did the thing: the box goes green for a moment, says nothing, and
@@ -258,6 +276,16 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
         boxPaint.color = colour
         arrowPaint.color = colour
         headPaint.color = colour
+
+        if (ringOnly) {
+            // Breathing: the ring grows a couple of dp and brightens, in time with the pulse.
+            val breath = ringBreath * pulse
+            box.inset(-breath, -breath)
+            boxPaint.strokeWidth = ringStroke
+            boxPaint.alpha = alpha
+            canvas.drawRoundRect(box, corner + breath, corner + breath, boxPaint)
+            return
+        }
 
         boxPaint.strokeWidth = strokeWidth
         boxPaint.alpha = alpha

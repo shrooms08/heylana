@@ -1169,6 +1169,106 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         }
     }
 
+    // ------------------------------------------------------------ teaching flight
+
+    private var teachingFlight: android.animation.ValueAnimator? = null
+    private val flightPoint = FloatArray(2)
+    private val standAt = IntArray(2)
+
+    /**
+     * One hop of a teaching answer: the disc flies to [target] (screen coordinates) along
+     * an arc, swelling as it goes, stands beside it, and the strip travels with it showing
+     * [text]. [onArrived] runs when it lands — that is when the ring goes up and the
+     * sentence is spoken.
+     */
+    fun teachTo(target: Rect, text: String, onArrived: () -> Unit) {
+        refreshMetrics()
+        if (mode != Mode.HUD) enterMode(Mode.HUD)
+        panel.setVoiceMode(voice = false, showsText = true)
+        showAnswer(text)
+
+        TeachingFlight.standBeside(
+            target.left - usableLeft, target.top - usableTop,
+            target.right - usableLeft, target.bottom - usableTop,
+            discSize,
+            dp(HeylanaTokens.SPACE_4_DP),
+            usableWidth,
+            usableHeight,
+            standAt
+        )
+        // The strip goes on the far side of the disc from the element, so it covers nothing.
+        panelOnLeft = standAt[0] + discSize / 2 < target.centerX() - usableLeft
+        reorderBeside()
+        flyArc(standAt[0], standAt[1], onArrived)
+    }
+
+    /** The disc's flight home at the end of a teaching answer: the same arc, then the strip melts. */
+    fun endTeaching(onHome: () -> Unit = {}) {
+        val home = PointF(dockedLeft(spriteLeft).toFloat(), dockedTop(spriteTop).toFloat())
+        panel.meltStreak()
+        flyArc(home.x.toInt(), home.y.toInt()) {
+            enterMode(Mode.DOCKED)
+            onPanelClosed?.invoke()
+            onHome()
+        }
+    }
+
+    /** Moves the window itself along the arc, frame by frame, and hands the disc back its size. */
+    private fun flyArc(toLeft: Int, toTop: Int, onLanded: () -> Unit) {
+        teachingFlight?.cancel()
+        val fromLeft = spriteLeft.toFloat()
+        val fromTop = spriteTop.toFloat()
+        val toLeftClamped = clamp(toLeft, 0, (usableWidth - discSize).coerceAtLeast(0))
+        val toTopClamped = clamp(toTop, 0, (usableHeight - discSize).coerceAtLeast(0))
+        val distance = TeachingFlight.distance(fromLeft, fromTop, toLeftClamped.toFloat(), toTopClamped.toFloat())
+        val perDp = dp(1f).toFloat()
+        val arc = TeachingFlight.arcHeightDp(distance / perDp) * perDp
+        val duration = TeachingFlight.durationMs(distance / perDp)
+        HeylanaLog.state("teach: flight ${duration}ms distance=${distance.toInt()} arc=${arc.toInt()}")
+        if (distance < 2f * perDp) {
+            spriteLeft = toLeftClamped
+            spriteTop = toTopClamped
+            applyPosition()
+            onLanded()
+            return
+        }
+        teachingFlight = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            this.duration = duration
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { animation ->
+                val progress = animation.animatedValue as Float
+                TeachingFlight.at(progress, fromLeft, fromTop, toLeftClamped.toFloat(), toTopClamped.toFloat(), arc, flightPoint)
+                spriteLeft = flightPoint[0].toInt()
+                spriteTop = flightPoint[1].toInt()
+                val scale = TeachingFlight.scaleAt(progress)
+                sprite.scaleX = scale
+                sprite.scaleY = scale
+                applyPosition()
+            }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    sprite.scaleX = 1f
+                    sprite.scaleY = 1f
+                    if (teachingFlight !== animation) return
+                    teachingFlight = null
+                    spriteLeft = toLeftClamped
+                    spriteTop = toTopClamped
+                    applyPosition()
+                    onLanded()
+                }
+            })
+            start()
+        }
+    }
+
+    /** Stops a teaching flight where it is: a new question, or the panel closing. */
+    fun cancelTeachingFlight() {
+        teachingFlight?.cancel()
+        teachingFlight = null
+        sprite.scaleX = 1f
+        sprite.scaleY = 1f
+    }
+
     /**
      * Keeps the buddy and its box off the thing being pointed at. Only means
      * anything while a task is running, since that is the only time the box and

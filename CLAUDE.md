@@ -781,6 +781,24 @@ rather than a request to dismiss it. Before each step is drawn, the buddy and it
 card are moved clear of whatever is about to be boxed — the other side of the
 screen first, then above or below it.
 
+**The teaching flight.** An answer with segments is played one at a time
+(`BuddyOverlayService.TeachingRun`): the disc flies to each segment's element along a
+quadratic bezier arc, swelling at the apex and easing in and out, stands beside it, a ring
+breathes around the element, the strip travels beside the disc with that sentence, and the
+tap watch runs on it; when the sentence has been spoken the next one starts, and after the
+last the disc flies home and the strip melts. A segment with no element is spoken from
+where the disc stands. The shape of the motion is a port of Clicky's (MIT, `design/refs/
+clicky`, `OverlayWindow.swift`'s `animateBezierFlightArc`): arc height a fifth of the
+distance up to 80dp, smoothstep easing, a swell of 0.22 at the apex. The pace is Heylana's:
+`TeachingFlight.PACE_MS` 600ms for a 420dp hop, never under 380ms or over 900ms. The window
+itself moves frame by frame, as a drag does. Where the disc stands is `standBeside`: beside
+the element on the side with more room, else under it, else over it, always on screen, with
+the strip on the far side from the element. With no voice, each sentence is left up long
+enough to read and then the flight moves on. A task step that only explains uses segments
+and shows no Next or Done — the user is not being asked to change anything yet — while a
+step that needs the screen to change keeps them. `TeachingFlightTest`; debug state
+"teaching flight" plays three sentences across three stand-in elements.
+
 **The highlight window.** The pointer is drawn in its own full-screen window that
 is not touchable and not focusable, so every touch falls straight through to the
 app underneath. It converts accessibility bounds (which are display coordinates)
@@ -789,6 +807,10 @@ itself rather than being assumed away. For a one-shot answer the box clears afte
 seconds; during a task it stays up until the step changes or the task ends,
 because the user needs it while they hunt for the thing. Either way it clears at once when the next
 question is sent or the panel closes.
+
+During a teaching flight the pointer is a **ring** instead: 3dp of accent around the
+element, breathing 2dp in and out with the same pulse, and no arrow — the disc is standing
+right next to it (`HighlightOverlayView.ring`).
 
 **The box answers the tap it asked for.** While it is up, a tap on the element it
 points at — or the screen moving — flashes it green for 300ms and clears it,

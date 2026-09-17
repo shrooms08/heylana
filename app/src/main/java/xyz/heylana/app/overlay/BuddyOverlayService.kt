@@ -36,6 +36,7 @@ import xyz.heylana.app.brain.AnswerLength
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.Greeting
 import xyz.heylana.app.brain.Routing
+import xyz.heylana.app.brain.SaySegment
 import xyz.heylana.app.brain.AddressText
 import xyz.heylana.app.brain.TypedAddresses
 import xyz.heylana.app.brain.SendAction
@@ -189,6 +190,12 @@ class BuddyOverlayService : Service() {
                 HeylanaLog.state("speak: speaking=$speaking")
                 overlayView?.setTalking(speaking)
                 main.removeCallbacks(settleToIdle)
+                // Mid-teaching, the end of a sentence is the cue for the next one, not to settle.
+                val run = teaching
+                if (!speaking && run != null) {
+                    run.spoken()
+                    return@post
+                }
                 if (!speaking && exchange.maySettle) {
                     HeylanaLog.state("settle: scheduled")
                     main.postDelayed(settleToIdle, SETTLE_MS)
@@ -394,6 +401,7 @@ class BuddyOverlayService : Service() {
             view.onCancelSend = { cancelSend() }
             view.onPanelClosed = {
                 HeylanaLog.state("panel: closed")
+                teaching?.cancel()
                 if (awaitingConfirm != null) {
                     awaitingConfirm = null
                     HeylanaLog.state("send: cancelled, panel closed")
@@ -442,7 +450,8 @@ class BuddyOverlayService : Service() {
         }
 
         // A new question drops whatever the last one left behind, including any
-        // task that was running.
+        // task that was running, and any teaching flight in the air.
+        teaching?.cancel()
         mouth?.stop()
         stopTapWatch()
         highlight?.hide()
@@ -798,8 +807,101 @@ class BuddyOverlayService : Service() {
         if (!speak(shown)) settleSoon()
     }
 
+    // ------------------------------------------------------------------ teaching
+
+    /** The teaching answer being played, one segment at a time. */
+    private var teaching: TeachingRun? = null
+
+    /**
+     * A teaching answer: the disc flies to each element as its sentence is spoken, a ring
+     * breathes around it, the strip travels beside the disc, and after the last one the disc
+     * flies home. A segment with no element is spoken where the disc already stands.
+     */
+    private inner class TeachingRun(
+        private val segments: List<SaySegment>,
+        private val snapshot: ScreenSnapshot
+    ) {
+        private var index = -1
+
+        private val advance = Runnable { if (teaching === this) next() }
+
+        fun start() {
+            HeylanaLog.state("teach: run segments=${segments.size} points=${segments.count { it.pointAt != null }}")
+            next()
+        }
+
+        private fun next() {
+            main.removeCallbacks(advance)
+            index++
+            val view = overlayView ?: return finish()
+            val segment = segments.getOrNull(index) ?: return finish()
+            val node = segment.pointAt?.let { snapshot.node(it) }
+            HeylanaLog.state("teach: segment ${index + 1}/${segments.size} element=${if (node != null) "yes" else "none"}")
+            if (node == null) {
+                // Nothing to fly to: said from where the disc stands.
+                view.showAnswer(segment.text)
+                speakSegment(segment.text)
+                return
+            }
+            view.teachTo(node.bounds, segment.text) {
+                if (teaching !== this) return@teachTo
+                highlight?.ring(node.bounds)
+                view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
+                watchForTap(node)
+                speakSegment(segment.text)
+            }
+        }
+
+        /** Spoken, or — with no voice — left up long enough to read. */
+        private fun speakSegment(text: String) {
+            if (!speak(text)) main.postDelayed(advance, readingMs(text))
+        }
+
+        /** The segment finished speaking: a breath, then the next one. */
+        fun spoken() {
+            main.postDelayed(advance, BETWEEN_SEGMENTS_MS)
+        }
+
+        /** The voice could not speak this one: read it instead, then carry on. */
+        fun unspoken(text: String) {
+            main.postDelayed(advance, readingMs(text))
+        }
+
+        private fun finish() {
+            main.removeCallbacks(advance)
+            if (teaching === this) teaching = null
+            stopTapWatch()
+            highlight?.hide()
+            HeylanaLog.state("teach: run done, flying home")
+            overlayView?.endTeaching()
+        }
+
+        fun cancel() {
+            main.removeCallbacks(advance)
+            if (teaching === this) teaching = null
+            overlayView?.cancelTeachingFlight()
+        }
+    }
+
+    /** Starts a teaching answer if it has anywhere to fly; false when it is an ordinary answer. */
+    private fun runTeaching(reply: BrainReply.Say, snapshot: ScreenSnapshot): Boolean {
+        val segments = reply.segments
+        if (!reply.teaches) return false
+        if (segments.none { it.pointAt?.let { id -> snapshot.node(id) } != null }) {
+            HeylanaLog.state("teach: segments point at nothing on this screen")
+            return false
+        }
+        teaching?.cancel()
+        val run = TeachingRun(segments, snapshot)
+        teaching = run
+        run.start()
+        return true
+    }
+
     /** An ordinary answer: say it, point once, let the box time out by itself. */
     private fun showOneShot(reply: BrainReply.Say, snapshot: ScreenSnapshot) {
+        // An answer that walks the screen is played segment by segment instead.
+        if (runTeaching(reply, snapshot)) return
         val view = overlayView ?: return
         // A spoken answer normally leaves nothing on screen; the Settings switch
         // is what puts its words in a box.
@@ -934,6 +1036,13 @@ class BuddyOverlayService : Service() {
         )
 
         val spoken = if (repeated) STUCK_LINE else reply.text
+
+        // A step that only explains walks the screen and needs no Next or Done: the user
+        // is not being asked to change anything yet.
+        if (!repeated && reply.teaches && runTeaching(reply, snapshot)) {
+            view.hideSession()
+            return
+        }
 
         view.ensurePanelOpen()
         // Text and chip first, so the card is its final size before it is moved
@@ -1137,6 +1246,11 @@ class BuddyOverlayService : Service() {
     private fun showUnspoken(text: String) {
         val view = overlayView ?: return
         keepSpeechThroughClose = false
+        // Mid-teaching the words are already beside the disc: read them, then fly on.
+        teaching?.let { run ->
+            run.unspoken(text)
+            return
+        }
         if (session != null) {
             view.showAnswer(text)
             return
@@ -1413,6 +1527,9 @@ class BuddyOverlayService : Service() {
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
+
+        /** The breath between one taught sentence and the next. */
+        private const val BETWEEN_SEGMENTS_MS = 250L
 
         /** How long an answer that could not be spoken stays up to be read. */
         private const val READ_MS_PER_WORD = 350L

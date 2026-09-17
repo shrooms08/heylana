@@ -16,6 +16,7 @@ import xyz.heylana.app.overlay.BuddySpriteView
 import xyz.heylana.app.overlay.ChatPanelView
 import xyz.heylana.app.overlay.VoiceCapsuleView
 import xyz.heylana.app.ui.GlassDrawable
+import xyz.heylana.app.overlay.TeachingFlight
 import xyz.heylana.app.ui.HeylanaTokens
 
 /**
@@ -195,6 +196,7 @@ class DebugStatesActivity : Activity() {
         Triple("back-to-idle", "back to idle", ::backToIdle),
         Triple("motion", "fast drag", ::fastDrag),
         Triple("glide", "snap glide", ::snapGlide),
+        Triple("teaching", "teaching flight", ::teachingFlight),
         Triple("panel", "panel edges", ::panelEdges),
         Triple("send", "send strip", ::sendStrip),
         Triple("streak", "purple streak", ::purpleStreak),
@@ -413,6 +415,127 @@ class DebugStatesActivity : Activity() {
         }
     }
 
+    /**
+     * The teaching flight: three sentences across three fake elements. The disc flies to
+     * each on an arc at teacher pace, a ring breathes around it while the sentence is
+     * "spoken", then it flies home.
+     */
+    private fun teachingFlight() {
+        reset()
+        val texts = listOf(
+            "Swaps live on the Swap tab, so tap Swap.",
+            "This is what you pay with — tap it to pick a token.",
+            "Check the rate here before you confirm."
+        )
+        val elements = fakeElements()
+        elements.forEach { it.visibility = View.VISIBLE; it.alpha = 0f }
+        // The strip travels with the disc in the overlay; here the caption carries the
+        // words, so nothing sits over the flight.
+
+        val home = FloatArray(2)
+        discRow.getLocationOnScreen(spot)
+        home[0] = spot[0].toFloat()
+        home[1] = spot[1].toFloat()
+
+        fun flyTo(x: Float, y: Float, then: () -> Unit) {
+            val fromX = home[0] + discRow.translationX
+            val fromY = home[1] + discRow.translationY
+            val perDp = dp(1f).toFloat()
+            val distance = TeachingFlight.distance(fromX, fromY, x, y)
+            val arc = TeachingFlight.arcHeightDp(distance / perDp) * perDp
+            val point = FloatArray(2)
+            android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = TeachingFlight.durationMs(distance / perDp)
+                interpolator = android.view.animation.LinearInterpolator()
+                addUpdateListener {
+                    val progress = it.animatedValue as Float
+                    TeachingFlight.at(progress, fromX, fromY, x, y, arc, point)
+                    discRow.translationX = point[0] - home[0]
+                    discRow.translationY = point[1] - home[1]
+                    val scale = TeachingFlight.scaleAt(progress)
+                    discRow.scaleX = scale
+                    discRow.scaleY = scale
+                }
+                addListener(object : android.animation.AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: android.animation.Animator) {
+                        discRow.scaleX = 1f
+                        discRow.scaleY = 1f
+                        then()
+                    }
+                })
+                start()
+            }
+        }
+
+        fun segment(index: Int) {
+            if (index >= elements.size) {
+                caption.text = "teaching flight · home"
+                elements.forEach { it.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start() }
+                flyTo(home[0], home[1]) { discRow.translationX = 0f; discRow.translationY = 0f }
+                return
+            }
+            val element = elements[index]
+            element.getLocationOnScreen(spot)
+            val stand = IntArray(2)
+            TeachingFlight.standBeside(
+                spot[0], spot[1], spot[0] + element.width, spot[1] + element.height,
+                discRow.width, dp(HeylanaTokens.SPACE_4_DP), stage.width, stage.height + spot[1], stand
+            )
+            caption.text = "teaching flight · ${texts[index]}"
+            flyTo(stand[0].toFloat(), stand[1].toFloat()) {
+                element.animate().alpha(1f).setDuration(HeylanaTokens.FADE_MS).start()
+                // The ring breathes while the sentence is spoken.
+                val breath = android.animation.ValueAnimator.ofFloat(0.6f, 1f).apply {
+                    duration = RING_BREATH_MS
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    addUpdateListener { element.alpha = it.animatedValue as Float }
+                    start()
+                }
+                main.postDelayed({
+                    breath.cancel()
+                    element.animate().alpha(0.25f).setDuration(HeylanaTokens.FADE_MS).start()
+                    segment(index + 1)
+                }, TAUGHT_SENTENCE_MS)
+            }
+        }
+        // The elements have only just been added: let them be laid out before the first hop,
+        // or their place on screen is still zero.
+        stage.post { segment(0) }
+    }
+
+    private val spot = IntArray(2)
+    private var teachingElements: List<View>? = null
+
+    /** Three stand-ins for elements on a screen: a ring each, where a button would be. */
+    private fun fakeElements(): List<View> {
+        teachingElements?.let { return it }
+        val made = listOf(
+            Triple(dp(24f), dp(150f), dp(140f)),
+            Triple(dp(170f), dp(260f), dp(150f)),
+            Triple(dp(40f), dp(370f), dp(190f))
+        ).map { (left, top, width) ->
+            View(this).apply {
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    cornerRadius = dp(10f).toFloat()
+                    setStroke(dp(3f), HeylanaTokens.accent)
+                }
+                visibility = View.GONE
+                stage.addView(
+                    this,
+                    FrameLayout.LayoutParams(width, dp(52f)).apply {
+                        gravity = Gravity.TOP or Gravity.START
+                        leftMargin = left
+                        topMargin = top
+                    }
+                )
+            }
+        }
+        teachingElements = made
+        return made
+    }
+
     /** A level that rises and falls like a voice, every frame until the next state. */
     private fun pulse(apply: (Float) -> Unit) {
         val started = System.currentTimeMillis()
@@ -613,6 +736,9 @@ class DebugStatesActivity : Activity() {
         sprite.expression = BuddySpriteView.Expression.IDLE
         capsule.visibility = View.GONE
         fakeHighlight.visibility = View.GONE
+        teachingElements?.forEach { it.visibility = View.GONE }
+        discRow.scaleX = 1f
+        discRow.scaleY = 1f
         panel.setVoiceMode(voice = false, showsText = false)
         panel.setBeam(ChatPanelView.Beam.NONE)
         panel.visibility = View.GONE
@@ -660,6 +786,11 @@ class DebugStatesActivity : Activity() {
         const val SPEAKING_MS = 1_600L
         const val BACK_TO_IDLE_MS = 2_000L
         const val GLIDE_PAUSE_MS = 600L
+
+        /** The ring's breath while a taught sentence is "spoken". */
+        const val RING_BREATH_MS = 500L
+        /** How long a taught sentence takes to "speak" here. */
+        const val TAUGHT_SENTENCE_MS = 1_800L
         const val GOO_HOLD_MS = 900L
         const val SEND_STRIP = "Send 0.05 USDC to 7c2y…SxSv. Confirm?"
         const val DRAG_LEG_MS = 260L

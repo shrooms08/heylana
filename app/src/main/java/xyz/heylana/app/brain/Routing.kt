@@ -1,5 +1,7 @@
 package xyz.heylana.app.brain
 
+import xyz.heylana.app.actions.QuickActions
+
 /**
  * Which model answers, and whether Solana knowledge and tools go with it.
  *
@@ -14,6 +16,7 @@ object Routing {
         SIGNING_SCREEN("signing_screen"),
         EXPLAIN_QUESTION("explain_question"),
         SEND_QUESTION("send_question"),
+        QUICK_ACTION("quick_action"),
         WALLET_SCREEN("wallet_screen"),
         SWAP_SCREEN("swap_screen"),
         PLAIN("plain")
@@ -58,10 +61,14 @@ object Routing {
             SigningScan.looksLikeSigning(packageName, screenText, ownWallet) -> Why.SIGNING_SCREEN
             isExplainQuestion(question) -> Why.EXPLAIN_QUESTION
             isSendQuestion(question) -> Why.SEND_QUESTION
+            QuickActions.isQuickAction(question) -> Why.QUICK_ACTION
             app?.kind == SolanaApps.Kind.WALLET -> Why.WALLET_SCREEN
             app?.kind == SolanaApps.Kind.SWAP -> Why.SWAP_SCREEN
             else -> Why.PLAIN
         }
+        // An alarm or "open the wallet" needs no Solana knowledge and no lookups: the
+        // action tool is all it gets, on the quick model.
+        if (why == Why.QUICK_ACTION) return Route(ProxyClient.MODE_QUICK, why, null)
         // A send or explain question needs the tools even in Chrome.
         val load = SolanaCore.whyLoad(packageName, question) ?: if (why != Why.PLAIN) SolanaCore.Load.ROUTE else null
         val mode = if (why == Why.PLAIN) ProxyClient.MODE_QUICK else ProxyClient.MODE_TASK

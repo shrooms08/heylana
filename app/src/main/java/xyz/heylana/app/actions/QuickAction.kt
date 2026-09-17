@@ -84,18 +84,34 @@ sealed interface QuickAction {
 }
 
 /**
- * When the model is told about quick actions at all. The rules cost tokens on every
- * request they go with, so they go only when the question sounds like one.
+ * Which questions are quick actions. A question that is one goes to the worker with
+ * `intent: "quick_action"`, which forces the model to write the action down and
+ * nothing else — the same way a send works — so prose like "setting an alarm for
+ * 7pm" can never stand in for doing it. [RULES] remain only for the hidden own-key
+ * path, which has no worker to force a tool.
  */
 object QuickActions {
 
-    private val WORDS = Regex(
-        "(?<![\\p{L}])(alarm|wake me|timer|countdown|open|launch|go to|take me to|directions|navigate|" +
-            "route to|get to|call|dial|ring|phone)(?![\\p{L}])",
-        RegexOption.IGNORE_CASE
-    )
+    private val OPTIONS = setOf(RegexOption.IGNORE_CASE)
 
-    fun mentions(question: String): Boolean = WORDS.containsMatchIn(question)
+    /** "How do I open settings" is a question about the screen, not an action. */
+    private val ASKING_HOW = Regex("^\\s*(how|what|where|why|when|which|who|does|do|is|are)\\b", OPTIONS)
+
+    /** Politeness that can come in front of an order. */
+    private const val LEAD = "^\\s*(hey\\s+heylana[,\\s]*)?((please|can you|could you|would you|will you|i want you to|i need you to)\\s+)?(please\\s+)?"
+
+    private val ALARM = Regex("\\b(set|make|create|add|put)\\b[^.?!]*\\balarm\\b|\\bwake me\\b|\\balarm (for|at)\\b", OPTIONS)
+    private val TIMER = Regex("\\b(set|start|make|put)\\b[^.?!]*\\btimer\\b|\\btimer (for|of)\\b|\\bcount ?down\\b", OPTIONS)
+    private val OPEN = Regex(LEAD + "(open|launch)\\s+\\S", OPTIONS)
+    private val DIAL = Regex(LEAD + "(call|dial|ring|phone)\\s+\\S", OPTIONS)
+    private val NAVIGATE = Regex("\\b(directions|navigate|take me|route|drive me|walk me) to\\b|\\bhow do i get to\\b", OPTIONS)
+
+    fun isQuickAction(question: String): Boolean {
+        if (NAVIGATE.containsMatchIn(question)) return true
+        if (ASKING_HOW.containsMatchIn(question)) return false
+        return ALARM.containsMatchIn(question) || TIMER.containsMatchIn(question) ||
+            OPEN.containsMatchIn(question) || DIAL.containsMatchIn(question)
+    }
 
     const val RULES: String =
         "Quick actions: only if the user asks you to set an alarm or a timer, open an app or a website, get " +
@@ -104,8 +120,8 @@ object QuickActions {
             "{\"intent\":\"timer\",\"seconds\":n}, {\"intent\":\"open_app\",\"app\":\"name as said\"}, " +
             "{\"intent\":\"open_url\",\"url\":\"https://...\"}, {\"intent\":\"navigate\",\"query\":\"place as said\"}, " +
             "{\"intent\":\"dial\",\"number\":\"digits as said\"|null,\"name\":\"contact as said\"|null}. " +
-            "Use only what the user said, never the screen. Keep say to a few words; the phone's own app does " +
-            "it and you never tap. \"How do I open\" is a question, not an action."
+            "A bare hour is the morning: \"7 tomorrow\" is hour 7. Use only what the user said, never the screen. " +
+            "Keep say empty; the phone's own app does it and you never tap."
 }
 
 /**

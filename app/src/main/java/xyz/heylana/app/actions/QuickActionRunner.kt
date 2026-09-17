@@ -39,10 +39,13 @@ class QuickActionRunner(private val context: Context) {
         }
 
         val spec = QuickIntents.spec(action, launchPackage)
-        val intent = toIntent(spec) ?: return Outcome(QuickText.NO_APP, fired = false)
+        val intent = toIntent(spec) ?: return Outcome(QuickText.NO_APP, fired = false).also {
+            HeylanaLog.state("action: no launch intent for package=$launchPackage")
+        }
         return try {
+            HeylanaLog.state("action: firing intent ${action.intent} android=${spec.action}")
             context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            HeylanaLog.state("action: fired intent=${action.intent} android=${spec.action}")
+            HeylanaLog.state("action: fired intent=${action.intent}")
             Outcome(QuickText.line(action, LocalTime.now(), label), fired = true)
         } catch (_: ActivityNotFoundException) {
             HeylanaLog.state("action: no app handles intent=${action.intent}")

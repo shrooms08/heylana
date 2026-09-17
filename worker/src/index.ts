@@ -18,7 +18,7 @@ import { challengeMessage, randomNonce, readSession, signSession, verifySignatur
 import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
-import { answerWithTools, proposeSend, toolsNamed } from './brain.ts'
+import { answerWithTools, proposeAction, proposeSend, toolsNamed } from './brain.ts'
 import { sentryFor, type WaitUntil } from './sentry.ts'
 import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
 import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.ts'
@@ -292,6 +292,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   // else is sent exactly as it always was, at exactly the size it always was.
   const withTools = body.tools === true
   const sendIntent = withTools && body.intent === 'send'
+  // An alarm, a timer, an app, a page, a place, a number: no lookups, so no tools flag.
+  const actionIntent = !sendIntent && body.intent === 'quick_action'
   let status: number
   let text: string
   let tokensIn: number
@@ -303,7 +305,16 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   let toolTimings: string[] = []
   let signingMs: number | undefined
   let sendAction: { to: unknown; amount: unknown; token: unknown } | null = null
-  if (sendIntent) {
+  let quickAction: Record<string, unknown> | null = null
+  if (actionIntent) {
+    // Never left to prose either: the action written down, and the app says the words.
+    const result = await proposeAction({ callModel, base })
+    status = result.status
+    text = result.body
+    tokensIn = result.input
+    tokensOut = result.output
+    quickAction = result.action
+  } else if (sendIntent) {
     // A send is never left to prose: one call, the send written down and nothing
     // else. The app writes every word the user sees and hears about it.
     const result = await proposeSend({ callModel, base })
@@ -372,6 +383,10 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     ...(signingMs !== undefined ? { signing_ms: signingMs } : {}),
     ...(sendIntent
       ? { send_action: sendAction ? { to: String(sendAction.to).slice(0, 4), amount: sendAction.amount, token: sendAction.token } : null }
+      : {}),
+    // The kind of action and its times only: names, numbers, places and pages stay out of the log.
+    ...(actionIntent
+      ? { quick_action: quickAction ? { intent: quickAction.intent, hour: quickAction.hour, minutes: quickAction.minutes, seconds: quickAction.seconds } : null }
       : {}),
     ...(toolTimeout ? { tool_timeout: true } : {}),
     status,

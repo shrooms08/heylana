@@ -11,7 +11,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.actions.QuickAction
-import xyz.heylana.app.actions.QuickActions
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.settings.HeylanaSettings
@@ -79,15 +78,16 @@ class ProxyClient(private val settings: HeylanaSettings) {
         skill: Skill? = null
     ): BrainReply {
         val tools = route.toolsWanted && !settings.useOwnKey
-        // A send is one forced tool call that writes nothing: app notes would only cost.
-        val carried = skill.takeUnless { route.why == Routing.Why.SEND_QUESTION }
-        // The quick action rules go only with questions that sound like one, and never about money.
-        val quick = route.why == Routing.Why.PLAIN || route.why == Routing.Why.WALLET_SCREEN || route.why == Routing.Why.SWAP_SCREEN
-        val quickRules = quick && QuickActions.mentions(question)
+        val quickAction = route.why == Routing.Why.QUICK_ACTION
+        // A send or a quick action is one forced tool call that writes nothing: app notes would only cost.
+        val carried = skill.takeUnless { route.why == Routing.Why.SEND_QUESTION || quickAction }
+        // Through the worker the action tool is forced; only the own-key path has to ask in words.
+        val quickRules = quickAction && settings.useOwnKey
         HeylanaLog.state(
             "brain: mode=${route.mode} why=${route.why.log} " +
                 (route.solana?.let { "solana-core loaded reason=${it.log}" } ?: "solana-core not loaded") +
-                " tools=${if (tools) "sent" else "not sent"} ${skillLog(carried)} quick-actions=${if (quickRules) "loaded" else "not loaded"}"
+                " tools=${if (tools) "sent" else "not sent"} ${skillLog(carried)} " +
+                "quick-action=${if (!quickAction) "no" else if (quickRules) "rules" else "forced"}"
         )
         val extra = JSONObject()
         val message = if (route.explainsSigning) {
@@ -115,6 +115,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         }
         // A send is never left to prose: the worker asks the model for the send only.
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
+        // Nor is an alarm, a timer, an app, a page, a place or a number.
+        if (quickAction && !settings.useOwnKey) extra.put("intent", "quick_action")
         val reply = send(
             message,
             route.mode,
@@ -387,8 +389,11 @@ class ProxyClient(private val settings: HeylanaSettings) {
         if (action.optString("type") != QuickAction.TYPE) return null
         val fields = HashMap<String, Any?>()
         action.keys().forEach { key -> fields[key] = if (action.isNull(key)) null else action.opt(key) }
-        // The kind of action only: what was asked for stays out of the log until the guard has looked.
-        HeylanaLog.state("action: raw type=intent intent=${action.optString("intent")}")
+        // The kind of action and its times only: what else was asked for stays out of the log.
+        HeylanaLog.state(
+            "action: raw type=intent intent=${action.optString("intent")} hour=${action.opt("hour")} " +
+                "minutes=${action.opt("minutes")} seconds=${action.opt("seconds")}"
+        )
         return QuickAction.of(fields).also {
             if (it == null) HeylanaLog.state("action: raw action rejected as malformed")
         }

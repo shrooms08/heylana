@@ -41,20 +41,34 @@ object QuickGuard {
 
     private fun alarm(action: QuickAction.Alarm, text: String): Verdict {
         val numbers = TimeWords.numbers(text)
-        val hour12 = if (action.hour % 12 == 0) 12 else action.hour % 12
-        val hourSaid = action.hour in numbers || hour12 in numbers ||
-            (action.hour == 12 && "noon" in text) || (action.hour == 0 && "midnight" in text)
+        val hour = halfOfDay(action.hour, text, numbers)
+        val hour12 = if (hour % 12 == 0) 12 else hour % 12
+        val hourSaid = hour in numbers || hour12 in numbers ||
+            (hour == 12 && "noon" in text) || (hour == 0 && "midnight" in text)
         val minutesSaid = action.minutes == 0 || action.minutes in numbers ||
             (action.minutes == 30 && Regex("\\bhalf\\b").containsMatchIn(text)) ||
             (action.minutes in setOf(15, 45) && Regex("\\bquarter\\b").containsMatchIn(text))
-        // A said "7" is either 7 or 19; what was said about the half of the day decides.
-        val saidMorning = Regex("\\b(am|a\\.m\\.|morning)\\b").containsMatchIn(text)
-        val saidEvening = Regex("\\b(pm|p\\.m\\.|evening|afternoon|tonight|night)\\b").containsMatchIn(text)
-        val halfWrong = (saidMorning && action.hour >= 12 && !(action.hour == 12 && action.minutes == 0 && "noon" in text)) ||
-            (saidEvening && action.hour < 12)
-        if (!hourSaid || !minutesSaid || halfWrong) return Verdict.Refused(TIME_NOT_SAID, "time_not_said")
+        if (!hourSaid || !minutesSaid) return Verdict.Refused(TIME_NOT_SAID, "time_not_said")
         val message = action.message?.takeIf { it.lowercase(Locale.US) in text }
-        return Verdict.Allowed(action.copy(message = message))
+        return Verdict.Allowed(action.copy(hour = hour, message = message))
+    }
+
+    /**
+     * Which half of the day a said hour is in, whatever the model wrote. "pm",
+     * "evening", "afternoon", "tonight" or "night" make 1 to 11 the afternoon or
+     * evening; "am" or "morning" make 13 to 23 the morning; and a bare hour — "7
+     * tomorrow" — is the morning unless the user said the 24-hour number itself.
+     */
+    fun halfOfDay(hour: Int, text: String, numbers: Set<Int> = TimeWords.numbers(text)): Int {
+        // "am" only straight after a number: "7am", "7 a.m." — never the "am" in "I am".
+        val morning = Regex("\\d\\s*(am|a\\.m\\.?)(?![\\p{L}])|\\bmorning\\b").containsMatchIn(text)
+        val evening = Regex("\\d\\s*(pm|p\\.m\\.?)(?![\\p{L}])|\\b(evening|afternoon|tonight|night)\\b").containsMatchIn(text)
+        return when {
+            evening && hour in 1..11 -> hour + 12
+            morning && hour in 13..23 -> hour - 12
+            !evening && hour in 13..23 && hour !in numbers -> hour - 12
+            else -> hour
+        }
     }
 
     private fun url(action: QuickAction.OpenUrl, text: String): Verdict {

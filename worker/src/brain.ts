@@ -203,3 +203,88 @@ export async function proposeSend(options: {
   })
   return { status: res.status, body, input, output, action }
 }
+
+// ------------------------------------------------------------- quick actions
+
+const NULLABLE_STRING = { type: ['string', 'null'] }
+const NULLABLE_INTEGER = { type: ['integer', 'null'] }
+
+/**
+ * The only tool offered when the app says the question is a quick action, and the
+ * model has to use it. Like a send: the model writes down what was asked, no prose
+ * comes back, the app checks every part against the user's own words and writes the
+ * line Heylana says.
+ */
+export const PROPOSE_ACTION = {
+  name: 'propose_action',
+  description:
+    "Write down the phone action the user asked for, exactly as they said it. The phone's own app does it; " +
+    'fill only the fields the action uses and leave the rest null.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      intent: { type: 'string', enum: ['alarm', 'timer', 'open_app', 'open_url', 'navigate', 'dial'] },
+      hour: {
+        ...NULLABLE_INTEGER,
+        description: 'alarm: 0-23. A bare hour with no pm, evening, afternoon or tonight is the morning: "7 tomorrow" is 7.',
+      },
+      minutes: { ...NULLABLE_INTEGER, description: 'alarm: 0-59, 0 if not said' },
+      message: { ...NULLABLE_STRING, description: 'alarm: a label, only if the user gave one' },
+      seconds: { ...NULLABLE_INTEGER, description: 'timer: the whole length in seconds' },
+      app: { ...NULLABLE_STRING, description: 'open_app: the app name as the user said it' },
+      url: { ...NULLABLE_STRING, description: 'open_url: the web address as the user said it' },
+      query: { ...NULLABLE_STRING, description: 'navigate: the place as the user said it' },
+      number: { ...NULLABLE_STRING, description: 'dial: the digits as the user said them' },
+      name: { ...NULLABLE_STRING, description: 'dial: the contact name as the user said it, if no number' },
+    },
+    required: ['intent'],
+  },
+}
+
+const ACTION_FIELDS = ['hour', 'minutes', 'message', 'seconds', 'app', 'url', 'query', 'number', 'name'] as const
+
+export interface ActionProposal {
+  status: number
+  body: string
+  input: number
+  output: number
+  action: Record<string, unknown> | null
+}
+
+export async function proposeAction(options: {
+  callModel: (payload: unknown) => Promise<Response>
+  base: ModelPayload
+}): Promise<ActionProposal> {
+  const res = await options.callModel({
+    ...options.base,
+    tools: [PROPOSE_ACTION],
+    tool_choice: { type: 'tool', name: PROPOSE_ACTION.name },
+  })
+  const text = await res.text()
+  const reply = parse(text)
+  const input = Number(reply?.usage?.input_tokens ?? 0)
+  const output = Number(reply?.usage?.output_tokens ?? 0)
+  if (!res.ok || !reply) return { status: res.status, body: text, input, output, action: null }
+
+  const use = (Array.isArray(reply.content) ? reply.content : []).find(
+    (block: any) => block?.type === 'tool_use' && block?.name === PROPOSE_ACTION.name,
+  )
+  let action: Record<string, unknown> | null = null
+  if (use && typeof use.input?.intent === 'string') {
+    action = { type: 'intent', intent: use.input.intent }
+    for (const field of ACTION_FIELDS) {
+      const value = use.input[field]
+      if (value !== null && value !== undefined && value !== '') action[field] = value
+    }
+  }
+  // The shape every other answer has, with no words in it: the app writes them.
+  const answer = { say: '', point_at: null, task: null, action }
+  const body = JSON.stringify({
+    type: 'message',
+    role: 'assistant',
+    stop_reason: 'end_turn',
+    content: [{ type: 'text', text: JSON.stringify(answer) }],
+    usage: { input_tokens: input, output_tokens: output, tool_ms: 0, tools: '' },
+  })
+  return { status: res.status, body, input, output, action }
+}

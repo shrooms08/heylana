@@ -74,6 +74,7 @@ object QuickText {
     }
 
     const val NO_APP = "I couldn't find an app with that name."
+    const val NO_ACTION = "I didn't catch what to do. Try again, like \"set a timer for 5 minutes\"."
     fun ambiguous(first: String, second: String) = "I found $first and $second. Say which one."
     const val NOTHING_HANDLES = "No app on this phone can do that."
 

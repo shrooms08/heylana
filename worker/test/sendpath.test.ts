@@ -2,6 +2,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
 import { checkShortAddresses, matchesShort } from '../src/shortaddr.ts'
+import { PROPOSE_ACTION } from '../src/brain.ts'
 import type { ToolContext } from '../src/tools.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
@@ -179,4 +180,43 @@ test('each lookup and the total time are on the usage line and in the log', asyn
   assert.match(body.usage.tools, /^get_price:\d+ms$/)
   const line = logs.find((l) => l.includes('"route":"chat"'))!
   assert.ok(line.includes('"tool_timings":["get_price:0ms"]'))
+})
+
+// ------------------------------------------------------------- quick actions
+
+const actionUse = (input: unknown) => ({
+  stop_reason: 'tool_use',
+  content: [{ type: 'tool_use', id: 'q1', name: 'propose_action', input }],
+  usage: { input_tokens: 300, output_tokens: 25 },
+})
+
+test('a quick action gets one call with the action tool forced, and no words back', async () => {
+  script = [actionUse({ intent: 'timer', seconds: 300, hour: null, app: null })]
+  const res = await worker.fetch(ask({ mode: 'quick', intent: 'quick_action', messages: [{ role: 'user', content: 'User asks: set a timer for 5 minutes' }] }), env())
+  assert.equal(res.status, 200)
+  assert.equal(modelBodies.length, 1)
+  assert.deepEqual(modelBodies[0].tool_choice, { type: 'tool', name: 'propose_action' })
+  assert.deepEqual(modelBodies[0].tools.map((t: any) => t.name), ['propose_action'])
+  const answer = JSON.parse((await res.json()).content[0].text)
+  assert.equal(answer.say, '')
+  assert.deepEqual(answer.action, { type: 'intent', intent: 'timer', seconds: 300 })
+})
+
+test('the action tool tells the model a bare hour is the morning', () => {
+  assert.match(PROPOSE_ACTION.input_schema.properties.hour.description, /"7 tomorrow" is 7/)
+})
+
+test('the log carries the kind of action and its times, never a number or a name', async () => {
+  script = [actionUse({ intent: 'dial', number: '0800 123 4567' })]
+  await worker.fetch(ask({ mode: 'quick', intent: 'quick_action' }), env())
+  const line = logs.find((l) => l.includes('"route":"chat"'))!
+  assert.ok(line.includes('"quick_action":{"intent":"dial"}'))
+  assert.equal(line.includes('0800'), false)
+})
+
+test('a model that writes no action leaves none, with no words either', async () => {
+  script = [{ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Setting an alarm for 7pm.' }], usage: { input_tokens: 1, output_tokens: 1 } }]
+  const answer = JSON.parse((await (await worker.fetch(ask({ intent: 'quick_action' }), env())).json()).content[0].text)
+  assert.equal(answer.action, null)
+  assert.equal(answer.say, '')
 })

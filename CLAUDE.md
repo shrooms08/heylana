@@ -394,12 +394,34 @@ number, or an empty dialer and "Search for Mum there" for a name (Heylana has no
 contacts permission). Heylana then says one short line: "Alarm set for 7 AM
 tomorrow.", "Opening Wallet.".
 
-**The rules cost nothing unless asked for.** `QuickActions.RULES` goes only when the
-question has alarm/timer/open/launch/directions/call-type words, and never with a
-send or signing question; the brain line says `quick-actions=loaded|not loaded`.
-Every action is logged — `action: raw`, `action: guard verdict=…`, `action: fired` —
-with times and lengths, but a web page only by its host, a place or name by its
-length, and a number by its digit count. `SET_ALARM` is the one new permission; the
+**Quick actions are deterministic, like sends.** Left to prose, the model said
+"setting an alarm for 7pm" and wrote no action, and "open the wallet" pointed at the
+icon. Now `QuickActions.isQuickAction` classifies the question first (set/make an
+alarm, wake me, a timer, open/launch X, call/dial X, directions to X — polite forms
+too, but not "how do I open…" or "what does the call button do"). That routes as
+`quick_action`: quick model, no Solana block, no tools, no skill, no greeting, and
+`intent: "quick_action"`, which makes the worker offer only `propose_action` with the
+model forced to use it (`worker/src/brain.ts`). No prose comes back; the app writes
+every word ("Timer set for 5 minutes."), and with no action says "I didn't catch what
+to do." The own-key path, with no worker to force a tool, still sends
+`QuickActions.RULES`. The brain line says `quick-action=no|forced|rules`.
+
+**A bare hour is the morning.** `QuickGuard.halfOfDay` corrects whatever the model
+wrote: "7 tomorrow" is 7:00 AM; "pm", "evening", "afternoon", "tonight", "night" make
+1–11 the evening; "am" (only right after a number, never the "am" in "I am") or
+"morning" make 13–23 the morning; a 24-hour number said outright ("19:00") stands.
+
+**Every step is logged at info**: `action: raw …` with the intent and its times (or
+`action: raw missing why=quick_action`), `action: guard verdict=allowed|refused …`,
+`action: firing intent <name>`, then `action: fired` — a web page only by its host, a
+place or name by its length, a number by its digit count. The worker logs
+`quick_action: {intent, hour, minutes, seconds}`.
+
+**Checking the intents without the model.** In debug builds, with the buddy started:
+`adb shell am broadcast -a xyz.heylana.app.debug.QUICK_ACTION --es said "'open the
+wallet'" --es action "'{\"type\":\"intent\",\"intent\":\"open_app\",\"app\":\"wallet\"}'"`
+runs the guard and fires the intent. The line is shown, never spoken — speaking it is a
+`/tts` call. `SET_ALARM` is the one new permission; the
 launcher `<queries>` entry is what lets "open the wallet" see installed apps.
 
 ## Skills

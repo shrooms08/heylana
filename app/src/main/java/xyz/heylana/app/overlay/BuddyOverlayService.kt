@@ -62,6 +62,7 @@ import xyz.heylana.app.actions.QuickAction
 import xyz.heylana.app.actions.QuickActionRunner
 import xyz.heylana.app.actions.QuickGuard
 import xyz.heylana.app.actions.QuickLog
+import xyz.heylana.app.actions.QuickText
 import xyz.heylana.app.voice.CartesiaVoice
 import xyz.heylana.app.voice.DeepgramEars
 import xyz.heylana.app.voice.EarsRace
@@ -176,6 +177,7 @@ class BuddyOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.DEBUG) registerDebugQuickAction()
         val onSpeaking: (Boolean) -> Unit = { speaking ->
             main.post {
                 HeylanaLog.state("speak: speaking=$speaking")
@@ -322,6 +324,8 @@ class BuddyOverlayService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        debugQuickAction?.let { runCatching { unregisterReceiver(it) } }
+        debugQuickAction = null
         // Stop means forget: the memory never outlives the buddy.
         conversation.clear()
         endSession(clearBox = false)
@@ -500,6 +504,12 @@ class BuddyOverlayService : Service() {
                         handleQuick(quick, question)
                         return@launch
                     }
+                    if (route.why == Routing.Why.QUICK_ACTION) {
+                        // Nor does a quick action: no action, no pretending one happened.
+                        HeylanaLog.state("action: raw missing why=quick_action")
+                        sayLine(QuickText.NO_ACTION)
+                        return@launch
+                    }
                     if (route.why == Routing.Why.SEND_QUESTION) {
                         // A send never falls back to the model's own words.
                         HeylanaLog.state("send: raw action missing")
@@ -525,23 +535,49 @@ class BuddyOverlayService : Service() {
 
     // ------------------------------------------------------------ quick actions
 
+    private var debugQuickAction: android.content.BroadcastReceiver? = null
+
+    /**
+     * Debug builds only: runs an action as if the model had written it, so the guard
+     * and the intent can be checked on a phone without asking the model anything.
+     * The line is shown, never spoken: speaking it would be a /tts call.
+     *
+     *     adb shell am broadcast -a xyz.heylana.app.debug.QUICK_ACTION \
+     *       --es said "open the wallet" --es action '{"type":"intent","intent":"open_app","app":"wallet"}'
+     */
+    private fun registerDebugQuickAction() {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val said = intent.getStringExtra("said").orEmpty()
+                val json = runCatching { org.json.JSONObject(intent.getStringExtra("action").orEmpty()) }.getOrNull()
+                val fields = HashMap<String, Any?>()
+                json?.keys()?.forEach { key -> fields[key] = if (json.isNull(key)) null else json.opt(key) }
+                val action = QuickAction.of(fields)
+                HeylanaLog.state("action: raw debug intent=${action?.intent ?: "malformed"}")
+                if (action != null) handleQuick(action, said, aloud = false)
+            }
+        }
+        ContextCompat.registerReceiver(this, receiver, android.content.IntentFilter(DEBUG_QUICK_ACTION), ContextCompat.RECEIVER_EXPORTED)
+        debugQuickAction = receiver
+    }
+
     /**
      * An alarm, a timer, an app, a page, directions or the dialer. Every part must be
      * in the user's own words; then the phone's own app does it, in front, and
      * Heylana says one short line. Heylana itself taps nothing.
      */
-    private fun handleQuick(action: QuickAction, question: String) {
-        when (val verdict = QuickGuard.check(action, question)) {
+    private fun handleQuick(action: QuickAction, question: String, aloud: Boolean = true) {
+        val line = when (val verdict = QuickGuard.check(action, question)) {
             is QuickGuard.Verdict.Refused -> {
                 HeylanaLog.state("action: guard verdict=refused intent=${action.intent} reason=${verdict.reason}")
-                sayLine(verdict.line)
+                verdict.line
             }
             is QuickGuard.Verdict.Allowed -> {
                 HeylanaLog.state("action: guard verdict=allowed ${QuickLog.describe(verdict.action)}")
-                val outcome = quickRunner.run(verdict.action)
-                sayLine(outcome.line)
+                quickRunner.run(verdict.action).line
             }
         }
+        if (aloud) sayLine(line) else overlayView?.showNotice(line)
     }
 
     // ------------------------------------------------------------------ sending
@@ -1166,6 +1202,9 @@ class BuddyOverlayService : Service() {
     }
 
     companion object {
+        /** Debug builds only; see registerDebugQuickAction. */
+        const val DEBUG_QUICK_ACTION = "xyz.heylana.app.debug.QUICK_ACTION"
+
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
 

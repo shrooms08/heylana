@@ -21,8 +21,27 @@ class QuickGuardTest {
         assertTrue(allowed(QuickAction.Alarm(12, 0, null), "alarm at noon") != null)
         assertEquals("time_not_said", refused(QuickAction.Alarm(8, 0, null), "set an alarm for 7 tomorrow"))
         assertEquals("time_not_said", refused(QuickAction.Alarm(7, 15, null), "set an alarm for 7 tomorrow"))
-        assertEquals("time_not_said", refused(QuickAction.Alarm(19, 0, null), "alarm at 7 in the morning"))
-        assertEquals("time_not_said", refused(QuickAction.Alarm(7, 0, null), "alarm at 7 this evening"))
+    }
+
+    @Test
+    fun `7 tomorrow is 7 in the morning, whatever the model wrote`() {
+        assertEquals(QuickAction.Alarm(7, 0, null), allowed(QuickAction.Alarm(19, 0, null), "set an alarm for 7 tomorrow"))
+        assertEquals(QuickAction.Alarm(7, 0, null), allowed(QuickAction.Alarm(7, 0, null), "set an alarm for 7 tomorrow"))
+        assertEquals(QuickAction.Alarm(7, 0, null), allowed(QuickAction.Alarm(19, 0, null), "alarm at 7 in the morning"))
+        assertEquals(QuickAction.Alarm(19, 0, null), allowed(QuickAction.Alarm(7, 0, null), "alarm at 7 this evening"))
+        assertEquals(QuickAction.Alarm(19, 0, null), allowed(QuickAction.Alarm(19, 0, null), "alarm at 7pm"))
+        assertEquals(QuickAction.Alarm(21, 0, null), allowed(QuickAction.Alarm(9, 0, null), "wake me at 9 tonight"))
+        // The 24-hour number said outright stays as it is.
+        assertEquals(QuickAction.Alarm(19, 0, null), allowed(QuickAction.Alarm(19, 0, null), "alarm at 19:00"))
+        assertEquals(QuickAction.Alarm(12, 0, null), allowed(QuickAction.Alarm(12, 0, null), "alarm at noon"))
+        assertEquals(QuickAction.Alarm(7, 0, null), allowed(QuickAction.Alarm(19, 0, null), "I am up at 7, set an alarm"))
+        assertEquals(QuickAction.Alarm(7, 0, null), allowed(QuickAction.Alarm(19, 0, null), "alarm 7 a.m."))
+    }
+
+    @Test
+    fun `the line says the morning for 7 tomorrow`() {
+        val allowedAlarm = allowed(QuickAction.Alarm(19, 0, null), "set an alarm for 7 tomorrow")!!
+        assertEquals("Alarm set for 7 AM tomorrow.", QuickText.line(allowedAlarm, java.time.LocalTime.of(21, 0)))
     }
 
     @Test
@@ -166,5 +185,43 @@ class AppMatcherTest {
         val list = apps + LauncherApp("Phantom Wallet", "app.phantom")
         assertTrue(AppMatcher.best("wallet", list) is AppMatcher.Match.Ambiguous)
         assertEquals(AppMatcher.Match.None, AppMatcher.best("spotify", apps))
+    }
+}
+
+
+class QuickActionClassifierTest {
+
+    @Test
+    fun `the four smoke questions are quick actions`() {
+        for (q in listOf("set an alarm for 7 tomorrow", "set a timer for 5 minutes", "open the wallet", "call 0800 123 4567")) {
+            assertTrue(q, QuickActions.isQuickAction(q))
+        }
+    }
+
+    @Test
+    fun `polite and spoken forms are too`() {
+        for (q in listOf("can you wake me at 6", "please open Jupiter", "Could you launch chrome", "timer for 90 seconds",
+            "directions to Lekki Phase 1", "how do I get to the airport", "dial 112", "Hey Heylana, open solana.com")) {
+            assertTrue(q, QuickActions.isQuickAction(q))
+        }
+    }
+
+    @Test
+    fun `questions about the screen are not`() {
+        for (q in listOf("how do I open settings in this app", "what does the call button do", "is this timer running",
+            "what is on this screen", "where is the open button", "does this app have an alarm", "send 0.05 USDC to bob.skr")) {
+            assertTrue(q, !QuickActions.isQuickAction(q))
+        }
+    }
+
+    @Test
+    fun `a quick action routes on its own - quick model, no Solana, no tools, no greeting`() {
+        val route = xyz.heylana.app.brain.Routing.forQuestion("com.android.launcher3", "open the wallet")
+        assertEquals(xyz.heylana.app.brain.Routing.Why.QUICK_ACTION, route.why)
+        assertEquals(xyz.heylana.app.brain.ProxyClient.MODE_QUICK, route.mode)
+        assertNull(route.solana)
+        assertTrue(!route.toolsWanted && !route.allowsGreeting)
+        // A send still wins, and a signing screen still comes first.
+        assertEquals(xyz.heylana.app.brain.Routing.Why.SEND_QUESTION, xyz.heylana.app.brain.Routing.forQuestion(null, "send 1 SOL to bob.skr and call him").why)
     }
 }

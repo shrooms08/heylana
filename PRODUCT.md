@@ -151,6 +151,10 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 - **Directions show the place, not turn-by-turn.** The map app opens on what you
   named, and you start navigation there.
 
+- **Clear glass washes out over white apps.** Heylana's glass is clear, so over a plain
+  white page its words and mark are hard to read. Settings → **Darker glass** adds a
+  dark tint under it for people who mostly use light apps.
+
 ## Mainnet switch before submission
 
 In `worker/wrangler.toml` and the worker's secrets, then on the phone:

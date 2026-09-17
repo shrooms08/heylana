@@ -217,6 +217,19 @@ private fun SettingsScreen(
 
         VoiceCard(settings = settings, onSample = onSample)
 
+        var darkerGlass by remember { mutableStateOf(settings.darkerGlass) }
+        SwitchCard(
+            title = "Darker glass",
+            detail = "Off by default. Adds a dark tint under Heylana's glass so its words " +
+                "stay easy to read if you mostly use light apps.",
+            checked = darkerGlass,
+            onCheckedChange = {
+                darkerGlass = it
+                settings.darkerGlass = it
+                xyz.heylana.app.ui.GlassSpec.darkerGlass = it
+            }
+        )
+
         SwitchCard(
             title = "Show spoken answers as text",
             detail = "Off by default. When you ask by holding the buddy, Heylana answers " +

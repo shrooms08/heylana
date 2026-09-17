@@ -132,7 +132,14 @@ class DebugStatesActivity : Activity() {
         // unreachable because of it.
         val buttons = states().map { (_, label, action) ->
             button(label) { caption.text = label; action() }
-        } + button("backdrop") { onBlack = !onBlack; applyBackdrop() }
+        } + button("backdrop") { onBlack = !onBlack; applyBackdrop() } +
+            button("darker glass") {
+                // A preview only: the real setting is in Settings.
+                xyz.heylana.app.ui.GlassSpec.darkerGlass = !xyz.heylana.app.ui.GlassSpec.darkerGlass
+                caption.text = "darker glass ${if (xyz.heylana.app.ui.GlassSpec.darkerGlass) "on" else "off"}"
+                stage.invalidate()
+                invalidateAll(stage)
+            }
 
         val bar = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -162,6 +169,7 @@ class DebugStatesActivity : Activity() {
         // adb can drive a single state straight away:
         //   -e state "task 2/4" -e backdrop white
         onBlack = intent.getStringExtra(EXTRA_BACKDROP) != "white"
+        intent.getStringExtra(EXTRA_DARKER)?.let { xyz.heylana.app.ui.GlassSpec.darkerGlass = it == "on" }
         applyBackdrop()
         val wanted = intent.getStringExtra(EXTRA_STATE)
         val chosen = states().firstOrNull { it.first == wanted } ?: states().first()
@@ -526,6 +534,11 @@ class DebugStatesActivity : Activity() {
         setOnClickListener { onTap() }
     }
 
+    private fun invalidateAll(view: View) {
+        view.invalidate()
+        if (view is android.view.ViewGroup) for (i in 0 until view.childCount) invalidateAll(view.getChildAt(i))
+    }
+
     private fun dp(value: Float): Int = HeylanaTokens.dpInt(this, value)
 
     private companion object {
@@ -554,6 +567,7 @@ class DebugStatesActivity : Activity() {
         const val PER_ROW = 3
         const val EXTRA_STATE = "state"
         const val EXTRA_BACKDROP = "backdrop"
+        const val EXTRA_DARKER = "darker"
     }
 }
 

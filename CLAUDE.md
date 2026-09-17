@@ -133,7 +133,10 @@ box, the strip, the task HUD, the pills — draws through `ui/GlassDrawable`:
 
 Over black it reads as dark clear glass with a bright bottom-right rim; over a plain
 white page it is nearly invisible — white text and the white mark included — which is
-what "Darker glass" in Settings is for. The purple band, the aurora under the disc
+what "Darker glass" in Settings is for: a black 25% base under every panel and the
+disc (`HeylanaSettings.darkerGlass`, copied into `GlassSpec.darkerGlass` when the app
+starts and when the switch changes, and read by each surface as it draws). Debug
+states has a "darker glass" button to preview it, and `-e darker on` for adb. The purple band, the aurora under the disc
 face, the chromatic rim, the motion RGB split and the purple bloom (design-2c) are
 still in the code behind `GlassSpec.TINTED_EXTRAS`, off.
 

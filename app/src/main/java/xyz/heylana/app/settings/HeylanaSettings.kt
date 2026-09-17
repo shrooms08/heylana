@@ -206,6 +206,16 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             }.apply()
         }
 
+    /**
+     * "Darker glass": a black 25% base under the clear glass, for people who mostly use
+     * light apps, where clear glass and white text wash out. Off by default.
+     */
+    var darkerGlass: Boolean
+        get() = prefs.getBoolean(KEY_DARKER_GLASS, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_DARKER_GLASS, value).apply()
+        }
+
     /** Debug switch: count skills against the Free plan's cap whatever the plan is. */
     var simulateFreePlan: Boolean
         get() = prefs.getBoolean(KEY_SIMULATE_FREE, false)
@@ -246,6 +256,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_SKILLS_OFF = "skills_off"
         private const val KEY_SKILLS_CAP = "skills_cap"
         private const val KEY_SIMULATE_FREE = "simulate_free_plan"
+        private const val KEY_DARKER_GLASS = "darker_glass"
 
         private const val FILE_NAME = "heylana_secure_settings"
         private const val KEY_API_KEY = "api_key"

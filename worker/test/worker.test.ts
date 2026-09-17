@@ -9,6 +9,7 @@ const SECRETS = {
   ANTHROPIC_API_KEY: 'sk-ant-test-000000000000',
   CARTESIA_API_KEY: 'sk_car_test_11111111111',
   DEEPGRAM_API_KEY: 'dg_test_2222222222222',
+  GEMINI_API_KEY: 'AIza_test_3333333333333',
 }
 
 /** Workers KV, small enough to keep in a Map. */
@@ -107,34 +108,88 @@ test('max_tokens is clamped, whatever the app asks for', async () => {
 
 // ---------------------------------------------------------------- the voice
 
-test('the audio format the phone is told about is the one that was asked for', async () => {
-  reply = () => new Response(new Uint8Array([1]), { status: 200 })
-  const response = await worker.fetch(post('/tts', { text: 'hello' }), env())
-  const asked = sentBody(calls[0]).output_format
-  assert.equal(asked.container, 'raw')
-  assert.equal(asked.encoding, 'pcm_s16le')
-  assert.equal(String(asked.sample_rate), response.headers.get('x-sample-rate'))
+/** Gemini's streamed speech as it arrives: SSE, with base64 PCM in step.delta events. */
+function sse(...events: unknown[]): string {
+  return events.map((e: any) => `event: ${e.event_type ?? 'message'}\ndata: ${JSON.stringify(e)}\n\n`).join('')
+}
+const audioDelta = (bytes: number[]) => ({
+  event_type: 'step.delta', index: 0,
+  delta: { type: 'audio', data: Buffer.from(bytes).toString('base64'), mime_type: 'audio/l16', sample_rate: 24000, channels: 1 },
 })
 
-test('a spoken answer goes to Cartesia in Skylar by default', async () => {
-  reply = () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+test('by default a spoken answer goes to Gemini TTS in Sulafat, streamed, and comes back as raw PCM', async () => {
+  reply = () => new Response(sse(
+    { event_type: 'interaction.start' }, audioDelta([1, 2, 3]), audioDelta([4]),
+    // The closing event repeats the whole audio; it must not be played twice.
+    { event_type: 'interaction.completed', interaction: { steps: [{ type: 'audio', data: Buffer.from([1, 2, 3, 4]).toString('base64') }] } },
+  ), { status: 200, headers: { 'content-type': 'text/event-stream' } })
   const response = await worker.fetch(post('/tts', { text: 'The search bar is at the top.' }), env())
-  assert.equal(calls[0].url, 'https://api.cartesia.ai/tts/bytes')
-  assert.equal(sentBody(calls[0]).voice.id, 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4')
+  assert.equal(calls[0].url, 'https://generativelanguage.googleapis.com/v1beta/interactions')
+  const sent = sentBody(calls[0])
+  assert.equal(sent.model, 'gemini-3.1-flash-tts-preview')
+  assert.equal(sent.input, 'The search bar is at the top.')
+  assert.equal(sent.stream, true)
+  assert.deepEqual(sent.response_format, { type: 'audio' })
+  assert.deepEqual(sent.generation_config.speech_config, [{ voice: 'Sulafat' }])
+  assert.equal((calls[0].init.headers as any)['x-goog-api-key'], SECRETS.GEMINI_API_KEY)
+  assert.equal(response.status, 200)
+  assert.equal(response.headers.get('content-type'), 'audio/L16')
   assert.equal(response.headers.get('x-sample-rate'), '24000')
-  assert.equal((await response.arrayBuffer()).byteLength, 3)
+  assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [1, 2, 3, 4])
 })
 
-test('Archie is a different voice id', async () => {
-  reply = () => new Response(new Uint8Array([1]), { status: 200 })
-  await worker.fetch(post('/tts', { text: 'hello', voice: 'archie' }), env())
-  assert.equal(sentBody(calls[0]).voice.id, 'ef191366-f52f-447a-a398-ed8c0f2943a1')
+test('Archie is Achird on Gemini, and each call logs its provider and voice', async () => {
+  const lines: string[] = []
+  const original = console.log
+  console.log = (line: string) => lines.push(line)
+  try {
+    reply = () => new Response(sse(audioDelta([1, 2])), { status: 200 })
+    const response = await worker.fetch(post('/tts', { text: 'hello', voice: 'archie' }), env())
+    await response.arrayBuffer()
+  } finally {
+    console.log = original
+  }
+  assert.deepEqual(sentBody(calls[0]).generation_config.speech_config, [{ voice: 'Achird' }])
+  const start = JSON.parse(lines.find((l) => l.includes('"route":"tts"'))!)
+  assert.equal(start.provider, 'gemini')
+  assert.equal(start.voice, 'Achird')
+  assert.ok(!lines.join('\n').includes('hello'))
+  const end = JSON.parse(lines.find((l) => l.includes('"route":"tts_end"'))!)
+  assert.equal(end.bytes, 2)
+})
+
+test('VOICE_PROVIDER=cartesia keeps Cartesia, with the format the phone is told about', async () => {
+  reply = () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })
+  const response = await worker.fetch(post('/tts', { text: 'The search bar is at the top.' }), { ...env(), VOICE_PROVIDER: 'cartesia' })
+  assert.equal(calls[0].url, 'https://api.cartesia.ai/tts/bytes')
+  const asked = sentBody(calls[0])
+  assert.equal(asked.voice.id, 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4')
+  assert.equal(asked.output_format.encoding, 'pcm_s16le')
+  assert.equal(String(asked.output_format.sample_rate), response.headers.get('x-sample-rate'))
+  assert.equal((await response.arrayBuffer()).byteLength, 3)
+  await worker.fetch(post('/tts', { text: 'hello', voice: 'archie' }), { ...env(), VOICE_PROVIDER: 'cartesia' })
+  assert.equal(sentBody(calls[1]).voice.id, 'ef191366-f52f-447a-a398-ed8c0f2943a1')
 })
 
 test('a long answer is cut at 400 characters', async () => {
-  reply = () => new Response(new Uint8Array([1]), { status: 200 })
+  reply = () => new Response(sse(audioDelta([1])), { status: 200 })
   await worker.fetch(post('/tts', { text: 'a'.repeat(900) }), env())
-  assert.equal(sentBody(calls[0]).transcript.length, 400)
+  assert.equal(sentBody(calls[0]).input.length, 400)
+})
+
+test('Gemini out of quota is a 429 the phone can name, and its key never comes back', async () => {
+  reply = () => new Response(JSON.stringify({ error: { code: 429, message: `quota for ${SECRETS.GEMINI_API_KEY}` } }), { status: 429 })
+  const response = await worker.fetch(post('/tts', { text: 'hello' }), env())
+  assert.equal(response.status, 429)
+  const body = await response.text()
+  assert.equal(JSON.parse(body).reason, 'quota')
+  assert.ok(!body.includes(SECRETS.GEMINI_API_KEY))
+})
+
+test('without a Gemini key the voice is refused, not attempted', async () => {
+  const response = await worker.fetch(post('/tts', { text: 'hello' }), { ...env(), GEMINI_API_KEY: undefined })
+  assert.equal(response.status, 503)
+  assert.equal(calls.length, 0)
 })
 
 test('nothing to say is not a request', async () => {
@@ -282,12 +337,15 @@ test('an upstream error that quotes the key comes back with it removed', async (
 
 test('a thrown error carries no secret either', async () => {
   reply = () => {
-    throw new Error(`socket died using ${SECRETS.CARTESIA_API_KEY}`)
+    throw new Error(`socket died using ${SECRETS.CARTESIA_API_KEY} and ${SECRETS.GEMINI_API_KEY}`)
   }
-  const response = await worker.fetch(post('/tts', { text: 'hello' }), env())
-  const text = await response.text()
-  assert.equal(response.status, 502)
-  assert.ok(!text.includes(SECRETS.CARTESIA_API_KEY))
+  for (const provider of ['cartesia', 'gemini']) {
+    const response = await worker.fetch(post('/tts', { text: 'hello' }), { ...env(), VOICE_PROVIDER: provider })
+    const text = await response.text()
+    assert.equal(response.status, 502)
+    assert.ok(!text.includes(SECRETS.CARTESIA_API_KEY))
+    assert.ok(!text.includes(SECRETS.GEMINI_API_KEY))
+  }
 })
 
 test('scrub leaves ordinary text alone', () => {

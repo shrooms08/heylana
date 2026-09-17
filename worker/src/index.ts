@@ -25,8 +25,9 @@ import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.
 import { prepareSend } from './tools.ts'
 import { checkSend, type PreparedSend } from './send.ts'
 import { short } from './solana.ts'
+import { GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, geminiPcmStream, geminiRequest, geminiVoiceFor, providerOf } from './voice.ts'
 import {
-  type Account, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, spendTalk, standing,
+  type Account, type PlanName, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, planOf, spendTalk, standing,
 } from './plans.ts'
 import {
   type Quote, QUOTE_TTL_MS, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, USDC_DECIMALS, checkPayment, decimalToUnits,
@@ -46,7 +47,10 @@ export const clock = { now: (): number => Date.now() }
 export interface Env {
   /** Secrets. Never in the repo, never in wrangler.toml, never in a response. */
   ANTHROPIC_API_KEY: string
-  CARTESIA_API_KEY: string
+  /** Only needed when VOICE_PROVIDER is "cartesia". */
+  CARTESIA_API_KEY?: string
+  /** Gemini TTS, the default voice. */
+  GEMINI_API_KEY?: string
   DEEPGRAM_API_KEY: string
   /** Seals session tokens. Long and random; changing it signs everyone out. */
   SESSION_SECRET: string
@@ -65,8 +69,13 @@ export interface Env {
 
   /** Plain configuration. */
   DEEPGRAM_PROJECT_ID: string
-  VOICE_SKYLAR: string
-  VOICE_ARCHIE: string
+  /** "gemini" (the default when unset) or "cartesia". */
+  VOICE_PROVIDER?: string
+  /** Optional: a newer Gemini TTS model id than the built-in one. */
+  GEMINI_TTS_MODEL?: string
+  /** Cartesia voice ids, used only when VOICE_PROVIDER is "cartesia". */
+  VOICE_SKYLAR?: string
+  VOICE_ARCHIE?: string
   /** The last day of judging, as YYYY-MM-DD. Judge plans end with it. */
   JUDGE_UNTIL: string
   /** Where Pro payments go: the treasury wallet's address, not a token account. */
@@ -91,10 +100,13 @@ const MODELS: Record<string, string> = {
 
 /**
  * What one device may spend in a day, per route. Budget and abuse protection —
- * a ceiling over the plans, never a plan in itself.
+ * a ceiling over the plans, never a plan in itself. Questions and spoken answers are
+ * capped like this on Free only; Pro and Judge get [PAID_DAILY_CEILING].
  */
+export const DAILY_CAP_FREE_CHAT = 150
+
 const DAILY_CAPS: Record<string, number> = {
-  chat: 150,
+  chat: DAILY_CAP_FREE_CHAT,
   tts: 150,
   'stt-token': 300,
   'wallet/challenge': 50,
@@ -109,6 +121,18 @@ const DAILY_CAPS: Record<string, number> = {
   'send/prepare': 50,
   // Confirming polls while the chain catches up.
   'send/confirm': 200,
+}
+
+/** Pro and Judge questions and spoken answers: unlimited in practice, with an abuse ceiling. */
+export const PAID_DAILY_CEILING = 2000
+
+/** The routes whose daily cap depends on the plan. */
+const PLAN_CAPPED_ROUTES = new Set(['chat', 'tts'])
+
+/** Today's cap for a route on a plan: Free keeps the device cap; Pro and Judge get the ceiling. */
+export function dailyCapFor(route: string, plan: PlanName): number {
+  if (PLAN_CAPPED_ROUTES.has(route) && plan !== 'free') return PAID_DAILY_CEILING
+  return DAILY_CAPS[route]
 }
 
 /** Every route the worker answers, and the methods each takes. */
@@ -209,7 +233,9 @@ export default {
       return fail(401, 'bad_session', 'That wallet session has ended. Connect again.')
     }
 
-    const overCap = await chargeOne(env, device, route)
+    // Only chat and tts depend on the plan, so only they pay for reading the account.
+    const plan: PlanName = PLAN_CAPPED_ROUTES.has(route) ? planOf(await loadAccount(env, who.key), new Date(clock.now())) : 'free'
+    const overCap = await chargeOne(env, device, route, dailyCapFor(route, plan))
     if (overCap) {
       return fail(429, 'daily_cap', 'That is all for today.')
     }
@@ -446,18 +472,69 @@ async function shorten(body: any, env: Env, who: Who, started: number): Promise<
   return new Response(scrub(text, env), { status: upstream.status, headers: { 'content-type': 'application/json' } })
 }
 
-/** Some text to say out loud, in one of Heylana's two voices. */
+/** Some text to say out loud, in one of Heylana's two voices, by the configured provider. */
 async function speak(request: Request, env: Env, device: string, started: number): Promise<Response> {
   const body = await readJson(request)
   const text = String(body.text ?? '').slice(0, MAX_TTS_CHARS)
   if (text.trim().length === 0) return fail(400, 'no_text', 'Nothing to say.')
+  const slot = body.voice === 'archie' ? 'archie' : 'skylar'
+  const provider = providerOf(env.VOICE_PROVIDER)
+  return provider === 'cartesia'
+    ? speakCartesia(env, device, started, text, slot)
+    : speakGemini(env, device, started, text, slot)
+}
 
-  const voiceId = body.voice === 'archie' ? env.VOICE_ARCHIE : env.VOICE_SKYLAR
+const AUDIO_HEADERS = {
+  'content-type': 'audio/L16',
+  'x-sample-rate': String(TTS_SAMPLE_RATE),
+  'cache-control': 'no-store',
+}
+
+async function speakGemini(env: Env, device: string, started: number, text: string, slot: string): Promise<Response> {
+  const voice = geminiVoiceFor(slot)
+  const model = env.GEMINI_TTS_MODEL?.trim() || GEMINI_TTS_MODEL
+  if (!env.GEMINI_API_KEY) {
+    log({ route: 'tts', device, provider: 'gemini', voice, status: 503, error: 'no_key' })
+    return fail(503, 'voice_not_configured', 'The voice is not set up.')
+  }
+  const upstream = await fetch(GEMINI_TTS_URL, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': env.GEMINI_API_KEY,
+      'Api-Revision': GEMINI_API_REVISION,
+      'content-type': 'application/json',
+      accept: 'text/event-stream',
+    },
+    body: JSON.stringify(geminiRequest(text, voice, model)),
+  })
+
+  log({ route: 'tts', device, provider: 'gemini', voice, model, ms: clock.now() - started, status: upstream.status, chars: text.length })
+
+  if (!upstream.ok || !upstream.body) {
+    const detail = scrub(await upstream.text().catch(() => ''), env)
+    // Google's quota or rate limit: the phone says nothing and shows the words.
+    if (upstream.status === 429) return fail(429, 'quota', 'The voice is out of quota for now.')
+    return fail(502, 'upstream', detail)
+  }
+
+  // Decoded as each event lands, so the phone starts playing before the sentence is done.
+  const pcm = geminiPcmStream(upstream.body, (stats) => {
+    log({
+      route: 'tts_end', device, provider: 'gemini', voice, ms: clock.now() - started,
+      events: stats.events, audio_events: stats.audioEvents, bytes: stats.bytes,
+      ...(stats.error ? { error: stats.error } : {}),
+    })
+  })
+  return new Response(pcm, { status: 200, headers: AUDIO_HEADERS })
+}
+
+async function speakCartesia(env: Env, device: string, started: number, text: string, slot: string): Promise<Response> {
+  const voiceId = slot === 'archie' ? env.VOICE_ARCHIE : env.VOICE_SKYLAR
 
   const upstream = await fetch(CARTESIA_URL, {
     method: 'POST',
     headers: {
-      'X-API-Key': env.CARTESIA_API_KEY,
+      'X-API-Key': env.CARTESIA_API_KEY ?? '',
       'Cartesia-Version': CARTESIA_VERSION,
       'content-type': 'application/json',
     },
@@ -474,28 +551,15 @@ async function speak(request: Request, env: Env, device: string, started: number
     }),
   })
 
-  log({
-    route: 'tts',
-    device,
-    ms: clock.now() - started,
-    status: upstream.status,
-    chars: text.length,
-    voice: body.voice === 'archie' ? 'archie' : 'skylar',
-  })
+  log({ route: 'tts', device, provider: 'cartesia', voice: slot, ms: clock.now() - started, status: upstream.status, chars: text.length })
 
   if (!upstream.ok) {
+    if (upstream.status === 429) return fail(429, 'quota', 'The voice is out of quota for now.')
     return fail(502, 'upstream', scrub(await upstream.text(), env))
   }
 
   // Straight through, so the phone can start playing before the sentence ends.
-  return new Response(upstream.body, {
-    status: 200,
-    headers: {
-      'content-type': 'audio/L16',
-      'x-sample-rate': String(TTS_SAMPLE_RATE),
-      'cache-control': 'no-store',
-    },
-  })
+  return new Response(upstream.body, { status: 200, headers: AUDIO_HEADERS })
 }
 
 /**
@@ -1071,8 +1135,7 @@ export function deviceOf(request: Request): string | null {
 }
 
 /** Counts one request against today's allowance. True when it is over. */
-export async function chargeOne(env: Env, device: string, route: string): Promise<boolean> {
-  const cap = DAILY_CAPS[route]
+export async function chargeOne(env: Env, device: string, route: string, cap: number = DAILY_CAPS[route]): Promise<boolean> {
   const key = `cap:${today()}:${device}:${route}`
   const used = Number((await env.CAPS.get(key)) ?? '0')
   if (used >= cap) return true
@@ -1116,6 +1179,7 @@ export function scrub(text: string, env: Env): string {
   const secrets = [
     env.ANTHROPIC_API_KEY,
     env.CARTESIA_API_KEY,
+    env.GEMINI_API_KEY,
     env.DEEPGRAM_API_KEY,
     env.SESSION_SECRET,
     env.JUDGE_CODE,

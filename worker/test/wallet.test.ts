@@ -181,14 +181,26 @@ test('pro is unlimited', async () => {
   assert.equal(res.status, 200)
 })
 
-test('the daily abuse cap is still a ceiling over any plan', async () => {
-  const kv = store({
-    'acct:d:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': JSON.stringify({ bonus_left: 0, bonus_granted: false, pro_until: '2026-10-15T00:00:00Z' }),
+test('Pro is past the Free daily cap, up to the 2000 abuse ceiling', async () => {
+  const pro = JSON.stringify({ bonus_left: 0, bonus_granted: false, pro_until: '2026-10-15T00:00:00Z' })
+  const past = store({
+    'acct:d:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': pro,
     'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55:chat': '150',
   })
-  const res = await worker.fetch(req('POST', '/chat', ask), env(kv))
+  assert.equal((await worker.fetch(req('POST', '/chat', ask), env(past))).status, 200)
+  const ceiling = store({
+    'acct:d:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': pro,
+    'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55:chat': '2000',
+  })
+  const res = await worker.fetch(req('POST', '/chat', ask), env(ceiling))
   assert.equal(res.status, 429)
   assert.equal((await res.json()).reason, 'daily_cap')
+})
+
+test('the daily chat cap still holds on Free', async () => {
+  const kv = store({ 'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55:chat': '150' })
+  const res = await worker.fetch(req('POST', '/chat', ask), env(kv))
+  assert.equal(res.status, 429)
 })
 
 test('the judge code makes a wallet a judge until judging ends', async () => {

@@ -71,8 +71,7 @@ import xyz.heylana.app.wallet.SeedVault
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.WalletProblem
 import xyz.heylana.app.wallet.WalletSession
-import xyz.heylana.app.voice.CartesiaVoice
-import xyz.heylana.app.voice.Speaker
+import xyz.heylana.app.voice.HeylanaVoice
 import xyz.heylana.app.ui.theme.HeylanaTheme
 
 /**
@@ -85,7 +84,7 @@ import xyz.heylana.app.ui.theme.HeylanaTheme
 class SettingsActivity : ComponentActivity() {
 
     /** Only here to say one short line when a voice is picked. */
-    private var sample: CartesiaVoice? = null
+    private var sample: HeylanaVoice? = null
 
     /** Created with the activity, as Mobile Wallet Adapter requires. */
     private lateinit var seedVault: SeedVault
@@ -96,11 +95,10 @@ class SettingsActivity : ComponentActivity() {
         enableEdgeToEdge()
         val settings = HeylanaSettings.get(this)
         seedVault = SeedVault(this)
-        sample = CartesiaVoice(
+        sample = HeylanaVoice(
             context = this,
             settings = settings,
             scope = scope,
-            phone = Speaker(this) { },
             onSpeaking = { }
         )
         setContent {
@@ -315,22 +313,16 @@ private fun VoiceCard(settings: HeylanaSettings, onSample: () -> Unit) {
             }
 
             ChoiceRow(
-                label = "Skylar",
-                detail = "Heylana's own voice.",
+                label = HeylanaSettings.VOICE_NAMES.getValue(HeylanaSettings.VOICE_SKYLAR),
+                detail = "Warm and clear. Heylana's own voice.",
                 selected = chosen == HeylanaSettings.VOICE_SKYLAR,
                 onSelect = { pick(HeylanaSettings.VOICE_SKYLAR) }
             )
             ChoiceRow(
-                label = "Archie",
-                detail = "The other one.",
+                label = HeylanaSettings.VOICE_NAMES.getValue(HeylanaSettings.VOICE_ARCHIE),
+                detail = "Warm and friendly.",
                 selected = chosen == HeylanaSettings.VOICE_ARCHIE,
                 onSelect = { pick(HeylanaSettings.VOICE_ARCHIE) }
-            )
-            ChoiceRow(
-                label = "Phone voice",
-                detail = "Your phone's own. Works with no connection at all.",
-                selected = chosen == HeylanaSettings.VOICE_PHONE,
-                onSelect = { pick(HeylanaSettings.VOICE_PHONE) }
             )
         }
     }
@@ -825,8 +817,9 @@ private fun PrivacyCard() {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Your voice goes to Deepgram to be transcribed while you hold the " +
-                    "buddy. The spoken answer text goes to Cartesia to become speech. The " +
-                    "screen never goes to either.",
+                    "buddy. The spoken answer text goes to Google (Gemini) to become speech. " +
+                    "Conversation mode, when enabled, uses Gemini Live's free tier; Google may " +
+                    "use that audio to improve its models. The screen never goes to either.",
                 style = MaterialTheme.typography.bodySmall
             )
         }
@@ -963,7 +956,6 @@ private fun DebugSection(settings: HeylanaSettings) {
     val context = LocalContext.current
 
     var phoneEars by remember { mutableStateOf(settings.forcePhoneEars) }
-    var phoneVoice by remember { mutableStateOf(settings.forcePhoneVoice) }
 
     var saveTts by remember { mutableStateOf(settings.saveTtsStream) }
     var simulateFree by remember { mutableStateOf(settings.simulateFreePlan) }
@@ -999,16 +991,6 @@ private fun DebugSection(settings: HeylanaSettings) {
         onCheckedChange = {
             phoneEars = it
             settings.forcePhoneEars = it
-        }
-    )
-
-    SwitchCard(
-        title = "Force phone voice",
-        detail = "Debug builds only. Skips Cartesia and answers in the phone's own voice.",
-        checked = phoneVoice,
-        onCheckedChange = {
-            phoneVoice = it
-            settings.forcePhoneVoice = it
         }
     )
 

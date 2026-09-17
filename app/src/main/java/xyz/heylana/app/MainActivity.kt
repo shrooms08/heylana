@@ -181,8 +181,9 @@ private fun SetupScreen(
                 "Heylana reads the screen only when you ask, and watches for your tap " +
                 "only while it is pointing at something.\n\n" +
                 "Your voice goes to Deepgram to be transcribed while you hold the " +
-                "buddy. The spoken answer text goes to Cartesia to become speech. The " +
-                "screen never goes to either.",
+                "buddy. The spoken answer text goes to Google (Gemini) to become speech. " +
+                "Conversation mode, when enabled, uses Gemini Live's free tier; Google may " +
+                "use that audio to improve its models. The screen never goes to either.",
             style = MaterialTheme.typography.bodyMedium
         )
 

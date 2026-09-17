@@ -83,12 +83,6 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_SAVE_TTS, value).apply()
         }
 
-    var forcePhoneVoice: Boolean
-        get() = prefs.getBoolean(KEY_FORCE_PHONE_VOICE, false)
-        set(value) {
-            prefs.edit().putBoolean(KEY_FORCE_PHONE_VOICE, value).apply()
-        }
-
     /** The cheap model, used for one-shot questions. */
     var quickModel: String
         get() = prefs.getString(KEY_QUICK_MODEL, null)?.takeIf { it.isNotBlank() }
@@ -236,11 +230,16 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         const val DEFAULT_QUICK_MODEL = "claude-haiku-4-5-20251001"
         const val DEFAULT_TASK_MODEL = "claude-sonnet-5"
 
-        /** Cartesia's two, and the phone's own as the third choice. */
+        /**
+         * The two voice slots, as the worker knows them. There is no phone voice: a
+         * stored "phone" from an older build reads as the first slot.
+         */
         const val VOICE_SKYLAR = "skylar"
         const val VOICE_ARCHIE = "archie"
-        const val VOICE_PHONE = "phone"
-        val VOICES = listOf(VOICE_SKYLAR, VOICE_ARCHIE, VOICE_PHONE)
+        val VOICES = listOf(VOICE_SKYLAR, VOICE_ARCHIE)
+
+        /** What the picker calls each slot: the Gemini voice the worker speaks it in. */
+        val VOICE_NAMES = mapOf(VOICE_SKYLAR to "Sulafat", VOICE_ARCHIE to "Achird")
 
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_PENDING_PAYMENT = "pending_payment"
@@ -249,7 +248,6 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_USE_OWN_KEY = "use_own_key"
         private const val KEY_VOICE = "voice"
         private const val KEY_FORCE_PHONE_EARS = "force_phone_ears"
-        private const val KEY_FORCE_PHONE_VOICE = "force_phone_voice"
         private const val KEY_SAVE_TTS = "save_tts_stream"
 
         private const val KEY_WARM_UP = "warm_up_connection"

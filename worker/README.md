@@ -1,7 +1,7 @@
 # Heylana's proxy
 
 Every key Heylana needs lives in this Cloudflare Worker: Anthropic for the
-answers, Cartesia for the voice, Deepgram for the ears. **The phone holds none
+answers, Google Gemini for the voice (Cartesia still an option), Deepgram for the ears. **The phone holds none
 of them.** It sends what it wants done and this decides which model, which
 voice, and how much any one phone may spend in a day.
 
@@ -17,10 +17,11 @@ Every route is a POST, and every route needs the header
 | Route | The app sends | It does |
 |---|---|---|
 | `/chat` | `{mode, system, messages, max_tokens}` | Picks the model from `mode` — `quick` is Haiku, `task` is Sonnet — adds the Anthropic key, and returns the reply as it came. |
-| `/tts` | `{text, voice}` | Says it in Skylar or Archie through Cartesia Sonic, and streams the audio straight back. Text is cut at 400 characters. |
+| `/tts` | `{text, voice}` | Says it through `VOICE_PROVIDER`: Gemini TTS by default (`skylar` is Sulafat, `archie` is Achird), streamed and turned into raw 24 kHz 16-bit PCM as it arrives; or Cartesia Sonic with `VOICE_PROVIDER = "cartesia"`. Text is cut at 400 characters. Google's quota answers `429 {"reason":"quota"}`. |
 | `/stt-token` | `{}` | Mints a Deepgram key that stops working after two minutes, so the phone can open the listening socket itself. |
 
-Each phone gets 150 questions, 150 spoken answers and 300 pairs of ears a day.
+On Free, each phone gets 150 questions, 150 spoken answers and 300 pairs of ears a day;
+on Pro and Judge, questions and spoken answers have a 2000-a-day ceiling instead.
 Over that, the route answers `429 {"reason":"daily_cap"}`. That is budget
 protection and nothing else — the real free and paid tiers arrive in phase 3.
 
@@ -47,13 +48,17 @@ npx wrangler kv namespace create CAPS
 It prints a block ending in an `id = "…"`. Copy that id into `wrangler.toml`,
 replacing the `id = "replace-me"` under `[[kv_namespaces]]`.
 
-**3. Put in the three keys.** Each command asks for the key and does not echo
+**3. Put in the keys.** The voice is Gemini unless `VOICE_PROVIDER = "cartesia"` is added
+under `[vars]` in `wrangler.toml` (unset means `"gemini"`); `GEMINI_TTS_MODEL` can name a
+newer TTS model. Each command asks for the key and does not echo
 it. Paste, press enter.
 
 ```
 npx wrangler secret put ANTHROPIC_API_KEY
-npx wrangler secret put CARTESIA_API_KEY
+npx wrangler secret put GEMINI_API_KEY
 npx wrangler secret put DEEPGRAM_API_KEY
+# only if VOICE_PROVIDER is "cartesia":
+npx wrangler secret put CARTESIA_API_KEY
 ```
 
 > **The Deepgram key has to be allowed to make other keys.** `/stt-token` works
@@ -220,7 +225,7 @@ caps stay on as a ceiling over every plan.
 npm test
 ```
 
-Every test runs with no network: Anthropic, Cartesia, Deepgram, the Solana RPC
+Every test runs with no network: Anthropic, Gemini, Cartesia, Deepgram, the Solana RPC
 and Jupiter are all faked. They check that the
 app cannot choose its own model, that the caps hold, that a request without a
 device id is refused, and that no reply can carry a key even when the upstream

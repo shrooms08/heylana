@@ -18,32 +18,32 @@ import xyz.heylana.app.settings.HeylanaSettings
 /**
  * Heylana's voice.
  *
- * The proxy asks Cartesia for the words as raw 16-bit audio and streams them
- * straight back, so this can start playing before the sentence has finished
- * being made — which is the difference between a buddy that answers and one
- * that pauses first.
+ * The proxy asks the voice provider (Gemini TTS by default) for the words as raw
+ * 16-bit audio and streams them straight back, so this can start playing before the
+ * sentence has finished being made — the difference between a buddy that answers and
+ * one that pauses first.
  *
- * Nothing is worth waiting on, though. If the first byte has not arrived within
- * [FallbackWindow.VOICE_MS], the phone's own voice reads the answer instead and
- * the user hears an answer rather than silence. Which one spoke is logged as
- * voice=cartesia or voice=android.
+ * There is no other voice. If the proxy refuses (the day's cap, the provider's quota),
+ * fails, or no audio arrives within [VoiceFailure.FIRST_AUDIO_MS], Heylana stays silent:
+ * [onFailed] hands back the words and why, so the answer is shown as text instead.
  *
  * [onSpeaking] is driven by the playback itself — true when the first audio
  * actually reaches the speaker, false when the last of it has been played out —
  * so the rings around the disc match what is being heard.
  */
-class CartesiaVoice(
+class HeylanaVoice(
     private val context: android.content.Context,
     private val settings: HeylanaSettings,
     private val scope: CoroutineScope,
-    private val phone: Speaker,
     private val onSpeaking: (Boolean) -> Unit,
     /**
      * How loud what is being heard right now is, 0 to 1, from the audio itself and
      * timed to the speaker rather than the network. Drives the speaking orb. Off
-     * the main thread; the phone's own voice reports nothing.
+     * the main thread.
      */
-    private val onLevel: (Float) -> Unit = {}
+    private val onLevel: (Float) -> Unit = {},
+    /** The words that could not be spoken, and [VoiceFailure]'s reason. On the main thread. */
+    private val onFailed: (text: String, reason: String) -> Unit = { _, _ -> }
 ) {
 
     private val proxy = Proxy(settings)
@@ -57,68 +57,82 @@ class CartesiaVoice(
     @Volatile
     private var cancelled = false
 
-    /** True when something can speak at all, whichever ends up doing it. */
-    val available: Boolean
-        get() = proxy.isConfigured || phone.available
+    /** The first read waits this long; so does every read after it. */
+    private val http = Proxy.http.newBuilder()
+        .readTimeout(VoiceFailure.FIRST_AUDIO_MS, java.util.concurrent.TimeUnit.MILLISECONDS)
+        .build()
 
-    /** True once the phone's engine has finished starting up, either way. */
-    val settled: Boolean get() = phone.settled
+    /** True when there is a voice to ask at all. */
+    val available: Boolean
+        get() = proxy.isConfigured
 
     /**
-     * Reads [text] out. True if something is going to speak, which is what tells
-     * the caller a "finished speaking" will follow.
+     * Reads [text] out. True if the voice is being asked, which is what tells the
+     * caller that either "finished speaking" or [onFailed] will follow.
      */
     fun speak(text: String): Boolean {
         if (text.isBlank()) return false
         stop(beforeSpeaking = true)
         cancelled = false
+        if (!proxy.isConfigured) return false
 
         val chosen = settings.voice
-        if (settings.forcePhoneVoice || chosen == HeylanaSettings.VOICE_PHONE || !proxy.isConfigured) {
-            return speakOnPhone(text)
-        }
-
-        val window = FallbackWindow(FallbackWindow.VOICE_MS)
         stream = scope.launch {
             val started = SystemClock.uptimeMillis()
             val opened = withContext(Dispatchers.IO) { open(text, chosen) }
-            val elapsed = SystemClock.uptimeMillis() - started
-
             if (cancelled) {
-                opened?.close()
+                (opened as? Opened.Ok)?.playing?.close()
                 return@launch
             }
-            if (opened == null || !window.preferredReady(elapsed)) {
-                opened?.close()
-                if (!cancelled) speakOnPhone(text)
-                return@launch
+            when (opened) {
+                is Opened.Failed -> fail(text, opened.reason)
+                is Opened.Ok -> {
+                    HeylanaLog.state("voice=proxy voice=$chosen headers_ms=${SystemClock.uptimeMillis() - started}")
+                    val outcome = withContext(Dispatchers.IO) { play(opened.playing) }
+                    if (outcome != null && !cancelled) fail(text, outcome)
+                }
             }
-
-            HeylanaLog.state("voice=cartesia")
-            withContext(Dispatchers.IO) { play(opened) }
         }
-
-        // Whatever happens, something will speak: either the stream or the phone.
-        return available
+        return true
     }
 
-    /** The proxy's reply, held open, or null if it did not arrive. */
-    private fun open(text: String, voice: String): Playing? {
+    private fun fail(text: String, reason: String) {
+        // Silent: the words go back to be shown, nothing else speaks them.
+        HeylanaLog.state("voice_failed reason=$reason")
+        scope.launch(Dispatchers.Main) { if (!cancelled) onFailed(text, reason) }
+    }
+
+    private sealed interface Opened {
+        data class Ok(val playing: Playing) : Opened
+        data class Failed(val reason: String) : Opened
+    }
+
+    /** The proxy's reply, held open, or why there is none. */
+    private fun open(text: String, voice: String): Opened {
         val payload = JSONObject().put("text", text).put("voice", voice).toString()
-        return runCatching {
-            val response = Proxy.http.newCall(proxy.post("tts", payload)).execute()
+        return try {
+            val response = http.newCall(proxy.post("tts", payload)).execute()
             if (!response.isSuccessful) {
-                HeylanaLog.state("voice: proxy refused ${response.code}")
+                val body = runCatching { response.body.string() }.getOrDefault("")
                 response.close()
-                return null
+                val refusal = runCatching { JSONObject(body).optString("reason") }.getOrDefault("")
+                HeylanaLog.state("voice: proxy refused ${response.code} reason=${refusal.ifEmpty { "none" }}")
+                return Opened.Failed(VoiceFailure.reasonFor(response.code, refusal))
             }
             val rate = response.header("x-sample-rate")?.toIntOrNull() ?: DEFAULT_SAMPLE_RATE
-            Playing(response, rate)
-        }.getOrNull()
+            Opened.Ok(Playing(response, rate))
+        } catch (e: java.io.InterruptedIOException) {
+            Opened.Failed(VoiceFailure.TIMEOUT)
+        } catch (e: Exception) {
+            Opened.Failed(VoiceFailure.ERROR)
+        }
     }
 
-    /** Writes the audio out as it arrives, and reports when it is really over. */
-    private fun play(playing: Playing) {
+    /**
+     * Writes the audio out as it arrives, and reports when it is really over. Null when
+     * it played (or was stopped); a [VoiceFailure] reason when nothing could be heard.
+     */
+    private fun play(playing: Playing): String? {
         val rate = playing.sampleRate
         val minimum = AudioTrack.getMinBufferSize(rate, CHANNEL, ENCODING)
         // Enough room for a pause in the network, and enough in it before the
@@ -153,6 +167,7 @@ class CartesiaVoice(
         frames.reset()
         val capture = openCapture(rate)
 
+        var failure: String? = null
         var bytesWritten = 0L
         var framesWritten = 0L
         var speaking = false
@@ -209,9 +224,12 @@ class CartesiaVoice(
                 reportHeard()
                 Thread.sleep(PLAYED_OUT_POLL_MS)
             }
-        } catch (_: Exception) {
-            // A stream that dies mid-sentence is not worth a message on screen;
-            // the answer is already on the pane.
+        } catch (e: Exception) {
+            // Nothing heard at all: the words are shown instead. A stream that dies
+            // mid-sentence has already been heard in part and is left at that.
+            if (!cancelled && bytesWritten == 0L) {
+                failure = if (e is java.io.InterruptedIOException) VoiceFailure.TIMEOUT else VoiceFailure.ERROR
+            }
         } finally {
             capture?.let { file ->
                 runCatching { file.close() }
@@ -232,6 +250,9 @@ class CartesiaVoice(
                 onSpeaking(false)
             }
         }
+        // An answer that came back with no audio in it is a failure too.
+        if (failure == null && !cancelled && bytesWritten == 0L) failure = VoiceFailure.ERROR
+        return failure
     }
 
     /** Bytes of 16-bit mono audio worth [millis] at [rate]. */
@@ -253,11 +274,7 @@ class CartesiaVoice(
         }.getOrNull()
     }
 
-    private fun speakOnPhone(text: String): Boolean {
-        HeylanaLog.state("voice=android")
-        return phone.speak(text)
-    }
-
+    /** Stops speaking. [beforeSpeaking] is the clear-down before a new line: nothing was under way to report. */
     fun stop(beforeSpeaking: Boolean = false) {
         cancelled = true
         stream?.cancel()
@@ -266,12 +283,10 @@ class CartesiaVoice(
             runCatching { player.pause() }
             runCatching { player.flush() }
         }
-        phone.stop(beforeSpeaking)
     }
 
     fun shutdown() {
         stop()
-        phone.shutdown()
     }
 
     /** The open reply and the rate its audio is in. */

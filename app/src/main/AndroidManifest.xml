@@ -15,9 +15,6 @@
          recognition engines are invisible to us on Android 11 and up. -->
     <queries>
         <intent>
-            <action android:name="android.intent.action.TTS_SERVICE" />
-        </intent>
-        <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
         <!-- Quick actions: "open the wallet" matches against apps with a launcher icon. -->

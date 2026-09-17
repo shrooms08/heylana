@@ -46,8 +46,11 @@ loads whenever you ask about a 402 payment request); more install from a public 
 cap is how many can be active; the rest show greyed. A skill never acts for you:
 it cannot authorise a send, a sign or a tap, and anything in it that reads like an
 order is removed before it is stored.
-Separately, every phone has a daily budget guard: 150 questions, 150 spoken
-answers and 300 listens a day.
+Separately, every phone on Free has a daily budget guard: 150 questions, 150 spoken
+answers and 300 listens a day. On Pro and Judge questions and spoken answers are
+unlimited, with a 2000-a-day ceiling against abuse. Heylana's voice is Google's Gemini
+(Sulafat or Achird, picked in Settings); if the voice cannot be had — the day's limit,
+Google's quota, or too slow — the answer is shown as text and Heylana stays silent.
 
 ## Credits
 
@@ -77,8 +80,9 @@ Exactly what leaves the phone, and where it goes:
    down. The phone connects to Deepgram directly with a key that stops working
    after two minutes. Deepgram is also sent a fixed list of Solana words to listen
    for; never anything from your screen.
-3. **The text of the spoken answer** — through Heylana's server to **Cartesia**,
-   to become speech.
+3. **The text of the spoken answer** — through Heylana's server to **Google
+   (Gemini)**, to become speech. Conversation mode, when enabled, uses Gemini Live's
+   free tier; Google may use that audio to improve its models.
 4. **Your wallet address, a signed sign-in message, and the name you choose** —
    to Heylana's server, kept against your wallet.
 5. **Payments** — Seed Vault signs and sends the transaction itself; Heylana's
@@ -105,7 +109,7 @@ balance has to be asked for twice.
    phone model. No screen text, no screenshots, no taps, no name, and every Solana
    address and key is removed before it leaves.
 
-Never: the screen never goes to Deepgram or Cartesia. No API key is ever stored
+Never: the screen never goes to Deepgram or Google's voice. No API key is ever stored
 on the phone. What Heylana reads off the screen is used for one request and then
 dropped — never logged, never saved. The hidden "use my own key" setting is the
 one exception to (1): questions go straight to Anthropic on a key you typed in.
@@ -117,7 +121,7 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model, holds every key, and for Solana questions runs lookups first (balances, prices, addresses, activity, names, send checks).
 4. The model replies with strict JSON: what to say, which element to point at, and whether this is a multi-step task.
 5. A separate, untouchable window draws the pointer; during a task each step re-reads the screen.
-6. Both Deepgram and the phone's recogniser listen from the long press and the better transcript wins; answers stream back as audio from Cartesia, falling back to the phone's voice.
+6. Both Deepgram and the phone's recogniser listen from the long press and the better transcript wins; answers stream back as audio from Gemini TTS, and if the voice cannot be had the answer is shown as text instead.
 7. Wallets connect over Mobile Wallet Adapter to Seed Vault; signing a message earns a 30-day session sealed by the worker.
 8. Plans, talks and profiles live in Workers KV, keyed by wallet, or by install id without one.
 9. Pro: the phone builds a USDC or SKR transfer with a unique reference, Seed Vault signs and sends it, and the worker verifies it on chain before extending Pro.

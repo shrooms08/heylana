@@ -32,6 +32,7 @@ import xyz.heylana.app.MainActivity
 import xyz.heylana.app.R
 import xyz.heylana.app.brain.ProxyClient
 import xyz.heylana.app.brain.BrainReply
+import xyz.heylana.app.brain.AnswerLength
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.Greeting
 import xyz.heylana.app.brain.Routing
@@ -66,13 +67,12 @@ import xyz.heylana.app.actions.QuickActionRunner
 import xyz.heylana.app.actions.QuickGuard
 import xyz.heylana.app.actions.QuickLog
 import xyz.heylana.app.actions.QuickText
-import xyz.heylana.app.voice.CartesiaVoice
+import xyz.heylana.app.voice.HeylanaVoice
 import xyz.heylana.app.voice.DeepgramEars
 import xyz.heylana.app.voice.EarsRace
 import xyz.heylana.app.voice.EarCallbacks
 import xyz.heylana.app.voice.Listener
 import xyz.heylana.app.voice.MicPermissionActivity
-import xyz.heylana.app.voice.Speaker
 
 /**
  * Foreground service that keeps the buddy on top of every other app and runs the
@@ -95,8 +95,8 @@ class BuddyOverlayService : Service() {
     private val skills: SkillStore by lazy { SkillStore(this, settings) }
     private val quickRunner: QuickActionRunner by lazy { QuickActionRunner(this) }
 
-    /** Heylana's voice: Cartesia when it can be reached, the phone's own when not. */
-    private var mouth: CartesiaVoice? = null
+    /** Heylana's voice, through the proxy. When it cannot speak, the words are shown and it stays silent. */
+    private var mouth: HeylanaVoice? = null
 
     /** The phone's own ears: always there, and what everything falls back to. */
     private var phoneEars: Listener? = null
@@ -195,13 +195,13 @@ class BuddyOverlayService : Service() {
                 }
             }
         }
-        mouth = CartesiaVoice(
+        mouth = HeylanaVoice(
             context = this,
             settings = settings,
             scope = scope,
-            phone = Speaker(this) { speaking -> onSpeaking(speaking) },
             onSpeaking = onSpeaking,
-            onLevel = { level -> main.post { overlayView?.setPlaybackLevel(level) } }
+            onLevel = { level -> main.post { overlayView?.setPlaybackLevel(level) } },
+            onFailed = { text, _ -> showUnspoken(text) }
         )
         phoneEars = Listener(this, phoneCallbacks)
 
@@ -632,15 +632,8 @@ class BuddyOverlayService : Service() {
                 json?.keys()?.forEach { key -> fields[key] = if (json.isNull(key)) null else json.opt(key) }
                 val action = QuickAction.of(fields)
                 HeylanaLog.state("action: raw debug intent=${action?.intent ?: "malformed"}")
-                // Debug: `--ez phone_voice true|false` sets the phone's own voice (no
-                // network), and `--ez aloud true` speaks the line as a real action would.
-                if (intent.hasExtra("phone_voice")) {
-                    HeylanaLog.state("debug: force phone voice was ${settings.forcePhoneVoice}")
-                    settings.forcePhoneVoice = intent.getBooleanExtra("phone_voice", false)
-                }
-                // Never a live call from a debug path: aloud only on the phone's own voice.
-                val aloud = intent.getBooleanExtra("aloud", false) && settings.forcePhoneVoice
-                if (action != null) handleQuick(action, said, aloud = aloud)
+                // Never spoken: every voice is a /tts call now.
+                if (action != null) handleQuick(action, said, aloud = false)
             }
         }
         ContextCompat.registerReceiver(this, receiver, android.content.IntentFilter(DEBUG_QUICK_ACTION), ContextCompat.RECEIVER_EXPORTED)
@@ -1136,6 +1129,29 @@ class BuddyOverlayService : Service() {
         }
     }
 
+    /**
+     * The voice could not speak these words (capped, out of quota, timed out, failed):
+     * they are shown instead and Heylana stays silent. A task keeps its box; anything
+     * else settles once there has been time to read it.
+     */
+    private fun showUnspoken(text: String) {
+        val view = overlayView ?: return
+        keepSpeechThroughClose = false
+        if (session != null) {
+            view.showAnswer(text)
+            return
+        }
+        view.showNotice(text)
+        if (exchange.maySettle) {
+            main.removeCallbacks(settleToIdle)
+            main.postDelayed(settleToIdle, readingMs(text))
+        }
+    }
+
+    /** Long enough to read [text]: 350ms a word, between 4 and 12 seconds. */
+    private fun readingMs(text: String): Long =
+        (AnswerLength.words(text) * READ_MS_PER_WORD).coerceIn(MIN_READ_MS, MAX_READ_MS)
+
     /** Set while a quick action's line must survive the box closing itself. */
     private var keepSpeechThroughClose = false
 
@@ -1145,7 +1161,7 @@ class BuddyOverlayService : Service() {
         if (settings.voiceMuted) return false.also { HeylanaLog.state("speak: muted") }
         if (!voice.available) {
             HeylanaLog.state("speak: voice unavailable")
-            if (voice.settled && !noteShown) {
+            if (!noteShown) {
                 noteShown = true
                 overlayView?.showNote("Voice unavailable on this device.")
             }
@@ -1397,6 +1413,11 @@ class BuddyOverlayService : Service() {
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
+
+        /** How long an answer that could not be spoken stays up to be read. */
+        private const val READ_MS_PER_WORD = 350L
+        private const val MIN_READ_MS = 4_000L
+        private const val MAX_READ_MS = 12_000L
 
         /** How long "turn it off" still means the flashlight that was just switched on. */
         private const val FOLLOW_UP_MS = 5 * 60 * 1_000L

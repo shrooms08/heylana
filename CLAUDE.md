@@ -75,13 +75,11 @@ xyz.heylana.app
 ├── net/                     everything that leaves the phone
 │   └── Proxy                the address, the device header, the shared client, the warmup
 ├── voice/                   Heylana's mouth and ears
-│   ├── CartesiaVoice        streams the spoken answer from /tts and plays it as it arrives
-│   ├── Speaker              the phone's own voice, tuned, for when Cartesia cannot be reached
-│   ├── PhoneVoice           which of the phone's voices to use — never the engine default
+│   ├── HeylanaVoice         streams the spoken answer from /tts and plays it as it arrives; silent on failure
+│   ├── VoiceFailure         why it stayed silent: 429 daily_cap, quota, timeout, error
 │   ├── DeepgramEars         PCM16 over a websocket while the buddy is held, with keyterms
 │   ├── Listener             the phone's own recogniser, behind the same Ears interface
 │   ├── EarsRace             both ears listen from the long press; this picks whose words win
-│   ├── FallbackWindow       how long the good voice gets before the phone's takes over
 │   └── MicPermissionActivity  invisible one-shot prompt for the microphone
 ├── ui/                      how everything looks
 │   ├── HeylanaTokens        every colour, size, radius, duration and typeface
@@ -218,7 +216,7 @@ not and the surface has to carry itself. Never hardcode one or the other.
 ## Where the keys are
 
 **Not on the phone.** `worker/` is a Cloudflare Worker holding the Anthropic,
-Cartesia and Deepgram keys, and it is the only thing that ever sees them. The app
+Gemini (and optionally Cartesia) and Deepgram keys, and it is the only thing that ever sees them. The app
 knows one address — `heylana.proxyUrl` in `local.properties`, into `BuildConfig`
 — and its own device id.
 
@@ -229,10 +227,27 @@ knows one address — `heylana.proxyUrl` in `local.properties`, into `BuildConfi
 - `/stt-token` — a Deepgram key that stops working after two minutes, so the
   phone can open the listening socket itself without holding the real one.
 
-Every request carries `X-Heylana-Device`, and each device gets 150 questions,
-150 spoken answers and 300 pairs of ears a day. Over that the worker answers
-`429 daily_cap` and the app says so in plain words. That is budget protection,
-not a product tier.
+Every request carries `X-Heylana-Device`. On **Free** each device gets 150 questions,
+150 spoken answers and 300 pairs of ears a day; on **Pro and Judge** questions and spoken
+answers are uncapped apart from an abuse ceiling of 2000 a day each
+(`PAID_DAILY_CEILING`, `dailyCapFor`; the plan is read from the account only for those two
+routes). Over a cap the worker answers `429 daily_cap` and the app says so in plain words.
+That is budget protection, not a product tier.
+
+**The voice is Gemini TTS.** `/tts` speaks through `VOICE_PROVIDER`: `"gemini"` (the
+default, also when unset) or `"cartesia"`, kept as an option with its old voice ids. Gemini
+is `gemini-3.1-flash-tts-preview` (override with the `GEMINI_TTS_MODEL` var) on Google's
+Interactions API with `stream: true` and the `GEMINI_API_KEY` secret. `worker/src/voice.ts`
+turns its Server-Sent Events into raw PCM as they land: only `step.delta` events whose
+delta is `type: "audio"` are decoded from base64 and passed on, in order (never the
+closing `interaction.completed`, which repeats the audio; a WAV header is stripped if one
+comes). It is 24 kHz mono 16-bit, the same `audio/L16` and `x-sample-rate: 24000` the phone
+already plays, and the phone's `PcmFrames` keeps samples whole across odd-sized deltas.
+The text goes plain, with no style prompt that could be read out. The picker's two slots
+are Gemini prebuilt voices: `skylar` is **Sulafat** (Google: "Warm", female) and `archie`
+is **Achird** ("Friendly", male — no male voice is described as warm). Each call logs
+`provider`, `voice` and `model`, and `tts_end` logs events and bytes; never the text.
+Google's 429 comes back as `429 quota`.
 
 ## Plans, wallets and payment
 
@@ -460,16 +475,21 @@ neither is nothing heard; nothing waits past 4 seconds. A Deepgram that cannot
 work is simply out of the race — never a reason to hear nothing. The trace says
 `ears=deepgram|android won reason=…`.
 
-**The voice falls back silently.** Cartesia gets 1500ms to produce a first byte;
-miss that and the phone's own voice reads the answer, because an answer in a plain
-voice beats silence. `FallbackWindow` holds that rule; the trace says
-`voice=cartesia|android`.
+**No phone voice: a voice that cannot speak stays silent.** If `/tts` is refused (the
+day's cap, the provider's quota), fails, returns no audio, or no audio arrives within
+`VoiceFailure.FIRST_AUDIO_MS` (6 seconds, also the stall limit mid-stream), `HeylanaVoice`
+logs `voice_failed reason=429 daily_cap|quota|timeout|error` and hands the words back:
+the answer is shown as text in the strip (in a task, in the HUD) and stays up long enough
+to read (350ms a word, 4 to 12 seconds) before settling. Nothing else reads it out. The
+phone's own text-to-speech, the "Phone voice" choice and the "Force phone voice" debug
+switch are gone. The ears race is unchanged.
 
 **What goes where, in the words the app uses.** Heylana reads the screen only
 when you ask, and watches for your tap only while it is pointing at something.
 Your voice goes to Deepgram to be transcribed while you hold the buddy. The
-spoken answer text goes to Cartesia to become speech. The screen never goes to
-either. **Keep that copy and the code saying the same thing** — the keyterms sent
+spoken answer text goes to Google (Gemini) to become speech. Conversation mode, when
+enabled, uses Gemini Live's free tier; Google may use that audio to improve its models.
+The screen never goes to either. **Keep that copy and the code saying the same thing** — the keyterms sent
 to Deepgram are the fixed word list only, and if screen labels are ever added to
 them the sentence has to change with them.
 
@@ -549,10 +569,8 @@ playing and booked the settle that closed the box mid-flight: `stop(beforeSpeaki
 true)` reports nothing unless something was really under way. The trace for a spoken
 action: `speak: line chars=N`, `voice=…`, `panel: closed`, `speak: kept playing…`,
 `speak: speaking=true`, `speak: speaking=false`, `settle: scheduled`, `settle: run`
-a second later. In debug builds `am broadcast -a xyz.heylana.app.debug.QUICK_ACTION
---ez phone_voice true --ez aloud true --es said '…' --es action '{…}'` plays it on the
-phone's own voice (no network); `aloud` is ignored unless the phone's voice is forced,
-so a debug path never reaches /tts. Put it back with `--ez phone_voice false`.
+a second later. The debug QUICK_ACTION broadcast never speaks: with no phone voice, every
+spoken line is a /tts call.
 
 **Quick actions are deterministic, like sends.** Left to prose, the model said
 "setting an alarm for 7pm" and wrote no action, and "open the wallet" pointed at the
@@ -885,7 +903,7 @@ once every six seconds); working — a task's next step being worked out, or a s
 from prepare to landed (`BuddyOverlayView.setWorking`, `DiscLook.WORKING`) — is
 `working` (orbits, accent lifted toward white); speaking is `composing` (ribbon,
 glow lifted toward white) and swells with the playback level, which
-`CartesiaVoice` measures from the PCM (`PlaybackLevel`) and hands out as the speaker's
+`HeylanaVoice` measures from the PCM (`PlaybackLevel`) and hands out as the speaker's
 play head reaches it. Back to idle, the orb reassembles into the mark.
 `orbs/OrbEngine` is a line-for-line port of the library's TypeScript frame
 functions and presets for those four states only; `OrbEngineGoldenTest` checks all

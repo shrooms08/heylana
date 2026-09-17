@@ -249,7 +249,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         mode = Mode.DOCKED
         panel.visibility = View.GONE
         params.flags = FLAGS_PASSIVE
-        spriteLeft = usableWidth - discSize - dockInset
+        spriteLeft = dockedLeft(usableWidth - discSize - dockInset)
         spriteTop = usableHeight / 3
         measureContainer()
         params.x = spriteLeft
@@ -498,6 +498,24 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     // ----------------------------------------------------------------- mode
 
+    /** Debug builds only: dock the disc on a side, as a drag would, without touching it. */
+    fun debugDock(left: Boolean) {
+        if (mode != Mode.DOCKED) return
+        refreshMetrics()
+        spriteLeft = dockedLeft(if (left) dockInset else usableWidth - discSize - dockInset)
+        applyPosition()
+        post { logDiscPosition("docked") }
+    }
+
+    /** Debug builds only: open or close the box as a tap would, without touching the disc. */
+    fun debugToggle() = togglePanel()
+
+    /** Where the real disc's view is on screen right now, for the flight log. */
+    private fun logDiscPosition(label: String) {
+        sprite.getLocationOnScreen(spriteLocation)
+        HeylanaLog.state("flight: $label x=${spriteLocation[0]} y=${spriteLocation[1]} size=${sprite.width}")
+    }
+
     private fun togglePanel() {
         if (mode != Mode.DOCKED) {
             closePanel()
@@ -740,8 +758,19 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     }
 
     /** Where the disc sits on the display when it is docked. */
+    /**
+     * Where the disc's view will sit once docked, exactly: the same clamp the docked
+     * window gets in [applyPosition], so a flight that lands here is never nudged
+     * again. The dock inset is measured to the visible disc and so runs past the
+     * screen edge by the bloom; the window cannot, so this is where it really ends up.
+     */
     private fun dockedScreenPosition(): PointF =
-        PointF((usableLeft + spriteLeft).toFloat(), (usableTop + spriteTop).toFloat())
+        PointF((usableLeft + dockedLeft(spriteLeft)).toFloat(), (usableTop + dockedTop(spriteTop)).toFloat())
+
+    /** The docked window's left for a wanted disc left: on screen, as the window manager keeps it. */
+    private fun dockedLeft(wanted: Int): Int = DockPosition.clamped(wanted, discSize, usableWidth)
+
+    private fun dockedTop(wanted: Int): Int = DockPosition.clamped(wanted, discSize, usableHeight)
 
     /** Where the disc sits on the display while composing: top centre. */
     private fun composeScreenPosition(): PointF = PointF(
@@ -806,10 +835,17 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                 onLanded()
                 // Only once the destination has been measured does the real disc
                 // reappear and the stand-in leave, so the two never disagree.
-                content.post { leaveStage() }
+                content.post {
+                    leaveStage()
+                    // Where it really is once handed back, and again once any layout has run:
+                    // both must equal the target, or the disc moved twice.
+                    logDiscPosition("landed")
+                    postDelayed({ logDiscPosition("settled") }, SETTLE_CHECK_MS)
+                }
             }
         }
 
+        HeylanaLog.state("flight: target x=${target.x.toInt()} y=${target.y.toInt()} size=$toView")
         val landingOffset = (openDiscSize - toView) / 2f
         flightVx = 0f
         flightVy = 0f
@@ -885,6 +921,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         // The glass goes first, then the disc flies home over the bare app.
         scrim.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
         panel.animate().alpha(0f).setDuration(HeylanaTokens.FADE_MS).start()
+        // The exact dock, worked out before take-off; the disc lands on it and stays.
+        spriteLeft = dockedLeft(spriteLeft)
+        spriteTop = dockedTop(spriteTop)
         val flew = flyTo(dockedScreenPosition(), HeylanaTokens.DISC_DP) {
             enterMode(Mode.DOCKED)
             onPanelClosed?.invoke()
@@ -1018,12 +1057,11 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     private fun snapToNearestEdge() {
         val spriteCenter = spriteLeft + discSize / 2
-        val targetLeft = if (spriteCenter < usableWidth / 2) {
-            dockInset
-        } else {
-            usableWidth - discSize - dockInset
-        }
-        val targetTop = clamp(spriteTop, dockInset, usableHeight - discSize - dockInset)
+        // The exact dock, clamped as the window will be, so the snap is one movement.
+        val targetLeft = dockedLeft(
+            if (spriteCenter < usableWidth / 2) dockInset else usableWidth - discSize - dockInset
+        )
+        val targetTop = dockedTop(clamp(spriteTop, dockInset, usableHeight - discSize - dockInset))
 
         val flew = flyTo(
             PointF((usableLeft + targetLeft).toFloat(), (usableTop + targetTop).toFloat()),
@@ -1178,6 +1216,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         private const val GROW_FROM_Y = 0.12f
 
         /** Small window: invisible to touch and keyboard beyond its own bounds. */
+        /** How long after landing the disc's position is checked again. */
+        private const val SETTLE_CHECK_MS = 500L
+
         private const val FLAGS_PASSIVE =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL

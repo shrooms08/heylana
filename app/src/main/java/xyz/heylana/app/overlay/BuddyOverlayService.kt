@@ -177,7 +177,10 @@ class BuddyOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        if (BuildConfig.DEBUG) registerDebugQuickAction()
+        if (BuildConfig.DEBUG) {
+            registerDebugQuickAction()
+            registerDebugPanel()
+        }
         val onSpeaking: (Boolean) -> Unit = { speaking ->
             main.post {
                 HeylanaLog.state("speak: speaking=$speaking")
@@ -326,6 +329,7 @@ class BuddyOverlayService : Service() {
     override fun onDestroy() {
         isRunning = false
         debugQuickAction?.let { runCatching { unregisterReceiver(it) } }
+        debugPanel?.let { runCatching { unregisterReceiver(it) } }
         debugQuickAction = null
         // Stop means forget: the memory never outlives the buddy.
         conversation.clear()
@@ -546,6 +550,27 @@ class BuddyOverlayService : Service() {
      *     adb shell am broadcast -a xyz.heylana.app.debug.QUICK_ACTION \
      *       --es said "open the wallet" --es action '{"type":"intent","intent":"open_app","app":"wallet"}'
      */
+    /**
+     * Debug builds only: dock the disc and open or close the box without a finger on
+     * it (a touch opens the connection to the proxy):
+     *
+     *     adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es dock right
+     *     adb shell am broadcast -a xyz.heylana.app.debug.PANEL --ez toggle true
+     */
+    private fun registerDebugPanel() {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) {
+                val view = overlayView ?: return
+                intent.getStringExtra("dock")?.let { view.debugDock(left = it == "left") }
+                if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
+            }
+        }
+        ContextCompat.registerReceiver(this, receiver, android.content.IntentFilter(DEBUG_PANEL), ContextCompat.RECEIVER_EXPORTED)
+        debugPanel = receiver
+    }
+
+    private var debugPanel: android.content.BroadcastReceiver? = null
+
     private fun registerDebugQuickAction() {
         val receiver = object : android.content.BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -1238,6 +1263,7 @@ class BuddyOverlayService : Service() {
     companion object {
         /** Debug builds only; see registerDebugQuickAction. */
         const val DEBUG_QUICK_ACTION = "xyz.heylana.app.debug.QUICK_ACTION"
+        const val DEBUG_PANEL = "xyz.heylana.app.debug.PANEL"
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L

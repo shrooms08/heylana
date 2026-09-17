@@ -737,6 +737,15 @@ state keeps its own clock, advanced by real frame time at the preset speed, so a
 loud voice can speed it up without a jump. The disc is a View, so the painter
 draws on its Canvas rather than in Compose.
 
+**One movement home.** Closing the box, or letting go of a drag, works out the exact
+docked position before take-off and flies straight there: `DockPosition` clamps it the
+way the window manager keeps an overlay window on screen. (The dock inset is measured
+to the visible disc, so with its bloom room the wanted spot runs past the edge; flying
+there and then being clamped was a second move.) Debug builds log
+`flight: target`, `flight: landed` and `flight: settled` half a second later; all three
+must match. `adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es dock left|right`
+and `--ez toggle true` dock and open or close without touching the disc.
+
 **The overlay window has three modes, and everything follows from which one.**
 Docked, it is a small window holding just the disc, so touches anywhere else
 reach the app underneath. Composing, it takes the whole screen: the app behind

@@ -332,6 +332,20 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         sprite.talking = talking
     }
 
+    /** How loud the spoken answer is right now, as it is heard. */
+    fun setPlaybackLevel(level: Float) {
+        sprite.playbackLevel = level
+    }
+
+    private var working = false
+
+    /** A task step being worked out, or a send under way: the working orb. */
+    fun setWorking(value: Boolean) {
+        if (working == value) return
+        working = value
+        applyLook()
+    }
+
     /** Look at whatever is being highlighted. */
     fun lookAt(target: PointF) {
         sprite.pointDirection = if (target.x < spriteCenterOnScreen().x) -1 else 1
@@ -356,10 +370,11 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private var phase: Exchange.Phase = Exchange.Phase.NONE
 
     private fun applyLook() {
-        sprite.expression = when (DiscLook.of(phase, pointing = sprite.pointTarget != null)) {
+        sprite.expression = when (DiscLook.of(phase, pointing = sprite.pointTarget != null, working = working)) {
             DiscLook.IDLE -> BuddySpriteView.Expression.IDLE
             DiscLook.LISTENING -> BuddySpriteView.Expression.LISTENING
             DiscLook.THINKING -> BuddySpriteView.Expression.THINKING
+            DiscLook.WORKING -> BuddySpriteView.Expression.WORKING
             DiscLook.POINTING -> BuddySpriteView.Expression.POINTING
         }
         sprite.refreshState()

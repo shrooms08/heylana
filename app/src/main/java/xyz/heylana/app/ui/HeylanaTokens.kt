@@ -183,15 +183,19 @@ object HeylanaTokens {
     const val BREATHE_MS = 3200L
     const val BREATHE_SCALE = 1.055f
 
-    const val RING_SPIN_MS = 1200L
 
-    /** How long the mark takes to come apart into the ring, and back. */
-    const val UNWIND_MS = 260L
+    /** How long the mark takes to dissolve into the orb, and to reassemble from it. */
+    const val ORB_DISSOLVE_MS = 300L
+
+    /** How much of the disc the orb fills. */
+    const val ORB_FRACTION = 0.8f
+
+    /** How far a loud voice, heard or spoken, swells the orb. */
+    const val ORB_LEVEL_SWELL = 0.12f
 
     /** How far the mark leans toward what it is pointing at. */
     const val POINT_LEAN = 0.18f
     const val AURORA_DRIFT_MS = 6000L
-    const val RIPPLE_MS = 900L
 
     /**
      * The buddy's flight between its dock and the compose position, as a spring.

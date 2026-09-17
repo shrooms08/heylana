@@ -37,7 +37,13 @@ class CartesiaVoice(
     private val settings: HeylanaSettings,
     private val scope: CoroutineScope,
     private val phone: Speaker,
-    private val onSpeaking: (Boolean) -> Unit
+    private val onSpeaking: (Boolean) -> Unit,
+    /**
+     * How loud what is being heard right now is, 0 to 1, from the audio itself and
+     * timed to the speaker rather than the network. Drives the speaking orb. Off
+     * the main thread; the phone's own voice reports nothing.
+     */
+    private val onLevel: (Float) -> Unit = {}
 ) {
 
     private val proxy = Proxy(settings)
@@ -150,6 +156,15 @@ class CartesiaVoice(
         var bytesWritten = 0L
         var framesWritten = 0L
         var speaking = false
+        // Each written stretch's loudness, keyed by the frame it starts at, handed
+        // out as the speaker's play head reaches it.
+        val levels = ArrayDeque<Pair<Long, Float>>()
+        fun reportHeard() {
+            val head = runCatching { player.playbackHeadPosition.toLong() }.getOrDefault(0L)
+            var latest: Float? = null
+            while (levels.isNotEmpty() && levels.first().first <= head) latest = levels.removeFirst().second
+            latest?.let(onLevel)
+        }
 
         try {
             playing.response.body.byteStream().use { input ->
@@ -166,9 +181,11 @@ class CartesiaVoice(
 
                     val written = player.write(aligned, 0, aligned.size, AudioTrack.WRITE_BLOCKING)
                     if (written > 0) {
+                        levels.addLast(framesWritten to PlaybackLevel.of(aligned, written))
                         bytesWritten += written
                         framesWritten += written / BYTES_PER_FRAME
                     }
+                    if (speaking) reportHeard()
 
                     if (!speaking && bytesWritten >= preRollBytes) {
                         // Three hundred milliseconds in hand before the first
@@ -189,6 +206,7 @@ class CartesiaVoice(
 
             // Written is not the same as heard: wait for the speaker to catch up.
             while (!cancelled && speaking && player.playbackHeadPosition < framesWritten) {
+                reportHeard()
                 Thread.sleep(PLAYED_OUT_POLL_MS)
             }
         } catch (_: Exception) {
@@ -209,7 +227,10 @@ class CartesiaVoice(
             )
             player.release()
             if (track === player) track = null
-            if (speaking) onSpeaking(false)
+            if (speaking) {
+                onLevel(0f)
+                onSpeaking(false)
+            }
         }
     }
 

@@ -194,7 +194,8 @@ class BuddyOverlayService : Service() {
             settings = settings,
             scope = scope,
             phone = Speaker(this) { speaking -> onSpeaking(speaking) },
-            onSpeaking = onSpeaking
+            onSpeaking = onSpeaking,
+            onLevel = { level -> main.post { overlayView?.setPlaybackLevel(level) } }
         )
         phoneEars = Listener(this, phoneCallbacks)
 
@@ -604,8 +605,11 @@ class BuddyOverlayService : Service() {
             sayLine(SendText.NO_WALLET)
             return
         }
+        overlayView?.setWorking(true)
         scope.launch {
-            when (val answer = walletApi.prepareSend(allowed.to, allowed.amount, allowed.token)) {
+            val prepared = walletApi.prepareSend(allowed.to, allowed.amount, allowed.token)
+            overlayView?.setWorking(false)
+            when (val answer = prepared) {
                 is Answer.Ok -> {
                     val quote = answer.value
                     HeylanaLog.state(
@@ -646,6 +650,8 @@ class BuddyOverlayService : Service() {
         overlayView?.hideSendConfirm()
         overlayView?.showNotice("Approve it in Seed Vault.")
         HeylanaLog.state("send: confirmed, opening Seed Vault")
+        // Seed Vault, then the chain: the working orb until the send lands or stops.
+        overlayView?.setWorking(true)
         SendRelay.listener = { result -> main.post { onSendResult(result) } }
         startActivity(
             SendActivity.intentFor(this, quote)
@@ -663,6 +669,7 @@ class BuddyOverlayService : Service() {
 
     private fun onSendResult(result: SendResult) {
         SendRelay.listener = null
+        overlayView?.setWorking(false)
         when (result) {
             is SendResult.Sent -> {
                 HeylanaLog.state("send: landed")
@@ -861,13 +868,18 @@ class BuddyOverlayService : Service() {
         }
 
         mouth?.stop()
+        view.setWorking(true)
         exchange.asking()
         view.showThinking()
         view.hideKeyboard()
 
         inFlight = scope.launch {
             delay(KEYBOARD_SETTLE_MS)
-            val snapshot = readScreen(view) ?: return@launch
+            val snapshot = readScreen(view)
+            if (snapshot == null) {
+                view.setWorking(false)
+                return@launch
+            }
 
             val screenText = snapshot.toPromptText()
             logScreenSize(snapshot, screenText)
@@ -880,6 +892,7 @@ class BuddyOverlayService : Service() {
                 needPointerHint = current.lastStepHadNoPointer,
                 skill = skills.pick(snapshot.packageName, current.goal)
             )
+            view.setWorking(false)
             exchange.over()
 
             when (reply) {

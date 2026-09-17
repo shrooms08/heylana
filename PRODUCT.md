@@ -35,6 +35,12 @@ order is removed before it is stored.
 Separately, every phone has a daily budget guard: 150 questions, 150 spoken
 answers and 300 listens a day.
 
+## Credits
+
+The orbs the buddy turns into while it listens, thinks, works and speaks are a port
+of [thinking-orbs](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/thinking-orbs)
+by Jakub Antalik (MIT licence).
+
 ## Privacy promises
 
 Nothing is read unless you ask. Heylana reads the screen only when you ask, and

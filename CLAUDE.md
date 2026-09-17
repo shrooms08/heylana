@@ -69,6 +69,9 @@ xyz.heylana.app
 │   ├── QuickGuard           every argument in the user's own words; times and durations as said
 │   ├── QuickIntents         the intent as plain data, the line Heylana says, AppMatcher
 │   └── QuickActionRunner    turns it into an Intent and starts it in a new task
+├── orbs/                    the disc's living states (a port of thinking-orbs, MIT)
+│   ├── OrbEngine            orbits, wave, ribbon and ring geometry, presets; golden-vector tested
+│   └── OrbPainter           a frame's dots on the disc face, tinted from the tokens
 ├── net/                     everything that leaves the phone
 │   └── Proxy                the address, the device header, the shared client, the warmup
 ├── voice/                   Heylana's mouth and ears
@@ -654,6 +657,25 @@ size difference at take-off and landing. Bleed, bloom and dock inset are ratios 
 the disc (`DISC_BLEED_RATIO`, `GLOW_BLUR_RATIO`, `DOCK_INSET_RATIO`, the old 20, 40
 and 8dp around 88dp), so they scale with it. Resizing the docked disc only changes
 its layout params, never detaches it. Debug states shows both sizes side by side.
+
+**The mark dissolves into an orb.** Idle and pointing show the mark. Listening,
+thinking, working and speaking dissolve it (300ms, `ORB_DISSOLVE_MS`) into a
+thinking-orbs state: listening is `listening` (wave, glow tint) with the mic ring
+breathing; thinking is `breathing` (the ring, coloured by the aurora stops turning
+once every six seconds); working — a task's next step being worked out, or a send
+from prepare to landed (`BuddyOverlayView.setWorking`, `DiscLook.WORKING`) — is
+`working` (orbits, accent lifted toward white); speaking is `composing` (ribbon,
+glow lifted toward white) and swells with the playback level, which
+`CartesiaVoice` measures from the PCM (`PlaybackLevel`) and hands out as the speaker's
+play head reaches it. Back to idle, the orb reassembles into the mark.
+`orbs/OrbEngine` is a line-for-line port of the library's TypeScript frame
+functions and presets for those four states only; `OrbEngineGoldenTest` checks all
+32 of the library's frozen frames for them (both sizes, four moments, every dot's
+position, radius, ink and alpha to 1e-4), extracted by `scripts/orbs_golden.py`.
+Geometry is always computed at the 64px tuning and scaled onto the face; each
+state keeps its own clock, advanced by real frame time at the preset speed, so a
+loud voice can speed it up without a jump. The disc is a View, so the painter
+draws on its Canvas rather than in Compose.
 
 **The overlay window has three modes, and everything follows from which one.**
 Docked, it is a small window holding just the disc, so touches anywhere else

@@ -15,6 +15,9 @@ import android.graphics.RectF
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import xyz.heylana.app.R
+import xyz.heylana.app.orbs.OrbEngine
+import xyz.heylana.app.orbs.OrbPainter
+import xyz.heylana.app.orbs.OrbState
 import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.HeylanaTokens
 
@@ -27,31 +30,38 @@ import xyz.heylana.app.ui.HeylanaTokens
  * speaking, pointing — the mark comes up to full white, the disc lightens and
  * a purple bloom opens behind it.
  *
- * The per-state animations (the thinking ring, the listening pulse) arrive in
- * the next part; for now every active state renders as the same active disc.
+ * Listening, thinking, working and speaking dissolve the mark into a living orb
+ * (a port of thinking-orbs, see [xyz.heylana.app.orbs.OrbEngine]); back to idle, the
+ * orb reassembles into the mark. Pointing keeps the mark and leans it.
  */
 class BuddySpriteView(context: Context) : View(context) {
 
     /** What Heylana is doing. Everything but [IDLE] renders as active. */
-    enum class Expression { IDLE, THINKING, POINTING, LISTENING }
+    enum class Expression { IDLE, THINKING, POINTING, LISTENING, WORKING }
 
     var expression: Expression = Expression.IDLE
         set(value) {
             if (field != value) {
                 field = value
-                syncThinking()
+                syncOrb()
                 syncActive()
             }
         }
 
-    /** True while text-to-speech is talking; sheds rings while it is. */
+    /** True while Heylana is talking; the orb speaks while it is. */
     var talking: Boolean = false
         set(value) {
             if (field != value) {
                 field = value
-                syncRings()
+                syncOrb()
                 syncActive()
             }
+        }
+
+    /** 0 to 1, how loud what is being heard from the speaker is. Swells the speaking orb. */
+    var playbackLevel: Float = 0f
+        set(value) {
+            field = value.coerceIn(0f, 1f)
         }
 
     /** True while the message box is open and waiting for the user to type. */
@@ -77,7 +87,6 @@ class BuddySpriteView(context: Context) : View(context) {
     var micLevel: Float = 0f
         set(value) {
             field = value.coerceIn(0f, 1f)
-            if (expression == Expression.LISTENING) invalidate()
         }
 
     /** Which way the eyes look. Kept for the pointing animation in part two. */
@@ -98,38 +107,30 @@ class BuddySpriteView(context: Context) : View(context) {
     /** Lifts the glass a touch once Heylana is awake. */
     private val discLift = Paint(Paint.ANTI_ALIAS_FLAG)
 
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeWidth = HeylanaTokens.dp(context, 2f)
-        color = HeylanaTokens.glow
-    }
-
     private val listenPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         color = HeylanaTokens.accent
     }
     private val listenRing = HeylanaTokens.dp(context, 3f)
 
-    /**
-     * How far the mark has unwound into the thinking ring: 0 is the mark, 1 is
-     * a gapped ring turning on its own.
-     */
-    private var unwind = 0f
-    private var unwindAnimator: ValueAnimator? = null
-    private var spin = 0f
-    private var spinAnimator: ValueAnimator? = null
+    private val orbPainter = OrbPainter()
 
-    private val ringPath = android.graphics.Path()
-    private val ringOval = RectF()
-    private val thinkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        color = Color.WHITE
-    }
+    /** The orb being shown, and the one it is cross-fading from. */
+    private var orbState: OrbState? = null
+    private var previousOrb: OrbState? = null
 
-    /** Where the shed rings are in their cycle while Heylana speaks. */
-    private var ringPhase = 0f
-    private var ringAnimator: ValueAnimator? = null
+    /** 0 is the mark, 1 is the orb. Animated over [HeylanaTokens.ORB_DISSOLVE_MS]. */
+    private var dissolve = 0f
+    private var dissolveAnimator: ValueAnimator? = null
+
+    /** 0 shows [previousOrb], 1 shows [orbState]. */
+    private var orbMix = 1f
+    private var mixAnimator: ValueAnimator? = null
+
+    /** Each state's engine clock, advanced frame by frame so a change of speed never jumps. */
+    private val orbClock = HashMap<OrbState, Double>()
+    private var lastFrameNanos = 0L
+    private var shownLevel = 0f
 
     /**
      * The disc's diameter in dp: [HeylanaTokens.DISC_DP] docked, swelling to
@@ -179,78 +180,72 @@ class BuddySpriteView(context: Context) : View(context) {
         activeAnimator?.cancel()
         activeAnimator = null
         activeAmount = if (isActive) 1f else 0f
+        // Re-parenting cancels the dissolve part-way: snap it to where it belongs.
+        dissolveAnimator?.cancel(); dissolveAnimator = null
+        mixAnimator?.cancel(); mixAnimator = null
+        orbState = wantedOrb()
+        previousOrb = null
+        orbMix = 1f
+        dissolve = if (orbState != null) 1f else 0f
         invalidate()
     }
 
     override fun onDetachedFromWindow() {
         breatheAnimator?.cancel(); breatheAnimator = null
         activeAnimator?.cancel(); activeAnimator = null
-        ringAnimator?.cancel(); ringAnimator = null
-        unwindAnimator?.cancel(); unwindAnimator = null
-        spinAnimator?.cancel(); spinAnimator = null
+        dissolveAnimator?.cancel(); dissolveAnimator = null
+        mixAnimator?.cancel(); mixAnimator = null
         super.onDetachedFromWindow()
     }
 
+    /** Which orb, if any, the disc should be showing right now. */
+    fun wantedOrb(): OrbState? = orbFor(expression, talking)
+
     /**
-     * Thinking unwinds the mark into a gapped ring that turns once every 1.2s,
-     * and snaps it back the moment the answer lands.
+     * Dissolves the mark into the wanted orb, cross-fades between orbs, or
+     * reassembles the mark — each over [HeylanaTokens.ORB_DISSOLVE_MS].
      */
-    private fun syncThinking() {
-        val wanted = if (expression == Expression.THINKING) 1f else 0f
-        unwindAnimator?.cancel()
-        unwindAnimator = ValueAnimator.ofFloat(unwind, wanted).apply {
-            duration = HeylanaTokens.UNWIND_MS
+    private fun syncOrb() {
+        val wanted = wantedOrb()
+        if (wanted != null && wanted != orbState) {
+            if (orbState != null && dissolve > 0.01f) {
+                previousOrb = orbState
+                orbMix = 0f
+                mixAnimator?.cancel()
+                mixAnimator = animate(0f, 1f) { orbMix = it }
+            } else {
+                previousOrb = null
+                orbMix = 1f
+            }
+            orbState = wanted
+        }
+        val target = if (wanted != null) 1f else 0f
+        if (dissolve == target && dissolveAnimator == null) return
+        dissolveAnimator?.cancel()
+        dissolveAnimator = animate(dissolve, target) { dissolve = it }.also { animator ->
+            animator.addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: android.animation.Animator) {
+                    if (dissolveAnimator === animator) dissolveAnimator = null
+                    if (dissolve == 0f) {
+                        orbState = null
+                        previousOrb = null
+                    }
+                }
+            })
+        }
+        invalidate()
+    }
+
+    private fun animate(from: Float, to: Float, apply: (Float) -> Unit): ValueAnimator =
+        ValueAnimator.ofFloat(from, to).apply {
+            duration = HeylanaTokens.ORB_DISSOLVE_MS
             interpolator = AccelerateDecelerateInterpolator()
             addUpdateListener {
-                unwind = it.animatedValue as Float
+                apply(it.animatedValue as Float)
                 invalidate()
             }
             start()
         }
-
-        if (wanted == 1f) {
-            if (spinAnimator != null) return
-            spinAnimator = ValueAnimator.ofFloat(0f, 360f).apply {
-                duration = HeylanaTokens.RING_SPIN_MS
-                repeatCount = ValueAnimator.INFINITE
-                interpolator = LinearInterpolator()
-                addUpdateListener {
-                    spin = it.animatedValue as Float
-                    invalidate()
-                }
-                start()
-            }
-        } else {
-            spinAnimator?.cancel()
-            spinAnimator = null
-            spin = 0f
-        }
-    }
-
-    /**
-     * Rings shed outward while the answer is being spoken. Real syllable peaks
-     * are not available from the platform, so this runs at a steady cadence for
-     * as long as the utterance lasts.
-     */
-    private fun syncRings() {
-        if (!talking) {
-            ringAnimator?.cancel()
-            ringAnimator = null
-            ringPhase = 0f
-            invalidate()
-            return
-        }
-        if (ringAnimator != null) return
-        ringAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = HeylanaTokens.RIPPLE_MS
-            repeatCount = ValueAnimator.INFINITE
-            addUpdateListener {
-                ringPhase = it.animatedValue as Float
-                invalidate()
-            }
-            start()
-        }
-    }
 
     private fun startBreathing() {
         if (breatheAnimator != null) return
@@ -334,17 +329,6 @@ class BuddySpriteView(context: Context) : View(context) {
             if (swell < minOf(w, h) / 2f) canvas.drawCircle(cx, cy, swell, listenPaint)
         }
 
-        if (talking) {
-            // Two rings, half a cycle apart, so one is always on its way out.
-            for (offset in floatArrayOf(0f, 0.5f)) {
-                val t = (ringPhase + offset) % 1f
-                val radius = discRadius + (glowBlur * 0.9f) * t
-                if (radius > minOf(w, h) / 2f) continue
-                ringPaint.alpha = ((1f - t) * 150f).toInt().coerceIn(0, 255)
-                canvas.drawCircle(cx, cy, radius, ringPaint)
-            }
-        }
-
         val save = canvas.save()
         canvas.scale(scale, scale, cx, cy)
 
@@ -367,9 +351,12 @@ class BuddySpriteView(context: Context) : View(context) {
             )
             val amount = HeylanaTokens.MARK_DULLED +
                 (HeylanaTokens.MARK_ACTIVE - HeylanaTokens.MARK_DULLED) * activeAmount
-            drawable.alpha = ((1f - unwind) * amount * 255f).toInt().coerceIn(0, 255)
+            drawable.alpha = ((1f - dissolve) * amount * 255f).toInt().coerceIn(0, 255)
 
             val lean = canvas.save()
+            // Dissolving, the mark swells a little as it fades into the dots.
+            val swell = 1f + DISSOLVE_SWELL * dissolve
+            canvas.scale(swell, swell, cx, cy)
             pointTarget?.let { target ->
                 // Lean and stretch toward whatever is being pointed at.
                 getLocationOnScreen(spriteLocation)
@@ -389,22 +376,67 @@ class BuddySpriteView(context: Context) : View(context) {
             canvas.restoreToCount(lean)
         }
 
-        if (unwind > 0.01f) {
-            // The arms have come apart into two arcs with a gap either side.
-            thinkPaint.strokeWidth = discRadius * 0.16f
-            thinkPaint.alpha = (unwind * 255f).toInt().coerceIn(0, 255)
-            val ringRadius = discRadius * (0.62f - 0.04f * (1f - unwind))
-            ringOval.set(cx - ringRadius, cy - ringRadius, cx + ringRadius, cy + ringRadius)
-            val sweep = 150f * unwind
-            val turn = canvas.save()
-            canvas.rotate(spin, cx, cy)
-            ringPath.reset()
-            ringPath.addArc(ringOval, 0f, sweep)
-            ringPath.addArc(ringOval, 180f, sweep)
-            canvas.drawPath(ringPath, thinkPaint)
-            canvas.restoreToCount(turn)
-        }
+        if (dissolve > 0.01f) drawOrb(canvas, cx, cy, discRadius)
 
         canvas.restoreToCount(save)
+        if (dissolve > 0.01f) postInvalidateOnAnimation()
+    }
+
+    /**
+     * The orb on the face: each state's own clock advances by the frame's real time
+     * at the preset speed, sped up a little by a loud voice, and the orb swells with
+     * the mic level while listening and with the playback level while speaking.
+     */
+    private fun drawOrb(canvas: Canvas, cx: Float, cy: Float, discRadius: Float) {
+        val now = System.nanoTime()
+        val dt = if (lastFrameNanos == 0L) 0.0 else ((now - lastFrameNanos) / 1e9).coerceAtMost(MAX_FRAME_SECONDS)
+        lastFrameNanos = now
+        val heard = when {
+            orbState == OrbState.LISTENING -> micLevel
+            orbState == OrbState.COMPOSING -> playbackLevel
+            else -> 0f
+        }
+        shownLevel += (heard - shownLevel) * LEVEL_EASE
+        val diameter = discRadius * 2f * HeylanaTokens.ORB_FRACTION * (1f + HeylanaTokens.ORB_LEVEL_SWELL * shownLevel)
+        val gather = GATHER_FROM + (1f - GATHER_FROM) * dissolve
+        val hue = (now % AURORA_TURN_NANOS).toFloat() / AURORA_TURN_NANOS
+
+        previousOrb?.let { state ->
+            if (orbMix < 0.99f) {
+                val t = advance(state, dt, heard)
+                orbPainter.draw(canvas, state, t, cx, cy, diameter, dissolve * (1f - orbMix), gather, hue)
+            }
+        }
+        orbState?.let { state ->
+            val t = advance(state, dt, heard)
+            orbPainter.draw(canvas, state, t, cx, cy, diameter, dissolve * orbMix, gather, hue)
+        }
+    }
+
+    private fun advance(state: OrbState, dt: Double, level: Float): Double {
+        val speed = OrbEngine.resolve(state, OrbPainter.GEOMETRY_SIZE).speed * (1.0 + LEVEL_SPEEDUP * level)
+        val t = (orbClock[state] ?: 0.0) + dt * speed
+        orbClock[state] = t
+        return t
+    }
+
+    companion object {
+        /** Which orb each look becomes: speaking wins, then listening, working, thinking. */
+        fun orbFor(expression: Expression, talking: Boolean): OrbState? = when {
+            talking -> OrbState.COMPOSING
+            expression == Expression.LISTENING -> OrbState.LISTENING
+            expression == Expression.WORKING -> OrbState.WORKING
+            expression == Expression.THINKING -> OrbState.BREATHING
+            else -> null
+        }
+
+        private const val DISSOLVE_SWELL = 0.25f
+        /** How far toward the centre the dots start as they come out of the mark. */
+        private const val GATHER_FROM = 0.3f
+        private const val LEVEL_EASE = 0.25f
+        private const val LEVEL_SPEEDUP = 0.8
+        private const val MAX_FRAME_SECONDS = 0.1
+        /** The thinking aurora turns once every six seconds. */
+        private const val AURORA_TURN_NANOS = 6_000_000_000L
     }
 }

@@ -27,6 +27,14 @@ class DiscLookTest {
     }
 
     @Test
+    fun `a task step or a send under way works instead of thinking`() {
+        assertEquals(DiscLook.WORKING, DiscLook.of(Exchange.Phase.ASKING, pointing = false, working = true))
+        assertEquals(DiscLook.WORKING, DiscLook.of(Exchange.Phase.NONE, pointing = true, working = true))
+        assertEquals(DiscLook.LISTENING, DiscLook.of(Exchange.Phase.LISTENING, pointing = false, working = true))
+        assertEquals(DiscLook.THINKING, DiscLook.of(Exchange.Phase.ASKING, pointing = false, working = false))
+    }
+
+    @Test
     fun `pointing only shows once nothing is under way`() {
         assertEquals(DiscLook.POINTING, DiscLook.of(Exchange.Phase.NONE, pointing = true))
         assertEquals(DiscLook.THINKING, DiscLook.of(Exchange.Phase.ASKING, pointing = true))

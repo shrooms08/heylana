@@ -105,13 +105,18 @@ class Exchange(private val now: () -> Long = { System.currentTimeMillis() }) {
  * is pointing at something, which only happens once an answer has landed.
  */
 enum class DiscLook {
-    IDLE, LISTENING, THINKING, POINTING;
+    IDLE, LISTENING, THINKING, WORKING, POINTING;
 
     companion object {
-        fun of(phase: Exchange.Phase, pointing: Boolean): DiscLook = when (phase) {
+        /**
+         * [working] is true while a task's next step is being worked out or a send
+         * is under way: the working orb instead of the thinking one, and it holds
+         * even between exchanges (a send waits on Seed Vault and the chain).
+         */
+        fun of(phase: Exchange.Phase, pointing: Boolean, working: Boolean = false): DiscLook = when (phase) {
             Exchange.Phase.LISTENING -> LISTENING
-            Exchange.Phase.WAITING_FOR_WORDS, Exchange.Phase.ASKING -> THINKING
-            Exchange.Phase.NONE -> if (pointing) POINTING else IDLE
+            Exchange.Phase.WAITING_FOR_WORDS, Exchange.Phase.ASKING -> if (working) WORKING else THINKING
+            Exchange.Phase.NONE -> if (working) WORKING else if (pointing) POINTING else IDLE
         }
     }
 }

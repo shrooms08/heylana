@@ -172,8 +172,12 @@ class DebugStatesActivity : Activity() {
     /** key (what adb passes), label (what the button says), what it does. */
     private fun states(): List<Triple<String, String, () -> Unit>> = listOf(
         Triple("idle", "idle", ::idle),
-        Triple("tapped", "tapped", ::tapped),
+        Triple("listening", "listening", ::listening),
         Triple("thinking", "thinking", ::thinking),
+        Triple("working", "working", ::working),
+        Triple("speaking", "speaking", ::speaking),
+        Triple("back-to-idle", "back to idle", ::backToIdle),
+        Triple("tapped", "tapped", ::tapped),
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
         Triple("cycle", "voice full cycle", ::voiceFullCycle),
@@ -212,6 +216,50 @@ class DebugStatesActivity : Activity() {
         reset()
         sprite.expression = BuddySpriteView.Expression.IDLE
         sprite.refreshState()
+    }
+
+    /** The mark dissolves into the listening orb, and the ring breathes with a made-up voice. */
+    private fun listening() {
+        reset()
+        sprite.expression = BuddySpriteView.Expression.LISTENING
+        pulse { level -> sprite.micLevel = level }
+    }
+
+    private fun working() {
+        reset()
+        sprite.expression = BuddySpriteView.Expression.WORKING
+    }
+
+    /** The speaking orb, driven by a made-up playback level. */
+    private fun speaking() {
+        reset()
+        sprite.talking = true
+        pulse { level -> sprite.playbackLevel = level }
+    }
+
+    /** Speaking for two seconds, then idle: the orb reassembles into the mark. */
+    private fun backToIdle() {
+        speaking()
+        main.postDelayed({
+            caption.text = "back to idle · reassembling"
+            main.removeCallbacksAndMessages(null)
+            sprite.playbackLevel = 0f
+            sprite.talking = false
+        }, BACK_TO_IDLE_MS)
+    }
+
+    /** A level that rises and falls like a voice, every frame until the next state. */
+    private fun pulse(apply: (Float) -> Unit) {
+        val started = System.currentTimeMillis()
+        val tick = object : Runnable {
+            override fun run() {
+                val seconds = (System.currentTimeMillis() - started) / 1000f
+                val syllables = kotlin.math.abs(kotlin.math.sin(seconds * 9f)) * (0.5f + 0.5f * kotlin.math.sin(seconds * 2.3f))
+                apply(syllables.coerceIn(0f, 1f))
+                main.postDelayed(this, PULSE_MS)
+            }
+        }
+        main.post(tick)
     }
 
     private fun tapped() {
@@ -392,8 +440,8 @@ class DebugStatesActivity : Activity() {
         sprite.composing = false
         sprite.pointTarget = null
         sprite.micLevel = 0f
+        sprite.playbackLevel = 0f
         sprite.expression = BuddySpriteView.Expression.IDLE
-        sprite.refreshState()
         capsule.visibility = View.GONE
         fakeHighlight.visibility = View.GONE
         panel.setVoiceMode(voice = false, showsText = false)
@@ -435,6 +483,8 @@ class DebugStatesActivity : Activity() {
         const val HEARD_STEP_MS = 260L
         const val THINKING_MS = 1_400L
         const val SPEAKING_MS = 1_600L
+        const val BACK_TO_IDLE_MS = 2_000L
+        const val PULSE_MS = 16L
 
         /** How long the silent hold lasts before the release. */
         const val HOLD_MS = 1_800L
@@ -470,6 +520,10 @@ private class DiscPair(private val docked: BuddySpriteView, private val open: Bu
     var micLevel: Float
         get() = open.micLevel
         set(value) = both.forEach { it.micLevel = value }
+
+    var playbackLevel: Float
+        get() = open.playbackLevel
+        set(value) = both.forEach { it.playbackLevel = value }
 
     var pointTarget: PointF?
         get() = open.pointTarget

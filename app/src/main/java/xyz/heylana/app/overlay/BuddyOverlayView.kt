@@ -572,7 +572,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private fun enterMode(next: Mode) {
         if (mode == next) return
         HeylanaLog.state("mode: $mode -> $next")
+        val previous = mode
         mode = next
+        // Every close lands here: the box is emptied for the next time it opens.
+        if (PanelReset.resetsOn(previous.name, next.name)) {
+            panel.resetToCompose()
+            HeylanaLog.state("panel: reset to empty compose")
+        }
         refreshMetrics()
 
         when (next) {
@@ -825,7 +831,14 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * swell or shrink its disc on the way without its window-sized box changing:
      * its position is offset by half the difference at both ends.
      */
-    private fun flyTo(target: PointF, targetDiscDp: Float, onLanded: () -> Unit): Boolean {
+    private fun flyTo(
+        target: PointF,
+        targetDiscDp: Float,
+        glide: Boolean = false,
+        startVx: Float = 0f,
+        startVy: Float = 0f,
+        onLanded: () -> Unit
+    ): Boolean {
         val stage = flightStage ?: return false
         val from = spriteScreenPosition()
         if (from.x == 0f && from.y == 0f) return false
@@ -855,10 +868,12 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         sprite.visibility = View.INVISIBLE
 
         // The disc swells (or settles back) on the same spring as the flight.
+        val stiffness = if (glide) HeylanaTokens.GLIDE_STIFFNESS else HeylanaTokens.SPRING_STIFFNESS
+        val damping = if (glide) HeylanaTokens.GLIDE_DAMPING else HeylanaTokens.SPRING_DAMPING
         flightSize = SpringAnimation(FloatValueHolder(flyer.discDp)).apply {
             spring = SpringForce(targetDiscDp).apply {
-                stiffness = HeylanaTokens.SPRING_STIFFNESS
-                dampingRatio = HeylanaTokens.SPRING_DAMPING
+                this.stiffness = stiffness
+                dampingRatio = damping
             }
             addUpdateListener { _, value, _ -> flyer.discDp = value }
             start()
@@ -892,20 +907,26 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         val landingOffset = (openDiscSize - toView) / 2f
         flightVx = 0f
         flightVy = 0f
-        flightX = spring(DynamicAnimation.TRANSLATION_X, target.x - landingOffset - origin.x, land)
-        flightY = spring(DynamicAnimation.TRANSLATION_Y, target.y - landingOffset - origin.y, land)
+        // A glide carries the finger's fling into the flight: it starts at that speed.
+        flightX = spring(DynamicAnimation.TRANSLATION_X, target.x - landingOffset - origin.x, stiffness, damping, startVx, land)
+        flightY = spring(DynamicAnimation.TRANSLATION_Y, target.y - landingOffset - origin.y, stiffness, damping, startVy, land)
+        HeylanaLog.state("flight: spring stiffness=${stiffness.toInt()} damping=$damping start_vx=${startVx.toInt()} start_vy=${startVy.toInt()}")
         return true
     }
 
     private fun spring(
         property: DynamicAnimation.ViewProperty,
         finalValue: Float,
+        stiffness: Float,
+        damping: Float,
+        startVelocity: Float,
         onEnd: () -> Unit
     ): SpringAnimation = SpringAnimation(flyer, property).apply {
         this.spring = SpringForce(finalValue).apply {
-            stiffness = HeylanaTokens.SPRING_STIFFNESS
-            dampingRatio = HeylanaTokens.SPRING_DAMPING
+            this.stiffness = stiffness
+            dampingRatio = damping
         }
+        setStartVelocity(startVelocity)
         // The flight's speed splits the mark's colours; landing settles them.
         addUpdateListener { _, _, velocity ->
             if (property === DynamicAnimation.TRANSLATION_X) flightVx = velocity else flightVy = velocity
@@ -923,11 +944,22 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     private var dragSampleY = 0f
     private var dragSampleTime = 0L
 
+    /** The finger's speed at the end of a drag, smoothed, in px per second. */
+    private var dragVx = 0f
+    private var dragVy = 0f
+
     private fun trackDragSpeed(event: MotionEvent) {
         val elapsed = event.eventTime - dragSampleTime
         if (dragSampleTime != 0L && elapsed > 0) {
             val seconds = elapsed / 1000f
-            sprite.setMotion((event.rawX - dragSampleX) / seconds, (event.rawY - dragSampleY) / seconds)
+            val vx = (event.rawX - dragSampleX) / seconds
+            val vy = (event.rawY - dragSampleY) / seconds
+            dragVx = Glide.smooth(dragVx, vx)
+            dragVy = Glide.smooth(dragVy, vy)
+            sprite.setMotion(vx, vy)
+        } else {
+            dragVx = 0f
+            dragVy = 0f
         }
         dragSampleX = event.rawX
         dragSampleY = event.rawY
@@ -979,7 +1011,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         // The exact dock, worked out before take-off; the disc lands on it and stays.
         spriteLeft = dockedLeft(spriteLeft)
         spriteTop = dockedTop(spriteTop)
-        val flew = flyTo(dockedScreenPosition(), HeylanaTokens.DISC_DP) {
+        val flew = flyTo(dockedScreenPosition(), HeylanaTokens.DISC_DP, glide = true) {
             enterMode(Mode.DOCKED)
             onPanelClosed?.invoke()
         }
@@ -1118,9 +1150,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         )
         val targetTop = dockedTop(clamp(spriteTop, dockInset, usableHeight - discSize - dockInset))
 
+        val maxVelocity = HeylanaTokens.dp(context, HeylanaTokens.GLIDE_MAX_START_DP_PER_S)
         val flew = flyTo(
             PointF((usableLeft + targetLeft).toFloat(), (usableTop + targetTop).toFloat()),
-            HeylanaTokens.DISC_DP
+            HeylanaTokens.DISC_DP,
+            glide = true,
+            startVx = Glide.startVelocity(dragVx, maxVelocity),
+            startVy = Glide.startVelocity(dragVy, maxVelocity)
         ) {
             spriteLeft = targetLeft
             spriteTop = targetTop

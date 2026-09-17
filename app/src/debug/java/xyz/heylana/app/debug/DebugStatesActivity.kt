@@ -194,6 +194,7 @@ class DebugStatesActivity : Activity() {
         Triple("speaking", "speaking", ::speaking),
         Triple("back-to-idle", "back to idle", ::backToIdle),
         Triple("motion", "fast drag", ::fastDrag),
+        Triple("glide", "snap glide", ::snapGlide),
         Triple("panel", "panel edges", ::panelEdges),
         Triple("send", "send strip", ::sendStrip),
         Triple("streak", "purple streak", ::purpleStreak),
@@ -381,6 +382,35 @@ class DebugStatesActivity : Activity() {
             panel.showAnswer("Tap Receive to show your address.")
             panel.showSession(2, 4)
         }, GOO_HOLD_MS * 3)
+    }
+
+    /**
+     * The glide the real disc uses to snap to an edge and fly home: flung left from the
+     * middle at speed, it carries the fling into a soft spring and glides to rest at the
+     * edge; then the same flung right.
+     */
+    private fun snapGlide() {
+        reset()
+        val edge = (stage.width - discRow.width) / 2f
+        val fling = HeylanaTokens.dp(this, HeylanaTokens.GLIDE_MAX_START_DP_PER_S)
+        fun glideTo(target: Float, velocity: Float, then: (() -> Unit)?) {
+            androidx.dynamicanimation.animation.SpringAnimation(discRow, androidx.dynamicanimation.animation.DynamicAnimation.TRANSLATION_X).apply {
+                spring = androidx.dynamicanimation.animation.SpringForce(target).apply {
+                    stiffness = HeylanaTokens.GLIDE_STIFFNESS
+                    dampingRatio = HeylanaTokens.GLIDE_DAMPING
+                }
+                setStartVelocity(velocity)
+                if (then != null) addEndListener { _, _, _, _ -> main.postDelayed(then, GLIDE_PAUSE_MS) }
+                start()
+            }
+        }
+        glideTo(-edge, -fling) {
+            caption.text = "snap glide · flung right"
+            glideTo(edge, fling) {
+                caption.text = "snap glide · home"
+                glideTo(0f, 0f, null)
+            }
+        }
     }
 
     /** A level that rises and falls like a voice, every frame until the next state. */
@@ -629,6 +659,7 @@ class DebugStatesActivity : Activity() {
         const val THINKING_MS = 1_400L
         const val SPEAKING_MS = 1_600L
         const val BACK_TO_IDLE_MS = 2_000L
+        const val GLIDE_PAUSE_MS = 600L
         const val GOO_HOLD_MS = 900L
         const val SEND_STRIP = "Send 0.05 USDC to 7c2y…SxSv. Confirm?"
         const val DRAG_LEG_MS = 260L

@@ -48,11 +48,11 @@ class Speaker(context: Context, private val onSpeakingChanged: (Boolean) -> Unit
         }.apply {
             setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) = post(true)
-                override fun onDone(utteranceId: String?) = post(false)
-                override fun onStop(utteranceId: String?, interrupted: Boolean) = post(false)
+                override fun onDone(utteranceId: String?) = finished()
+                override fun onStop(utteranceId: String?, interrupted: Boolean) = finished()
 
                 @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) = post(false)
+                override fun onError(utteranceId: String?) = finished()
             })
         }
     }
@@ -85,12 +85,26 @@ class Speaker(context: Context, private val onSpeakingChanged: (Boolean) -> Unit
     /** True if something is going to speak, so a "finished" will follow. */
     fun speak(text: String): Boolean {
         if (!available || text.isBlank()) return false
+        inProgress = true
         engine?.speak(text, TextToSpeech.QUEUE_FLUSH, null, UTTERANCE_ID)
         return true
     }
 
-    fun stop() {
+    /**
+     * Stops speaking and reports it. [beforeSpeaking] is the clear-down before a new
+     * line: with nothing under way it reports nothing, or that "finished" books the
+     * settle that puts the disc to idle before the new line's first word.
+     */
+    fun stop(beforeSpeaking: Boolean = false) {
         engine?.stop()
+        if (!beforeSpeaking || inProgress) finished()
+    }
+
+    @Volatile
+    private var inProgress = false
+
+    private fun finished() {
+        inProgress = false
         post(false)
     }
 

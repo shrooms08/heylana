@@ -129,7 +129,7 @@ private class ProgressRailView(context: Context) : View(context) {
  * and the next and done buttons.
  */
 @SuppressLint("ViewConstructor")
-class ChatPanelView(context: Context) : LinearLayout(context) {
+class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resettable {
 
     /** Called with the trimmed question when the user asks. */
     var onSend: ((String) -> Unit)? = null
@@ -745,6 +745,43 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
     fun hideConfirm() {
         confirmRow.visibility = View.GONE
+    }
+
+    // ------------------------------------------------------------- reset
+
+    /** Back to the empty compose box: see [PanelReset]. */
+    fun resetToCompose() {
+        PanelReset.apply(this)
+    }
+
+    override fun setStatusText(text: String) {
+        say(text)
+        note.text = ""
+        note.visibility = View.GONE
+    }
+
+    override fun setInputText(text: String) {
+        input.setText(text)
+    }
+
+    override fun setAskEnabled(enabled: Boolean) = enable(enabled)
+
+    override fun setConfirmShown(shown: Boolean) {
+        confirmRow.visibility = if (shown) View.VISIBLE else View.GONE
+    }
+
+    override fun setShapeNow(shape: Shape) {
+        morph?.cancel()
+        this.shape = shape
+        (background as? GlassDrawable)?.radiusOverrideDp = null
+        applyShape()
+    }
+
+    override fun clearSignals() {
+        streakThinking = false
+        setBeam(Beam.NONE)
+        gooeyRun?.cancel()
+        gooeyReset()
     }
 
     /**

@@ -191,6 +191,20 @@ HUD in the real overlay also changes window, so only the in-pane part is gooey t
 `GooeySpecTest` holds the numbers to the library's. Debug states: "gooey open",
 "gooey close", "strip to HUD".
 
+**Every close starts the next open empty.** Whatever closed the box — an action, an
+answer settling, cancel, the twenty-second timeout, a tap outside, back — the window
+goes from compose or HUD to docked, and `PanelReset` resets the pane there: no status
+text, no note, an empty question field, no confirm strip, the ask pill enabled, the box
+shape, no beam, streak or goo (`panel: reset to empty compose`). One rule in one place,
+because a reset per close path is how a stale "thinking…" survived. `PanelResetTest`.
+
+**The edge snap and the flight home glide.** Both use `GLIDE_STIFFNESS` 150 and
+`GLIDE_DAMPING` 0.85 instead of the open flight's 380 and 0.72, which keeps its feel.
+The snap starts at the finger's speed (smoothed over the last moves, capped at
+`GLIDE_MAX_START_DP_PER_S` 3000dp/s), so a fling carries into the glide rather than
+stopping and restarting; the trace says `flight: spring stiffness=… damping=…
+start_vx=… start_vy=…`. `GlideTest`; debug state "snap glide".
+
 The purple band, the aurora under the disc face, the chromatic rim, the motion RGB
 split and the purple bloom (design-2c) are still in the code behind
 `GlassSpec.TINTED_EXTRAS`, off.
@@ -487,6 +501,21 @@ away at once (`afterQuickAction`), the line is spoken, and the disc settles to i
 a second after the speech ends, the same beat as a spoken answer. With no voice the
 line shows for that second and then the box goes. A refused action still says why
 in the box.
+
+**The line outlives the close.** Closing the box stops speech, and the close only
+reports back after the box has drawn into the disc and the disc has flown home — by
+then the line had started, so it was cut off and the disc went idle in silence.
+`afterQuickAction` sets `keepSpeechThroughClose` before closing; that one close lets
+the voice play on (`speak: kept playing through the close`). And a line about to start
+used to clear down the voice first, which reported "finished speaking" with nothing
+playing and booked the settle that closed the box mid-flight: `stop(beforeSpeaking =
+true)` reports nothing unless something was really under way. The trace for a spoken
+action: `speak: line chars=N`, `voice=…`, `panel: closed`, `speak: kept playing…`,
+`speak: speaking=true`, `speak: speaking=false`, `settle: scheduled`, `settle: run`
+a second later. In debug builds `am broadcast -a xyz.heylana.app.debug.QUICK_ACTION
+--ez phone_voice true --ez aloud true --es said '…' --es action '{…}'` plays it on the
+phone's own voice (no network); `aloud` is ignored unless the phone's voice is forced,
+so a debug path never reaches /tts. Put it back with `--ez phone_voice false`.
 
 **Quick actions are deterministic, like sends.** Left to prose, the model said
 "setting an alarm for 7pm" and wrote no action, and "open the wallet" pointed at the

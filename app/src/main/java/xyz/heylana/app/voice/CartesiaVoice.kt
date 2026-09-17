@@ -70,7 +70,7 @@ class CartesiaVoice(
      */
     fun speak(text: String): Boolean {
         if (text.isBlank()) return false
-        stop()
+        stop(beforeSpeaking = true)
         cancelled = false
 
         val chosen = settings.voice
@@ -258,7 +258,7 @@ class CartesiaVoice(
         return phone.speak(text)
     }
 
-    fun stop() {
+    fun stop(beforeSpeaking: Boolean = false) {
         cancelled = true
         stream?.cancel()
         stream = null
@@ -266,7 +266,7 @@ class CartesiaVoice(
             runCatching { player.pause() }
             runCatching { player.flush() }
         }
-        phone.stop()
+        phone.stop(beforeSpeaking)
     }
 
     fun shutdown() {

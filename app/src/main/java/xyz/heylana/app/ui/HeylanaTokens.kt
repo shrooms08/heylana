@@ -246,6 +246,16 @@ object HeylanaTokens {
     const val SPRING_STIFFNESS = 380f
     const val SPRING_DAMPING = 0.72f
 
+    /**
+     * The glide: the snap to an edge after a drag, and the flight home when the box
+     * closes. A soft spring that barely overshoots, so the disc glides to rest; a fling
+     * carries its speed in (capped at [GLIDE_MAX_START_DP_PER_S]). The flight to the top
+     * centre keeps [SPRING_STIFFNESS].
+     */
+    const val GLIDE_STIFFNESS = 150f
+    const val GLIDE_DAMPING = 0.85f
+    const val GLIDE_MAX_START_DP_PER_S = 3000f
+
     /** The box growing out of the disc. */
     const val GROW_MS = 360L
 

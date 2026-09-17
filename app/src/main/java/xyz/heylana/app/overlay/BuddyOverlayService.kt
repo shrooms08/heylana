@@ -395,7 +395,14 @@ class BuddyOverlayService : Service() {
                     awaitingConfirm = null
                     HeylanaLog.state("send: cancelled, panel closed")
                 }
-                mouth?.stop()
+                if (keepSpeechThroughClose) {
+                    // The box closed itself so the phone's app is in front, and the line
+                    // saying what was done is still being spoken: it plays to the end.
+                    keepSpeechThroughClose = false
+                    HeylanaLog.state("speak: kept playing through the close")
+                } else {
+                    mouth?.stop()
+                }
                 stopTapWatch()
                 highlight?.hide()
                 view.stopLooking()
@@ -563,6 +570,7 @@ class BuddyOverlayService : Service() {
                 val view = overlayView ?: return
                 intent.getStringExtra("dock")?.let { view.debugDock(left = it == "left") }
                 if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
+                if (intent.getBooleanExtra("thinking", false)) view.showThinking()
             }
         }
         ContextCompat.registerReceiver(this, receiver, android.content.IntentFilter(DEBUG_PANEL), ContextCompat.RECEIVER_EXPORTED)
@@ -580,7 +588,15 @@ class BuddyOverlayService : Service() {
                 json?.keys()?.forEach { key -> fields[key] = if (json.isNull(key)) null else json.opt(key) }
                 val action = QuickAction.of(fields)
                 HeylanaLog.state("action: raw debug intent=${action?.intent ?: "malformed"}")
-                if (action != null) handleQuick(action, said, aloud = false)
+                // Debug: `--ez phone_voice true|false` sets the phone's own voice (no
+                // network), and `--ez aloud true` speaks the line as a real action would.
+                if (intent.hasExtra("phone_voice")) {
+                    HeylanaLog.state("debug: force phone voice was ${settings.forcePhoneVoice}")
+                    settings.forcePhoneVoice = intent.getBooleanExtra("phone_voice", false)
+                }
+                // Never a live call from a debug path: aloud only on the phone's own voice.
+                val aloud = intent.getBooleanExtra("aloud", false) && settings.forcePhoneVoice
+                if (action != null) handleQuick(action, said, aloud = aloud)
             }
         }
         ContextCompat.registerReceiver(this, receiver, android.content.IntentFilter(DEBUG_QUICK_ACTION), ContextCompat.RECEIVER_EXPORTED)
@@ -619,8 +635,12 @@ class BuddyOverlayService : Service() {
     private fun afterQuickAction(line: String, aloud: Boolean) {
         val view = overlayView ?: return
         HeylanaLog.state("action: box melts, line aloud=$aloud")
+        // The close runs its draw-back and flight before it reports back, and a close
+        // stops speech: without this the line started and was cut off in silence.
+        keepSpeechThroughClose = aloud
         view.closePanel()
         if (!aloud || !speak(line)) {
+            keepSpeechThroughClose = false
             view.showNotice(line)
             main.postDelayed({ overlayView?.closePanel() }, SETTLE_MS)
             settleSoon()
@@ -1012,17 +1032,23 @@ class BuddyOverlayService : Service() {
         }
     }
 
+    /** Set while a quick action's line must survive the box closing itself. */
+    private var keepSpeechThroughClose = false
+
     /** True if the answer really is being read out, so speech will report its end. */
     private fun speak(text: String): Boolean {
-        val voice = mouth ?: return false
-        if (settings.voiceMuted) return false
+        val voice = mouth ?: return false.also { HeylanaLog.state("speak: no voice") }
+        if (settings.voiceMuted) return false.also { HeylanaLog.state("speak: muted") }
         if (!voice.available) {
+            HeylanaLog.state("speak: voice unavailable")
             if (voice.settled && !noteShown) {
                 noteShown = true
                 overlayView?.showNote("Voice unavailable on this device.")
             }
             return false
         }
+        // The length only: never the words.
+        HeylanaLog.state("speak: line chars=${text.length}")
         return voice.speak(text)
     }
 

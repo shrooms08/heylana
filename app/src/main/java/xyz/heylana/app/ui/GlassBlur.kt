@@ -28,7 +28,9 @@ object GlassBlur {
     fun apply(context: Context, params: WindowManager.LayoutParams): Boolean {
         if (!isAvailable(context)) return false
         params.flags = params.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
-        params.blurBehindRadius = HeylanaTokens.dpInt(context, HeylanaTokens.BLUR_DP)
+        params.blurBehindRadius = HeylanaTokens.dpInt(
+            context, if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.BLUR_DP else GlassSpec.BLUR_BEHIND_DP
+        )
         return true
     }
 

@@ -21,6 +21,14 @@ import kotlin.math.hypot
  * One liquid-glass recipe, used by every glass surface: the message box, the
  * reply strip, the task HUD, their buttons and the buddy's disc.
  *
+ * **Clear glass** ([GlassSpec], design-2d) is what draws: no colour anywhere, a 4%
+ * white fill (over a 25% black base with "Darker glass"), the spec's band, gradient,
+ * rim, lens line, inner shadow, specular and hairline — per pixel through [ClearGlass]
+ * on API 33+ hardware canvases, as gradients below that — and a 7dp shadow cast
+ * outside the shape only. Chips are flat: black 27%, or white 94% when selected.
+ *
+ * The tinted recipe below (design-2c) is kept behind [GlassSpec.TINTED_EXTRAS], off:
+ *
  * Bottom to top:
  *  1. a smoked base, so light text has somewhere to sit over a bright page,
  *  2. a vertical white fill, brighter at the top where light would catch it,
@@ -67,8 +75,24 @@ class GlassDrawable(
     /** The smoked base. The disc's face is a lens, so it smokes less than a panel. */
     private val baseColor: Int = if (kind == Kind.INPUT) HeylanaTokens.inputBase else HeylanaTokens.glassBase,
     /** Liquid edges on the rim and top band. Off for fields, and for the disc, whose whole face is a lens. */
-    private val liquidEdges: Boolean = kind != Kind.INPUT
+    private val liquidEdges: Boolean = kind != Kind.INPUT,
+    /** A chip that is the thing to press: white 94% with dark text, instead of black 27%. */
+    private val selected: Boolean = false,
+    /**
+     * Whether the view left [shadowPadding] around the pane for its shadow. The disc
+     * draws into its own bloom room instead, so its body is the whole bounds.
+     */
+    private val shadowInView: Boolean = true
 ) : Drawable() {
+
+    /** The clear-glass numbers for this surface. The disc updates it as it swells. */
+    var surface: GlassSpec.Surface = GlassSpec.PANEL
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidateSelf()
+            }
+        }
 
     enum class Kind {
         /** A full sheet: every layer. */
@@ -124,12 +148,15 @@ class GlassDrawable(
     }
 
     private val shadowInset = HeylanaTokens.dp(context, HeylanaTokens.GLASS_SHADOW_DP)
+    private val scale = context.resources.displayMetrics.density
     private val shadowDy = HeylanaTokens.dp(context, HeylanaTokens.GLASS_SHADOW_DY_DP)
 
     init {
         // The shadow rides on the base itself as a shadow layer: GPU-drawn, so the pane
         // needs no software layer and its edges can be liquid.
-        if (withShadow) basePaint.setShadowLayer(shadowInset / 2f, 0f, shadowDy, HeylanaTokens.glassShadow)
+        if (withShadow && GlassSpec.TINTED_EXTRAS) {
+            basePaint.setShadowLayer(shadowInset / 2f, 0f, shadowDy, HeylanaTokens.glassShadow)
+        }
     }
 
     private val lens: Any? by lazy {
@@ -155,7 +182,7 @@ class GlassDrawable(
         if (b.isEmpty) return
 
         body.set(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat())
-        if (withShadow) body.inset(shadowInset, shadowInset)
+        if (withShadow && shadowInView) body.inset(shadowInset, shadowInset)
         // Only now that body is the new bounds, since a full-round radius is
         // measured from it. Reading it first clipped the disc to a square.
         val r = effectiveRadius(body.width(), body.height())
@@ -224,6 +251,150 @@ class GlassDrawable(
     override fun draw(canvas: Canvas) {
         if (bounds.isEmpty) return
         if (!built) build()
+        if (GlassSpec.TINTED_EXTRAS) drawTinted(canvas) else drawClear(canvas)
+    }
+
+    // ------------------------------------------------------------ clear glass
+
+    private val clearFill = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val clearStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+    private val clearShadow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+    private val clearGlass: Any? by lazy {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) ClearGlass() else null
+    }
+
+    /** The corner a clear surface uses: chips are 14dp, everything else as asked. */
+    private fun clearRadius(): Float = when {
+        kind == Kind.PILL && radiusOverrideDp == null ->
+            minOf(GlassSpec.CHIP_RADIUS_DP * scale, minOf(body.width(), body.height()) / 2f)
+        else -> effectiveRadius(body.width(), body.height())
+    }
+
+    private fun drawClear(canvas: Canvas) {
+        val r = clearRadius()
+        shape.reset()
+        shape.addRoundRect(body, r, r, Path.Direction.CW)
+
+        if (withShadow) {
+            // A 7dp shadow, black 22%, 8dp down, cast only outside the shape so the
+            // glass stays clear. A GPU shadow layer: the view stays hardware rendered.
+            val save = canvas.save()
+            canvas.clipOutPath(shape)
+            clearShadow.setShadowLayer(
+                GlassSpec.SHADOW_BLUR_DP * scale, 0f, GlassSpec.SHADOW_DY_DP * scale,
+                HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.SHADOW_ALPHA)
+            )
+            canvas.drawRoundRect(body, r, r, clearShadow)
+            canvas.restoreToCount(save)
+        }
+
+        when (kind) {
+            Kind.INPUT -> {
+                clearFill.shader = null
+                clearFill.color = HeylanaTokens.inputFill
+                canvas.drawRoundRect(body, r, r, clearFill)
+                clearStroke.shader = null
+                clearStroke.color = HeylanaTokens.inputBorder
+                clearStroke.strokeWidth = inputBorderWidth
+                val i = inputBorderWidth / 2f
+                canvas.drawRoundRect(body.left + i, body.top + i, body.right - i, body.bottom - i, r - i, r - i, clearStroke)
+            }
+            Kind.PILL -> {
+                clearFill.shader = null
+                clearFill.color = if (selected) {
+                    HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.CHIP_SELECTED_WHITE)
+                } else {
+                    HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.CHIP_UNSELECTED_BLACK)
+                }
+                canvas.drawRoundRect(body, r, r, clearFill)
+                drawHairline(canvas, r)
+            }
+            Kind.PANEL -> {
+                if (GlassSpec.darkerGlass) {
+                    clearFill.shader = null
+                    clearFill.color = HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.DARKER_BASE_BLACK)
+                    canvas.drawRoundRect(body, r, r, clearFill)
+                }
+                val glass = clearGlass
+                if (glass != null && canvas.isHardwareAccelerated) drawSpecShader(canvas, glass, r) else drawSpecGradients(canvas, r)
+            }
+        }
+    }
+
+    /** API 33+: the spec per pixel. The layer it refracts is this surface's own 4% white fill. */
+    @android.annotation.SuppressLint("NewApi")
+    private fun drawSpecShader(canvas: Canvas, glassAny: Any, r: Float) {
+        val glass = glassAny as ClearGlass
+        val fill = HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.FILL_WHITE)
+        val layer = LinearGradient(body.left, body.top, body.left, body.bottom, fill, fill, Shader.TileMode.CLAMP)
+        glass.set(body.left, body.top, body.width(), body.height(), surface, r, layer, scale)
+        canvas.drawRect(body, glass.paint)
+    }
+
+    /**
+     * Below API 33, or on a software canvas: the same numbers as gradients, without
+     * the refraction — fill, the top-to-bottom gradient, the rim lit toward the
+     * bottom-right, the lens line, and the hairline.
+     */
+    private fun drawSpecGradients(canvas: Canvas, r: Float) {
+        val edge = surface.edgeDp * scale
+        clearFill.shader = null
+        clearFill.color = HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.FILL_WHITE)
+        canvas.drawRoundRect(body, r, r, clearFill)
+
+        clearFill.shader = LinearGradient(
+            body.left, body.top, body.left, body.bottom,
+            intArrayOf(
+                HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.GRADIENT_TOP + GlassSpec.BAND_BRIGHTNESS),
+                Color.TRANSPARENT,
+                HeylanaTokens.withAlpha(Color.BLACK, -GlassSpec.GRADIENT_BOTTOM)
+            ),
+            floatArrayOf(0f, 0.55f, 1f),
+            Shader.TileMode.CLAMP
+        )
+        canvas.drawRoundRect(body, r, r, clearFill)
+        clearFill.shader = null
+
+        // Rim: 0.10 - 0.10 on the side facing the light, up to 0.10 + 0.32 on the far side.
+        val rimWidth = (GlassSpec.RIM_WIDTH * edge).coerceAtLeast(1f)
+        clearStroke.strokeWidth = rimWidth
+        clearStroke.shader = LinearGradient(
+            body.left, body.top, body.right, body.bottom,
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.RIM_BASE - GlassSpec.RIM_SHADE),
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.RIM_BASE + GlassSpec.RIM_LIGHT),
+            Shader.TileMode.CLAMP
+        )
+        insetRoundRect(canvas, r, rimWidth / 2f, clearStroke)
+
+        clearStroke.shader = null
+        clearStroke.color = HeylanaTokens.withAlpha(Color.BLACK, -GlassSpec.LENS_LINE)
+        clearStroke.strokeWidth = (GlassSpec.LENS_LINE_WIDTH * edge).coerceAtLeast(1f)
+        insetRoundRect(canvas, r, GlassSpec.LENS_LINE_AT * edge, clearStroke)
+
+        drawHairline(canvas, r)
+    }
+
+    /** 1px at the boundary, white at 0.30 × (0.3 + 0.7 ndotl): dim top-left, full bottom-right. */
+    private fun drawHairline(canvas: Canvas, r: Float) {
+        clearStroke.strokeWidth = GlassSpec.HAIRLINE_PX
+        clearStroke.shader = LinearGradient(
+            body.left, body.top, body.right, body.bottom,
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.HAIRLINE * 0.3f),
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.HAIRLINE),
+            Shader.TileMode.CLAMP
+        )
+        insetRoundRect(canvas, r, GlassSpec.HAIRLINE_PX / 2f, clearStroke)
+        clearStroke.shader = null
+    }
+
+    private fun insetRoundRect(canvas: Canvas, r: Float, inset: Float, paint: Paint) {
+        val ri = (r - inset).coerceAtLeast(0f)
+        canvas.drawRoundRect(body.left + inset, body.top + inset, body.right - inset, body.bottom - inset, ri, ri, paint)
+    }
+
+    // ----------------------------------------------------------- tinted (off)
+
+    private fun drawTinted(canvas: Canvas) {
         val r = effectiveRadius(bounds.width().toFloat(), bounds.height().toFloat())
 
         canvas.drawRoundRect(body, r, r, basePaint)

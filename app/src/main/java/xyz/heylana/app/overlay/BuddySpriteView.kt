@@ -19,6 +19,7 @@ import xyz.heylana.app.orbs.OrbEngine
 import xyz.heylana.app.orbs.OrbPainter
 import xyz.heylana.app.orbs.OrbState
 import xyz.heylana.app.ui.GlassDrawable
+import xyz.heylana.app.ui.GlassSpec
 import xyz.heylana.app.ui.HeylanaTokens
 import xyz.heylana.app.ui.LiquidGlass
 
@@ -109,6 +110,13 @@ class BuddySpriteView(context: Context) : View(context) {
         liquidEdges = false
     )
 
+    /** The clear glass disc (design-2d). */
+    private val clearDisc = GlassDrawable(
+        context, HeylanaTokens.RADIUS_FULL_DP, blurBehind = false,
+        kind = GlassDrawable.Kind.PANEL, withShadow = true, withSheen = false,
+        liquidEdges = false, shadowInView = false
+    )
+
     /** Lifts the glass a touch once Heylana is awake. */
     private val discLift = Paint(Paint.ANTI_ALIAS_FLAG)
 
@@ -152,6 +160,8 @@ class BuddySpriteView(context: Context) : View(context) {
      * the speed, and settles back together when the updates stop.
      */
     fun setMotion(vx: Float, vy: Float) {
+        // The split is one of the design-2c tints: off with them.
+        if (!GlassSpec.TINTED_EXTRAS) return
         val speed = kotlin.math.hypot(vx, vy)
         if (speed < 1f) {
             splitTargetX = 0f
@@ -357,7 +367,7 @@ class BuddySpriteView(context: Context) : View(context) {
         val discRadius = minOf(discDiameter / 2f, minOf(w, h) / 2f)
         val scale = 1f + (HeylanaTokens.BREATHE_SCALE - 1f) * breathe
 
-        if (activeAmount > 0.01f) {
+        if (GlassSpec.TINTED_EXTRAS && activeAmount > 0.01f) {
             val outer = minOf(discRadius + glowBlur, minOf(w, h) / 2f)
             glowPaint.shader = RadialGradient(
                 cx, cy, outer,
@@ -386,12 +396,20 @@ class BuddySpriteView(context: Context) : View(context) {
             (cx - discRadius).toInt(), (cy - discRadius).toInt(),
             (cx + discRadius).toInt(), (cy + discRadius).toInt()
         )
-        discGlass.draw(canvas)
-        if (activeAmount > 0.01f) {
+        if (GlassSpec.TINTED_EXTRAS) {
+            discGlass.draw(canvas)
+        } else {
+            // Clear glass at the disc's own numbers, E and strength growing with the swell;
+            // its shadow falls into the bloom room around the disc.
+            clearDisc.surface = GlassSpec.disc(discDp)
+            clearDisc.bounds = discGlass.bounds
+            clearDisc.draw(canvas)
+        }
+        if (GlassSpec.TINTED_EXTRAS && activeAmount > 0.01f) {
             discLift.color = HeylanaTokens.withAlpha(Color.WHITE, 0.06f * activeAmount)
             canvas.drawCircle(cx, cy, discRadius, discLift)
         }
-        if (LiquidGlass.available(canvas)) drawFace(canvas, cx, cy, discRadius)
+        if (GlassSpec.TINTED_EXTRAS && LiquidGlass.available(canvas)) drawFace(canvas, cx, cy, discRadius)
         stepSplit()
 
         mark?.let { drawable ->
@@ -401,8 +419,9 @@ class BuddySpriteView(context: Context) : View(context) {
                 (cx - half).toInt(), (cy - half).toInt(),
                 (cx + half).toInt(), (cy + half).toInt()
             )
-            val amount = HeylanaTokens.MARK_DULLED +
-                (HeylanaTokens.MARK_ACTIVE - HeylanaTokens.MARK_DULLED) * activeAmount
+            val dulled = if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.MARK_DULLED else GlassSpec.MARK_DOCKED
+            val full = if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.MARK_ACTIVE else GlassSpec.MARK_ACTIVE
+            val amount = dulled + (full - dulled) * activeAmount
             drawable.alpha = ((1f - dissolve) * amount * 255f).toInt().coerceIn(0, 255)
 
             val lean = canvas.save()
@@ -436,7 +455,9 @@ class BuddySpriteView(context: Context) : View(context) {
 
         // The chromatic rim, pulled a little further apart while moving.
         faceRect.set(cx - discRadius, cy - discRadius, cx + discRadius, cy + discRadius)
-        LiquidGlass.drawFringe(canvas, context, faceRect, discRadius, fringePaint, splitX * 0.5f, splitY * 0.5f)
+        if (GlassSpec.TINTED_EXTRAS) {
+            LiquidGlass.drawFringe(canvas, context, faceRect, discRadius, fringePaint, splitX * 0.5f, splitY * 0.5f)
+        }
 
         canvas.restoreToCount(save)
         if (dissolve > 0.01f || kotlin.math.hypot(splitX, splitY) > SPLIT_SETTLED_PX) postInvalidateOnAnimation()

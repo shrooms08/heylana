@@ -23,6 +23,7 @@ import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
 import xyz.heylana.app.R
 import xyz.heylana.app.ui.GlassDrawable
+import xyz.heylana.app.ui.GlassSpec
 import xyz.heylana.app.ui.HeylanaTokens
 
 /**
@@ -208,6 +209,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         answer.apply {
             visibility = View.GONE
             setTextColor(HeylanaTokens.textPrimary)
+            softShadow(this)
             typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_LIGHT)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.BODY_SP)
             maxLines = MAX_ANSWER_LINES
@@ -238,7 +240,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
         }
-        styleLabel(stepChip, HeylanaTokens.textSecondary)
+        styleLabel(stepChip, secondaryText)
         stepChip.setPadding(
             dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_1_DP),
             dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_1_DP)
@@ -249,7 +251,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         stylePill(next, "next", HeylanaTokens.textPrimary) { onNext?.invoke() }
         sessionRow.addView(next, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
 
-        stylePill(done, "done", HeylanaTokens.textSecondary) { onDone?.invoke() }
+        stylePill(done, "done", secondaryText) { onDone?.invoke() }
         sessionRow.addView(
             done,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
@@ -270,9 +272,9 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             visibility = View.GONE
         }
-        stylePill(cancel, "cancel", HeylanaTokens.textSecondary) { onCancel?.invoke() }
+        stylePill(cancel, "cancel", secondaryText) { onCancel?.invoke() }
         confirmRow.addView(cancel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
-        stylePill(confirm, "confirm", HeylanaTokens.textPrimary) { onConfirm?.invoke() }
+        stylePill(confirm, "confirm", selectedText, selected = true) { onConfirm?.invoke() }
         confirmRow.addView(
             confirm,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
@@ -294,8 +296,9 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
         input.apply {
             hint = PLACEHOLDER
-            setHintTextColor(HeylanaTokens.textSecondary)
+            setHintTextColor(secondaryText)
             setTextColor(HeylanaTokens.textPrimary)
+            softShadow(this)
             typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_LIGHT)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.BODY_SP)
             inputType = InputType.TYPE_CLASS_TEXT
@@ -323,7 +326,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         }
         row.addView(input, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
-        stylePill(ask, "ask", HeylanaTokens.textPrimary) { submit() }
+        stylePill(ask, "ask", selectedText, selected = true) { submit() }
         ask.setPadding(
             dp(HeylanaTokens.SPACE_4_DP), dp(HeylanaTokens.SPACE_3_DP),
             dp(HeylanaTokens.SPACE_4_DP), dp(HeylanaTokens.SPACE_3_DP)
@@ -351,7 +354,8 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
 
         note.apply {
             visibility = View.GONE
-            setTextColor(HeylanaTokens.textSecondary)
+            setTextColor(secondaryText)
+            softShadow(this)
             typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_LIGHT)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.LABEL_SP)
         }
@@ -376,7 +380,9 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     fun applyGlass(blurBehind: Boolean) {
         this.blurBehind = blurBehind
         background = GlassDrawable(
-            context, HeylanaTokens.RADIUS_CARD_DP, blurBehind, GlassDrawable.Kind.PANEL,
+            context,
+            if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.RADIUS_CARD_DP else GlassSpec.PANEL.radiusDp,
+            blurBehind, GlassDrawable.Kind.PANEL,
             withShadow = true
         )
         // The field is a lighter sheet sunk into the panel, never a darker hole.
@@ -386,9 +392,10 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         stepChip.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL
         )
+        // The ask pill and confirm are the thing to press: the selected chip style.
         ask.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
-            HeylanaTokens.bandPrimary
+            HeylanaTokens.bandPrimary, selected = true
         )
         next.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
@@ -400,7 +407,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         )
         confirm.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
-            HeylanaTokens.bandPrimary
+            HeylanaTokens.bandPrimary, selected = true
         )
         cancel.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
@@ -489,6 +496,23 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         }
     }
 
+    /** Secondary text on clear glass is white, a step back; on tinted glass the old lavender grey. */
+    private val secondaryText: Int
+        get() = if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.textSecondary else HeylanaTokens.withAlpha(android.graphics.Color.WHITE, 0.72f)
+
+    private val selectedText: Int
+        get() = if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.textPrimary else GlassSpec.CHIP_SELECTED_TEXT
+
+    /** 0 1dp 6dp, black 30%: white text stays legible over a bright app behind clear glass. */
+    private fun softShadow(view: TextView) {
+        if (GlassSpec.TINTED_EXTRAS) return
+        view.setShadowLayer(
+            HeylanaTokens.dp(context, GlassSpec.TEXT_SHADOW_RADIUS_DP), 0f,
+            HeylanaTokens.dp(context, GlassSpec.TEXT_SHADOW_DY_DP),
+            HeylanaTokens.withAlpha(android.graphics.Color.BLACK, GlassSpec.TEXT_SHADOW_BLACK)
+        )
+    }
+
     private fun styleLabel(view: TextView, colour: Int) {
         view.setTextColor(colour)
         view.typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_MEDIUM)
@@ -496,14 +520,17 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         view.letterSpacing = HeylanaTokens.LABEL_TRACKING_EM
     }
 
-    private fun stylePill(view: TextView, text: String, colour: Int, onTap: () -> Unit) {
+    private fun stylePill(view: TextView, text: String, colour: Int, selected: Boolean = false, onTap: () -> Unit) {
         view.text = text
         styleLabel(view, colour)
         view.gravity = Gravity.CENTER
         view.setPadding(
-            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_2_DP),
-            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_2_DP)
+            dp(HeylanaTokens.SPACE_4_DP), dp(HeylanaTokens.SPACE_2_DP),
+            dp(HeylanaTokens.SPACE_4_DP), dp(HeylanaTokens.SPACE_2_DP)
         )
+        if (!GlassSpec.TINTED_EXTRAS) view.minHeight = dp(GlassSpec.CHIP_HEIGHT_DP)
+        // White text sits on dark or clear glass and needs the soft shadow; dark text on a white chip does not.
+        if (!selected) softShadow(view)
         view.isClickable = true
         view.setOnClickListener { onTap() }
     }

@@ -75,7 +75,8 @@ fun GlassButton(
             cornerRadiusDp = HeylanaTokens.RADIUS_FULL_DP,
             blurBehind = false,
             kind = GlassDrawable.Kind.PILL,
-            bandColor = if (primary) HeylanaTokens.bandPrimary else HeylanaTokens.purpleBand
+            bandColor = if (primary) HeylanaTokens.bandPrimary else HeylanaTokens.purpleBand,
+            selected = primary
         )
     }
     Column(
@@ -91,7 +92,9 @@ fun GlassButton(
             .padding(horizontal = HeylanaTokens.SPACE_5_DP.dp, vertical = HeylanaTokens.SPACE_3_DP.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(text = text, style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary))
+        // A primary button is the selected chip: white glass, dark text.
+        val colour = if (primary && !GlassSpec.TINTED_EXTRAS) GlassSpec.CHIP_SELECTED_TEXT else HeylanaTokens.textPrimary
+        Text(text = text, style = glassText(HeylanaTokens.BODY_SP, colour))
     }
 }
 

@@ -103,44 +103,39 @@ or is needed twice, it belongs in the tokens file. The type is Outfit, shipped a
 one variable font in `res/font` and instanced at 300, 400 and 500; if the font
 resource will not load, the tokens fall back to the platform's light sans.
 
-**The glass recipe is `ui/GlassDrawable`, and there is only one of it.** The
-message box, its buttons, the chips and the buddy's disc are all the same
-surface at different radii. In order: a fill, a soft purple refraction band at
-122 degrees near the top-left, a bevel that runs light down the top and left
-edges and dark up the bottom and right, then a hairline border. Primary buttons
-are that same glass with the band at full strength instead of a solid fill.
+**The glass is clear, and its numbers are `ui/GlassSpec`.** Clear iOS-style liquid
+glass (design-2d), specified by `design/refs/liquid_glass_render.py` as tuned by the
+design brief, with no colour anywhere in the material. Every surface — the disc, the
+box, the strip, the task HUD, the pills — draws through `ui/GlassDrawable`:
 
-**The disc's face is a liquid glass lens.** `ui/LiquidGlass` is the reference
-shader (`design/refs/liquid_glass.glsl`) ported to AGSL: the rounded-box mask, the
-rb1/rb2/rb3 bands, the lens pull, the gradient and the lighting terms, with the
-reference's own constants. The only change is the mask's input — the reference's
-`roundedBox * 10000` becomes a rounded-rect distance that is 1 at the surface's edge
-and falls inward over `rim` px — and `LiquidGlassMathTest` checks the bands and lens
-against the original formulas. It never samples the screen: on the disc it bends
-Heylana's own aurora (the aurora stops as a slowly turning sweep, clear in the
-centre, `FACE_AURORA_*`), drawn over the disc's `GlassDrawable` edge recipe (smoked
-base at `discBase`, faint `discBand`, specular, sheen, rim, lens line). API 33+ on a
-hardware canvas only; otherwise the disc is the plain recipe. Over black it reads as
-smoked glass with a lit rim, over white as translucent grey glass the page shows
-through.
+- **Panels** (radius 20dp, edge band E 30dp, strength 34dp, magnification 0.985) and
+  **the disc** (E 20dp, strength 30dp at 80dp; E 16dp, strength 24dp docked at 64dp;
+  magnification 0.96; interpolated as it swells): a 4% white fill, and on API 33+
+  hardware canvases `ClearGlass`, an AGSL shader running the spec per pixel — the band
+  `1 - smoothstep(0.30, 0.80, -d/E)`, the outward pull of the surface's own layer
+  (`strength × band × (0.45 + 0.55 clamp(1 - t2/0.80))`) with 1dp blur in the band and
+  saturation 1.18, band brightness +0.05, the gradient +0.07 → −0.04 by depth, the rim
+  (7.5% of E: +0.10 + 0.32 ndotl, −0.10 ndotb), the lens line (at 10% of E, 4.5% wide,
+  −0.03), the inner shadow (−0.06 ndotb over 0.9E), a 0.05 specular near the top-left
+  and the 1px hairline (0.30 × (0.3 + 0.7 ndotl)). `ndotl` and `ndotb` are the
+  renderer's `n·(−light)` and `n·light` for light (−0.45, −0.89) in screen
+  coordinates, which lights the rim toward the bottom-right, as the reference renders
+  do. Below API 33 or on a software canvas the same numbers are drawn as gradients
+  without the refraction. The layer it refracts is the surface's own fill — never the
+  screen. `GlassSpecTest` holds the maths to the renderer's and the brief's formulas.
+- **Shadow**: 7dp, black 22%, 8dp down, cast outside the shape only (clip-out plus a
+  GPU shadow layer), so the glass stays clear and the view stays hardware rendered.
+- **Chips**: radius 14dp, at least 44dp tall; black 27% with white text, or selected —
+  the ask pill and confirm, and a primary Compose button — white 94% with #1A1A24 text.
+- **Text** on glass is white (secondary 72% white) with a soft shadow (0 1dp 6dp,
+  black 30%). The mark is white, 70% docked and 100% active.
+- **Blur behind** stays the system's FLAG_BLUR_BEHIND, at 8dp.
 
-**A chromatic rim, and a colour split in motion.** Three 1dp strokes, red, green and
-blue at low alpha, each 0.6dp off the rim in its own direction
-(`LiquidGlass.drawFringe`). While the disc flies (the springs' velocities) or is
-dragged (finger speed), `BuddySpriteView.setMotion` splits the mark into red, green
-and blue copies added together, up to 3dp at 2500dp/s along the motion, and the rim
-strokes part half as far; with no motion for 80ms it eases back together. Debug
-states: "fast drag".
-
-**Every overlay glass surface has liquid edges.** The box, the reply strip, the task
-HUD and the pills run the same lens (`edgeOnly`): only the rim (24dp in,
-`EDGE_LENS_RIM_DP`) and a 12dp band along the top (`EDGE_LENS_TOP_DP`) are drawn,
-bending the surface's own fill and band — never the screen — and lit by the
-reference's bands, with the chromatic fringe on the rim. Fields and the disc (whose
-whole face is a lens) opt out. The panel's shadow is now a GPU shadow layer on the
-base instead of a blur mask, so `ChatPanelView` no longer needs a software layer —
-a RuntimeShader only runs on a hardware canvas. Debug states: "panel edges", over
-black and white with the backdrop button.
+Over black it reads as dark clear glass with a bright bottom-right rim; over a plain
+white page it is nearly invisible — white text and the white mark included — which is
+what "Darker glass" in Settings is for. The purple band, the aurora under the disc
+face, the chromatic rim, the motion RGB split and the purple bloom (design-2c) are
+still in the code behind `GlassSpec.TINTED_EXTRAS`, off.
 
 **Blur is asked for, never assumed.** `ui/GlassBlur` checks
 `isCrossWindowBlurEnabled` at the moment a window is shown and sets

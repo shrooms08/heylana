@@ -179,6 +179,7 @@ class DebugStatesActivity : Activity() {
         Triple("back-to-idle", "back to idle", ::backToIdle),
         Triple("motion", "fast drag", ::fastDrag),
         Triple("panel", "panel edges", ::panelEdges),
+        Triple("send", "send strip", ::sendStrip),
         Triple("tapped", "tapped", ::tapped),
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
@@ -286,6 +287,15 @@ class DebugStatesActivity : Activity() {
         tapped()
         panel.showAnswer(LONG_ANSWER)
         panel.showSession(2, 4)
+    }
+
+    /** The send confirmation strip, as the service shows it: the words, then cancel and confirm. */
+    private fun sendStrip() {
+        reset()
+        panel.visibility = View.VISIBLE
+        panel.showNotice(SEND_STRIP)
+        panel.morphTo(ChatPanelView.Shape.STRIP)
+        panel.showConfirm()
     }
 
     /** A level that rises and falls like a voice, every frame until the next state. */
@@ -528,6 +538,7 @@ class DebugStatesActivity : Activity() {
         const val THINKING_MS = 1_400L
         const val SPEAKING_MS = 1_600L
         const val BACK_TO_IDLE_MS = 2_000L
+        const val SEND_STRIP = "Send 0.05 USDC to 7c2y…SxSv. Confirm?"
         const val DRAG_LEG_MS = 260L
         const val PULSE_MS = 16L
 

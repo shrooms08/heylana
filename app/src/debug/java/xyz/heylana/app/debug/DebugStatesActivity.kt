@@ -189,6 +189,8 @@ class DebugStatesActivity : Activity() {
         Triple("panel", "panel edges", ::panelEdges),
         Triple("send", "send strip", ::sendStrip),
         Triple("streak", "purple streak", ::purpleStreak),
+        Triple("beam", "beam thinking", ::beamThinking),
+        Triple("beam-speaking", "beam speaking", ::beamSpeaking),
         Triple("tapped", "tapped", ::tapped),
         Triple("typed", "typed answer", ::typedAnswer),
         Triple("voice", "voice answer", ::voiceAnswer),
@@ -314,6 +316,25 @@ class DebugStatesActivity : Activity() {
     private fun purpleStreak() {
         tapped()
         panel.showAnswer(LONG_ANSWER)
+    }
+
+    /** The box open and thinking: the aurora beam laps the box's rim and the disc's, every 1.6s. */
+    private fun beamThinking() {
+        tapped()
+        sprite.expression = BuddySpriteView.Expression.THINKING
+        panel.showThinking()
+        panel.setBeam(ChatPanelView.Beam.THINKING)
+    }
+
+    /** The box open and speaking: the beam's brightness rides a made-up voice. */
+    private fun beamSpeaking() {
+        tapped()
+        panel.showAnswer(ANSWER)
+        sprite.talking = true
+        pulse { level ->
+            sprite.playbackLevel = level
+            panel.setBeam(ChatPanelView.Beam.SPEAKING, level)
+        }
     }
 
     /** A level that rises and falls like a voice, every frame until the next state. */
@@ -517,6 +538,7 @@ class DebugStatesActivity : Activity() {
         capsule.visibility = View.GONE
         fakeHighlight.visibility = View.GONE
         panel.setVoiceMode(voice = false, showsText = false)
+        panel.setBeam(ChatPanelView.Beam.NONE)
         panel.visibility = View.GONE
     }
 

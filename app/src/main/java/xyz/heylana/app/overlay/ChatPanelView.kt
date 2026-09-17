@@ -24,6 +24,7 @@ import androidx.dynamicanimation.animation.SpringForce
 import xyz.heylana.app.R
 import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.GlassSpec
+import xyz.heylana.app.ui.BorderBeam
 import xyz.heylana.app.ui.HeylanaTokens
 
 /**
@@ -385,6 +386,24 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     private var streakLevel = 0f
     private var streakTarget = 0f
 
+    /** What the rim beam is signalling; [Beam.NONE] leaves the streak to drift instead. */
+    enum class Beam { NONE, THINKING, LISTENING, SPEAKING }
+
+    private var beam = Beam.NONE
+    private var voiceLevel = 0f
+    private var beamPhase = 0f
+    private var beamLevel = 0f
+    private var shown = false
+
+    /** Thinking or listening lights the rim beam; speaking pulses it with the voice. */
+    fun setBeam(next: Beam, level: Float = 0f) {
+        if (GlassSpec.TINTED_EXTRAS) return
+        voiceLevel = level.coerceIn(0f, 1f)
+        if (beam == next) return
+        beam = next
+        streakOn(shown)
+    }
+
     /**
      * One frame of the streak: advance the phase by the real frame time at this pass's
      * speed, ease the level toward its target (it melts in and out over the glass fade),
@@ -394,25 +413,34 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
         setTimeListener { animator, _, deltaMs ->
             val pass = if (streakThinking) GlassSpec.STREAK_THINKING_PASS_MS else GlassSpec.STREAK_PASS_MS
             streakPhase = (streakPhase + deltaMs.toFloat() / pass) % 1f
+            beamPhase = (beamPhase + deltaMs.toFloat() / BorderBeam.LAP_MS) % 1f
             val step = deltaMs.toFloat() / HeylanaTokens.FADE_MS
-            streakLevel = if (streakLevel < streakTarget) {
-                (streakLevel + step).coerceAtMost(streakTarget)
-            } else {
-                (streakLevel - step).coerceAtLeast(streakTarget)
-            }
+            streakLevel = ease(streakLevel, streakTarget, step)
+            beamLevel = ease(beamLevel, if (shown && beam != Beam.NONE) 1f else 0f, step)
             (background as? GlassDrawable)?.let { glass ->
                 glass.streakPhase = streakPhase
                 glass.streakStrength = streakLevel * (if (streakThinking) GlassSpec.STREAK_THINKING_STRENGTH else 1f)
+                glass.beamPhase = beamPhase
+                glass.beamStrength = beamLevel * if (beam == Beam.SPEAKING) {
+                    BorderBeam.SPEAKING_FLOOR + (1f - BorderBeam.SPEAKING_FLOOR) * voiceLevel
+                } else {
+                    1f
+                }
             }
             invalidate()
-            if (streakLevel <= 0f && streakTarget <= 0f) animator.end()
+            if (streakLevel <= 0f && streakTarget <= 0f && beamLevel <= 0f && (!shown || beam == Beam.NONE)) animator.end()
         }
     }
 
+    private fun ease(value: Float, target: Float, step: Float): Float =
+        if (value < target) (value + step).coerceAtMost(target) else (value - step).coerceAtLeast(target)
+
+    /** The panel shows or goes: the streak drifts only while no beam is lit. */
     private fun streakOn(on: Boolean) {
         if (GlassSpec.TINTED_EXTRAS) return
-        streakTarget = if (on) 1f else 0f
-        if (!streakClock.isStarted && (on || streakLevel > 0f)) streakClock.start()
+        shown = on
+        streakTarget = if (on && beam == Beam.NONE) 1f else 0f
+        if (!streakClock.isStarted && (on || streakLevel > 0f || beamLevel > 0f)) streakClock.start()
     }
 
     /** The panel is closing: the streak melts away with the glass. */
@@ -426,6 +454,7 @@ class ChatPanelView(context: Context) : LinearLayout(context) {
     override fun onDetachedFromWindow() {
         streakClock.end()
         streakLevel = 0f
+        beamLevel = 0f
         super.onDetachedFromWindow()
     }
 

@@ -20,6 +20,7 @@ import xyz.heylana.app.orbs.OrbPainter
 import xyz.heylana.app.orbs.OrbState
 import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.GlassSpec
+import xyz.heylana.app.ui.BorderBeam
 import xyz.heylana.app.ui.HeylanaTokens
 import xyz.heylana.app.ui.LiquidGlass
 
@@ -121,6 +122,8 @@ class BuddySpriteView(context: Context) : View(context) {
     private var discStreakPhase = 0f
     private var discStreakLevel = 0f
     private var discStreakNanos = 0L
+    private var discBeamPhase = 0f
+    private var discBeamLevel = 0f
 
     /** Floats only: advances the streak by the frame's real time and eases it in or out. */
     private fun stepDiscStreak() {
@@ -133,8 +136,20 @@ class BuddySpriteView(context: Context) : View(context) {
         discStreakPhase = (discStreakPhase + deltaMs / pass) % 1f
         val step = deltaMs / HeylanaTokens.FADE_MS
         discStreakLevel = if (discStreakLevel < wanted) (discStreakLevel + step).coerceAtMost(wanted) else (discStreakLevel - step).coerceAtLeast(wanted)
+        // The rim beam: listening, thinking or working, and speaking with the voice. While
+        // it is lit the streak gives way to it.
+        val beamLit = talking || expression == Expression.LISTENING || thinking || expression == Expression.WORKING
+        discBeamPhase = (discBeamPhase + deltaMs / BorderBeam.LAP_MS) % 1f
+        discBeamLevel = if (beamLit) (discBeamLevel + step).coerceAtMost(1f) else (discBeamLevel - step).coerceAtLeast(0f)
+        clearDisc.beamPhase = discBeamPhase
+        clearDisc.beamGlowDp = BorderBeam.DISC_GLOW_DP
+        clearDisc.beamStrength = discBeamLevel * if (talking) {
+            BorderBeam.SPEAKING_FLOOR + (1f - BorderBeam.SPEAKING_FLOOR) * playbackLevel
+        } else {
+            1f
+        }
         clearDisc.streakPhase = discStreakPhase
-        clearDisc.streakStrength = discStreakLevel * GlassSpec.DISC_STREAK_STRENGTH *
+        clearDisc.streakStrength = discStreakLevel * (1f - discBeamLevel) * GlassSpec.DISC_STREAK_STRENGTH *
             (if (thinking) GlassSpec.STREAK_THINKING_STRENGTH else 1f)
         // The disc's streak is 18dp at 80dp, and scales with the disc.
         clearDisc.streakWidthDp = GlassSpec.DISC_STREAK_WIDTH_DP * discDp / HeylanaTokens.DISC_OPEN_DP

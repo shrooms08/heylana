@@ -160,6 +160,21 @@ at its widest breath covers at most a third of the pane; the trail scales with i
 drawn below API 33, where there is no lens to bend it. `GlassStreakTest` holds it to
 the motion renderer's formulas. Debug states: "purple streak".
 
+**A beam laps the rim while Heylana is busy.** `ui/BorderBeam` ports border-beam's
+geometry (MIT): `borderPathCoord` (arc length clockwise from the top centre, distance
+inside the border, perimeter — a circle is a rounded rect whose corners meet), the
+piecewise `stopsAlpha`, and the rotate family's `beamMaskStops` window (fully lit 52% to
+80% of a lap, soft tails from 30% and to 95%), in AGSL as `BeamShader`. The lit window
+carries the aurora tokens (#8F5BFF → #6B3BFF → #35E0E8 → #FF9A4D) with a gaussian glow
+across the rim (6dp on panels, 4dp on the disc) that spills a little outside, one lap
+every 1.6s. Listening, thinking and working light it on the box, the strip, the task
+HUD and the disc; speaking lights it at 35% plus 65% of the playback level. While it is
+lit the purple streak gives way; idle-open, no beam and the streak drifts. The overlay
+hands the panel its state from the disc's look (`BuddyOverlayView.updateBeam`); the disc
+works out its own. border-beam has no golden vectors (its ports were checked by pixel
+harness), so `BorderBeamTest` is a phase test plus the spec's stops. Debug states:
+"beam thinking", "beam speaking".
+
 The purple band, the aurora under the disc face, the chromatic rim, the motion RGB
 split and the purple bloom (design-2c) are still in the code behind
 `GlassSpec.TINTED_EXTRAS`, off.

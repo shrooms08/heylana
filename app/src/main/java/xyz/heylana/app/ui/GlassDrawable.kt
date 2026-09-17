@@ -95,6 +95,18 @@ class GlassDrawable(
     var streakWidthDp: Float = GlassSpec.STREAK_WIDTH_DP
     var streakBreathDp: Float = GlassSpec.STREAK_BREATH_DP
 
+    /** The rim beam: 0 to 1 through a lap, and how strong it is (0 off). Set every frame by the owner. */
+    var beamPhase: Float = 0f
+    var beamStrength: Float = 0f
+
+    /** How wide the beam's glow is across the rim, dp. */
+    var beamGlowDp: Float = BorderBeam.PANEL_GLOW_DP
+
+    private val beamShader: Any? by lazy {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) BeamShader() else null
+    }
+    private val beamRect = RectF()
+
     /** The clear-glass numbers for this surface. The disc updates it as it swells. */
     var surface: GlassSpec.Surface = GlassSpec.PANEL
         set(value) {
@@ -335,6 +347,7 @@ class GlassDrawable(
                 }
                 val glass = clearGlass
                 if (glass != null && canvas.isHardwareAccelerated) drawSpecShader(canvas, glass, r) else drawSpecGradients(canvas, r)
+                if (beamStrength > 0f && canvas.isHardwareAccelerated) drawBeam(canvas, r)
             }
         }
     }
@@ -370,6 +383,17 @@ class GlassDrawable(
             glass.setStreak(0f, 1f, 0f, 1f, 0f)
         }
         canvas.drawRect(body, glass.paint)
+    }
+
+    /** The aurora glow riding the rim (thinking, listening, speaking). Uniforms only per frame. */
+    @android.annotation.SuppressLint("NewApi")
+    private fun drawBeam(canvas: Canvas, r: Float) {
+        val beam = beamShader as? BeamShader ?: return
+        val glow = beamGlowDp * scale
+        beam.set(body.left, body.top, body.width(), body.height(), r, beamPhase, beamStrength, glow)
+        // The glow spills a little outside the rim, into the shadow's margin.
+        beamRect.set(body.left - 2f * glow, body.top - 2f * glow, body.right + 2f * glow, body.bottom + 2f * glow)
+        canvas.drawRect(beamRect, beam.paint)
     }
 
     /**

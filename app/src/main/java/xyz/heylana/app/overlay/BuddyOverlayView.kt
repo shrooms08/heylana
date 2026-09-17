@@ -330,11 +330,25 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     fun setTalking(talking: Boolean) {
         sprite.talking = talking
+        updateBeam()
     }
 
     /** How loud the spoken answer is right now, as it is heard. */
     fun setPlaybackLevel(level: Float) {
         sprite.playbackLevel = level
+        updateBeam()
+    }
+
+    /** The box's rim beam follows the disc: listening, thinking or working, and speaking with the voice. */
+    private fun updateBeam() {
+        val kind = when {
+            sprite.talking -> ChatPanelView.Beam.SPEAKING
+            sprite.expression == BuddySpriteView.Expression.LISTENING -> ChatPanelView.Beam.LISTENING
+            sprite.expression == BuddySpriteView.Expression.THINKING ||
+                sprite.expression == BuddySpriteView.Expression.WORKING -> ChatPanelView.Beam.THINKING
+            else -> ChatPanelView.Beam.NONE
+        }
+        panel.setBeam(kind, sprite.playbackLevel)
     }
 
     private var working = false
@@ -378,6 +392,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             DiscLook.POINTING -> BuddySpriteView.Expression.POINTING
         }
         sprite.refreshState()
+        updateBeam()
     }
 
     /** Shows the step counter with next and done while a task is running. */

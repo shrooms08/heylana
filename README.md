@@ -14,6 +14,10 @@ does and what leaves the phone, `CLAUDE.md` for how it is built, and
   by Jakub Antalik, MIT licence. The licence ships in the app at
   `app/src/main/assets/licenses/thinking-orbs.txt`; the port is tested against the
   library's own golden vectors.
+- **Rim beam** — the aurora glow that laps the box and the disc while Heylana thinks,
+  listens and speaks is a port of the border geometry of
+  [border-beam](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/border-beam)
+  by Jakub Antalik, MIT licence (`app/src/main/assets/licenses/border-beam.txt`).
 - **Liquid glass reference shader** — `design/refs/liquid_glass.glsl`, from
   [Shadertoy WftXD2](https://www.shadertoy.com/view/WftXD2).
 - **The proxy** — shaped after [Farza's Clicky worker](https://github.com/farzaa/clicky) (MIT).

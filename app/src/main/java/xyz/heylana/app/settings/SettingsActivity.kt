@@ -218,7 +218,7 @@ private fun SettingsScreen(
         }
 
         val context = LocalContext.current
-        GlassButton(
+        if (xyz.heylana.app.Features.SKILL_MARKET) GlassButton(
             text = "Skills",
             onClick = { context.startActivity(Intent(context, xyz.heylana.app.skills.SkillsActivity::class.java)) },
             modifier = Modifier.fillMaxWidth()
@@ -577,7 +577,7 @@ private suspend fun settlePendingPayment(settings: HeylanaSettings, api: WalletA
     }
 }
 
-/** Free, Pro or Judge; the talks this month; the skills cap; and how to go Pro. */
+/** Free, Pro or Judge; what the plan gives and what has been used; and how to go Pro. */
 @Composable
 private fun PlanCard(standing: Standing?, problem: String, connected: Boolean, onGoPro: () -> Unit) {
     GlassCard {
@@ -598,9 +598,9 @@ private fun PlanCard(standing: Standing?, problem: String, connected: Boolean, o
         )
         Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_1_DP.dp))
         val lines = listOfNotNull(
-            PlanText.talks(standing),
-            PlanText.skills(standing),
-            PlanText.until(standing)
+            PlanText.summary(standing),
+            PlanText.used(standing),
+            PlanText.until(standing).takeIf { standing.plan == "pro" }
         )
         lines.forEach {
             Text(text = it, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
@@ -671,7 +671,7 @@ private fun GoProSheet(
             Text(text = "Go Pro", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
             Text(
-                text = "Unlimited talks and up to 10 skills for 30 days. Paid once from your " +
+                text = "Unlimited talks for 30 days. Paid once from your " +
                     "wallet; nothing renews by itself.",
                 style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
             )

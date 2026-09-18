@@ -30,8 +30,8 @@ xyz.heylana.app
 │   ├── AppChat              in-app conversation: chat or quick action, never a screen read
 │   ├── VoiceSession         the app's ears: the buddy's two, raced the same way
 │   ├── VoiceScreen          the aurora wave, timer, state, big mic, pause, close
-│   ├── MenuSheet            Start buddy, plan, skill market, advanced, privacy, settings
-│   ├── SkillMarketScreen    the real skills with switches, the index's others with Get
+│   ├── MenuSheet            Start buddy, plan, advanced, privacy, settings
+│   ├── SkillMarketScreen    the skill market (roadmap: behind Features.SKILL_MARKET, off)
 │   ├── AdvancedScreen       the own key (Anthropic; OpenAI and Gemini "soon"), Privacy
 │   └── AppSettingsScreen    voice, glass mode, buddy switches, judge code, Stop buddy
 ├── overlay/                 everything that draws on top of other apps
@@ -78,7 +78,7 @@ xyz.heylana.app
 │   ├── SkillCap / SkillLoader  which skills the plan allows; the one a request carries
 │   ├── SkillStore           built-ins from the APK, installed ones in private storage
 │   ├── SkillIndex           the public index: read, checked, and each skill downloaded
-│   └── SkillsActivity       Settings → Skills: toggles, "n of cap active", Get more, Remove
+│   └── SkillsActivity       the old Skills screen (roadmap: behind Features.SKILL_MARKET, off)
 ├── actions/                 quick actions: the phone's own apps do it, Heylana never taps
 │   ├── QuickAction          alarm, timer, open_app, open_url, navigate, dial; when the rules load
 │   ├── QuickGuard           every argument in the user's own words; times and durations as said
@@ -252,7 +252,7 @@ corners, and no border, blur, rim, shadow, streak, beam or goo. Rows are a 24dp 
 16sp label; chips and the message bar are flat pills at white 8%; the accent mic is
 unchanged. The greeting is "Hi, <name>." small above "What do you need?" at 32/300. The menu
 is a full-height drawer from the left, a flat list in three sections — Buddy (Start buddy),
-Account (Plan, Skill market), More (Advanced, Privacy, Settings) — with the profile row at
+Account (Plan), More (Advanced, Privacy, Settings) — with the profile row at
 the bottom. Nothing in `home/` or `ui/app/` uses `GlassSpec`, a RenderEffect, the beam or
 the goo; the one `GlassSpec` line in Settings is the overlay's "Darker buddy glass" switch.
 
@@ -299,11 +299,18 @@ Deepgram's are not revived once it hears no speech. The wave moves with the mic 
 while listening and with Heylana's voice while she speaks.
 
 **The menu** slides in from the left over a dimmed Home: Start buddy (its switch starts and
-stops the overlay service), the plan from `/me` (Free: "n of 30 talks" and Go Pro, which
-opens the old Settings screen on the Go Pro sheet; Pro or Judge: the end date), Skill
-market with its active count, Advanced, Privacy, Settings, and the name with the short
-wallet. The skill market lists the real skills with their switches and the public index's
-others with Get (the index is fetched on open, a plain GET with no Heylana headers).
+stops the overlay service), the plan from `/me` in `PlanText.summary`'s words — Free "30
+talks a month" with a usage bar and Go Pro (which opens the old Settings screen on the Go
+Pro sheet), Pro "Unlimited talks", Judge "Unlimited until Nov 9" — Advanced, Privacy,
+Settings, and the name with the short wallet. No plan copy mentions skills.
+
+**The Skill market is retired to the roadmap.** `Features.SKILL_MARKET` is false: the menu
+has no Skill market row, `Screen.SKILLS` is unreachable (`AppRoute.reachable`, and the
+debug `-e screen skills` opens Home), the old Settings screen has no Skills button, the old
+`SkillsActivity` finishes at once, and `SkillIndex.fetch` returns `market_off` without
+touching the network. The code stays, so flipping the flag brings it all back. Built-in
+skills load exactly as before, invisibly — the plan's cap from `/me` still decides how many
+are active, and nothing on screen says so. `SkillMarketOffTest`.
 Advanced is the own key: Anthropic wired; OpenAI and Gemini shown, disabled, "soon".
 Privacy is PRODUCT.md's list (`PrivacyCopy`, naming the voice provider `/me` reports) and
 the no-pixels line; keep the two the same. Settings: voice (a pick says a short line),
@@ -826,7 +833,8 @@ checked against `pm list packages` on the Seeker; Kamino has no app of its own a
 lives in the Wallet, picked by its trigger words. Anything not walked on the phone
 is marked "(unverified)" for the operator to fix.
 
-**More skills come from a public index.** `skills-index/index.json` lists id,
+**More skills come from a public index — on the roadmap, switched off
+(`Features.SKILL_MARKET`).** `skills-index/index.json` lists id,
 name, summary, version and url; a url may be relative to the index, so the folder
 can be copied to a public repo as it is. The address is
 `BuildConfig.SKILLS_INDEX_URL` (a `-Pheylana.skillsIndexUrl=` Gradle property, else

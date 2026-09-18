@@ -50,6 +50,11 @@ class SkillsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The Skill market is on the roadmap: nothing opens this while it is off.
+        if (!xyz.heylana.app.Features.SKILL_MARKET) {
+            finish()
+            return
+        }
         enableEdgeToEdge()
         val settings = HeylanaSettings.get(this)
         setContent {

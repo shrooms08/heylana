@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import xyz.heylana.app.Features
 import xyz.heylana.app.R
 import xyz.heylana.app.ui.app.AccentButton
 import xyz.heylana.app.ui.app.FlatRow
@@ -55,12 +56,8 @@ object MenuText {
     /** "Free", "Pro", "Judge". */
     fun planName(standing: Standing?): String = standing?.let { PlanText.name(it.plan) } ?: ""
 
-    /** "12 of 30 talks", or the plan's end date, or unlimited. */
-    fun planLine(standing: Standing?): String = when {
-        standing == null -> CHECKING
-        standing.limit != null -> "${standing.used} of ${standing.limit} talks"
-        else -> PlanText.until(standing) ?: "Unlimited talks"
-    }
+    /** What the plan gives: "30 talks a month", "Unlimited talks", "Unlimited until Nov 9". */
+    fun planLine(standing: Standing?): String = standing?.let { PlanText.summary(it) } ?: CHECKING
 
     /** How full the talks bar is, 0 to 1, or null when there is no limit. */
     fun planFill(standing: Standing?): Float? {
@@ -71,7 +68,7 @@ object MenuText {
 
     fun showGoPro(standing: Standing?): Boolean = standing?.plan == "free"
 
-    /** "3 active". */
+    /** "3 active": the Skill market's row, shown only while [Features.SKILL_MARKET] is on. */
     fun skillsActive(active: Int): String = "$active active"
 
     /** The footer's second line: the short wallet, or that there is none. */
@@ -83,7 +80,7 @@ object MenuText {
 
 /**
  * The menu: a full-height drawer from the left over a dimmed Home, a flat list in three
- * sections — Buddy (Start buddy), Account (Plan, Skill market), More (Advanced, Privacy,
+ * sections — Buddy (Start buddy), Account (Plan), More (Advanced, Privacy,
  * Settings) — and the profile row at the bottom.
  */
 @Composable
@@ -140,7 +137,7 @@ fun MenuSheet(
                     if (MenuText.showGoPro(standing)) {
                         Box(Modifier.padding(start = 56.dp, end = 16.dp, top = 4.dp, bottom = 8.dp)) { AccentButton("Go Pro", onGoPro, height = 40.dp) }
                     }
-                    FlatRow("Skill market", glyph = Glyph.BAG, card = false, onClick = { onScreen(Screen.SKILLS) }) {
+                    if (Features.SKILL_MARKET) FlatRow("Skill market", glyph = Glyph.BAG, card = false, onClick = { onScreen(Screen.SKILLS) }) {
                         Text(MenuText.skillsActive(skillsActive), style = HeylanaType.small, color = palette.inkSecondary)
                     }
 

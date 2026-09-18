@@ -39,33 +39,38 @@ mic. Ask anything; Heylana answers in her voice and in a strip under the orb. Ta
 the mic to talk. Setting a timer or opening an app works from here too. Nothing in the
 app reads your screen; to ask about another app, start the buddy and tap it there.
 
-The menu holds the buddy's on switch, your plan, the Skill market, your own API key
-(Advanced), exactly what leaves the phone (Privacy), and Settings: the voice, Dark or
+The menu holds the buddy's on switch, your plan, your own API key (Advanced), exactly what leaves the phone (Privacy), and Settings: the voice, Dark or
 Light, and Stop buddy.
 
 ## Plans
 
-| Plan  | Talks                                  | Skills | How you get it                                   |
-|-------|----------------------------------------|--------|--------------------------------------------------|
-| Free  | 30 a calendar month (+20 welcome, once) | 3      | Default. The 20 come the first time a wallet connects. |
-| Pro   | Unlimited                              | 10     | $15 for 30 days, paid once in USDC or SKR from Seed Vault. Stacks. |
-| Judge | Unlimited                              | 10     | The judge code. Lasts until the end of Nov 9, 2026 (UTC). |
+| Plan  | In the app              | Talks                                   | How you get it                                   |
+|-------|-------------------------|-----------------------------------------|--------------------------------------------------|
+| Free  | 30 talks a month        | 30 a calendar month (+20 welcome, once) | Default. The 20 come the first time a wallet connects. |
+| Pro   | Unlimited talks         | Unlimited                               | $15 for 30 days, paid once in USDC or SKR from Seed Vault. Stacks. |
+| Judge | Unlimited until Nov 9   | Unlimited                               | The judge code. Lasts until the end of Nov 9, 2026 (UTC). |
 
 A talk is a question that got an answer; a refused or failed one does not count.
 Plans follow the wallet; without one, the phone is a Free account with no welcome
-talks. Skills are reference notes for one app each — where things are, how common tasks
-go, what to watch out for — loaded only while that app is on screen, one at a time.
-Eight are built in (Seed Vault Wallet, Kamino Earn, Seed Vault signing, Solana dApp
-Store, Jupiter, YouTube, Spotify, and x402 payments — that one is for no single app and
-loads whenever you ask about a 402 payment request); more install from a public list in the Skill market (Menu → Skill market). The plan's
-cap is how many can be active; the rest show greyed. A skill never acts for you:
-it cannot authorise a send, a sign or a tap, and anything in it that reads like an
-order is removed before it is stored.
+talks. Behind the scenes Heylana carries reference notes for the apps it knows best —
+where things are, how common tasks go, what to watch out for — loaded only while that app
+is on screen, one at a time, and never shown as a feature. Eight are built in (Seed Vault
+Wallet, Kamino Earn, Seed Vault signing, Solana dApp Store, Jupiter, YouTube, Spotify,
+and x402 payments — that one is for no single app and loads whenever you ask about a 402
+payment request). A note never acts for you: it cannot authorise a send, a sign or a
+tap, and anything in it that reads like an order is removed before it is stored.
 Separately, every phone on Free has a daily budget guard: 150 questions, 150 spoken
 answers and 300 listens a day. On Pro and Judge questions and spoken answers are
 unlimited, with a 2000-a-day ceiling against abuse. Heylana's voice is Deepgram's Aura
 (Hera or Aries, picked in Settings); if the voice cannot be had — the day's limit,
 Google's quota, or too slow — the answer is shown as text and Heylana stays silent.
+
+## Roadmap
+
+- **Skill market.** A public list of more reference notes (Chrome is the first), each
+  installed, switched on and off, and counted against the plan ("3 of 3 active"), from a
+  Skill market in the menu. It is built and switched off: no menu row, no screen, and the
+  public list is never downloaded. Built-in notes load as before.
 
 ## Credits
 
@@ -133,7 +138,7 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 ## Architecture in ten lines
 
-1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; the app itself (sign in, Home with the orb and chat, voice, menu, skill market, settings) is Compose, flat and dark, with thinking-orbs as its character.
+1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; the app itself (sign in, Home with the orb and chat, voice, menu, settings) is Compose, flat and dark, with thinking-orbs as its character.
 2. An accessibility service reads the screen only on request and turns it into a numbered text listing.
 3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model, holds every key, and for Solana questions runs lookups first (balances, prices, addresses, activity, names, send checks).
 4. The model replies with strict JSON: what to say, which element to point at, and whether this is a multi-step task.

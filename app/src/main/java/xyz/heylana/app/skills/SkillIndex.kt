@@ -1,5 +1,6 @@
 package xyz.heylana.app.skills
 
+import xyz.heylana.app.Features
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -83,6 +84,8 @@ object SkillIndex {
 
     /** A plain GET, capped at [SkillFile.MAX_FILE_BYTES] for a skill or [MAX_INDEX_BYTES] for the index. */
     suspend fun fetch(url: String, maxBytes: Int, allowLoopback: Boolean): Fetched = withContext(Dispatchers.IO) {
+        // The Skill market is on the roadmap: nothing is downloaded while it is off.
+        if (!Features.SKILL_MARKET) return@withContext Fetched.Failed("market_off")
         if (!fetchable(url, allowLoopback)) return@withContext Fetched.Failed("not_https")
         try {
             http.newCall(Request.Builder().url(url).get().build()).execute().use { response ->

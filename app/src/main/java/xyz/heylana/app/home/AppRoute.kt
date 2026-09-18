@@ -1,5 +1,7 @@
 package xyz.heylana.app.home
 
+import xyz.heylana.app.Features
+
 /** Where the app is. One activity; this is its whole map. */
 enum class Screen { SIGN_IN, PERMISSIONS, HOME, VOICE, SKILLS, ADVANCED, PRIVACY, SETTINGS }
 
@@ -10,6 +12,9 @@ enum class Screen { SIGN_IN, PERMISSIONS, HOME, VOICE, SKILLS, ADVANCED, PRIVACY
  * the permissions, then Home. Once Home has been reached, the app opens on Home.
  */
 object AppRoute {
+
+    /** A screen that can be shown now: the Skill market only while its flag is on. */
+    fun reachable(screen: Screen): Boolean = screen != Screen.SKILLS || Features.SKILL_MARKET
 
     fun start(firstRunDone: Boolean, named: Boolean): Screen = when {
         firstRunDone -> Screen.HOME

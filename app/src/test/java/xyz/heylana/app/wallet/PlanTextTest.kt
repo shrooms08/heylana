@@ -23,21 +23,22 @@ class PlanTextTest {
     fun `free shows talks used of the limit`() {
         val free = standing(used = 1, limit = 50)
         assertEquals("Free", PlanText.name(free.plan))
-        assertEquals("1 of 50 talks this month", PlanText.talks(free))
-        assertEquals("Up to 3 skills", PlanText.skills(free))
+        assertEquals("30 talks a month", PlanText.summary(free))
+        assertEquals("1 of 50 used this month", PlanText.used(free))
         assertNull(PlanText.until(free))
     }
 
     @Test
     fun `pro and judge are unlimited and say until when`() {
         val pro = standing(plan = "pro", limit = null, skills = 10, proUntil = "2026-10-15T12:00:00.000Z")
-        assertEquals("Unlimited talks", PlanText.talks(pro))
-        assertEquals("Up to 10 skills", PlanText.skills(pro))
+        assertEquals("Unlimited talks", PlanText.summary(pro))
+        assertNull(PlanText.used(pro))
         assertEquals("Pro until Oct 15, 2026", PlanText.until(pro))
 
         val judge = standing(plan = "judge", limit = null, skills = 10, judgeUntil = "2026-11-09T23:59:59.000Z")
         assertEquals("Judge", PlanText.name(judge.plan))
         assertEquals("Judge until Nov 9, 2026", PlanText.until(judge))
+        assertEquals("Unlimited until Nov 9", PlanText.summary(judge))
     }
 
     @Test
@@ -47,6 +48,7 @@ class PlanTextTest {
         try {
             val judge = standing(plan = "judge", limit = null, skills = 10, judgeUntil = "2026-11-09T23:59:59.000Z")
             assertEquals("Judge until Nov 9, 2026", PlanText.until(judge))
+        assertEquals("Unlimited until Nov 9", PlanText.summary(judge))
         } finally {
             TimeZone.setDefault(before)
         }

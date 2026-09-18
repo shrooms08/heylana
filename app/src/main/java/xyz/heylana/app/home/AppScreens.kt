@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import android.content.Intent
+import xyz.heylana.app.Features
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -117,7 +118,11 @@ fun AppScreens(
                 onScreen(Screen.HOME)
             }
         )
-        Screen.SKILLS -> SkillMarketScreen(settings, onBack = { onScreen(Screen.HOME) }, onChanged = { skillsVersion++ })
+        Screen.SKILLS -> if (Features.SKILL_MARKET) {
+            SkillMarketScreen(settings, onBack = { onScreen(Screen.HOME) }, onChanged = { skillsVersion++ })
+        } else {
+            LaunchedEffect(Unit) { onScreen(Screen.HOME) }
+        }
         Screen.ADVANCED -> AdvancedScreen(settings, onBack = { onScreen(Screen.HOME) })
         Screen.PRIVACY -> PrivacyScreen(settings.voiceProvider, onBack = { onScreen(Screen.HOME) })
         Screen.SETTINGS -> AppSettingsScreen(
@@ -139,8 +144,10 @@ fun AppScreens(
 
     if (screen == Screen.HOME) {
         BackHandler(enabled = menuOpen) { menuOpen = false }
+        // Counted only for the Skill market's row, and only while it is on.
         val skillsActive = remember(menuOpen, skillsVersion) {
-            SkillStore(activity, settings).rows().count { it.state == SkillCap.State.ACTIVE }
+            if (!Features.SKILL_MARKET) 0
+            else SkillStore(activity, settings).rows().count { it.state == SkillCap.State.ACTIVE }
         }
         MenuSheet(
             open = menuOpen,

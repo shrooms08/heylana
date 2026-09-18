@@ -21,11 +21,19 @@ object PlanText {
         else -> "Free"
     }
 
-    /** "3 of 50 talks this month", or "Unlimited talks". */
-    fun talks(standing: Standing): String =
-        standing.limit?.let { "${standing.used} of $it talks this month" } ?: "Unlimited talks"
+    /** Free's allowance, as the plan says it (welcome talks are extra, once). */
+    const val FREE_TALKS = 30
 
-    fun skills(standing: Standing): String = "Up to ${standing.skillsCap} skills"
+    /** What the plan gives: "30 talks a month", "Unlimited talks", "Unlimited until Nov 9". */
+    fun summary(standing: Standing): String = when (standing.plan) {
+        "judge" -> standing.judgeUntil?.let { "Unlimited until ${day(it)}" } ?: "Unlimited talks"
+        "pro" -> "Unlimited talks"
+        else -> "$FREE_TALKS talks a month"
+    }
+
+    /** "12 of 30 used this month" on a limited plan; null when there is no limit. */
+    fun used(standing: Standing): String? =
+        standing.limit?.let { "${standing.used} of $it used this month" }
 
     /** "Pro until Oct 15, 2026", "Judge until Nov 9, 2026", or null on Free. */
     fun until(standing: Standing): String? = when (standing.plan) {
@@ -65,7 +73,12 @@ object PlanText {
         return "About \$$usd at today's ${quote.currency.uppercase(Locale.US)} price"
     }
 
+    /** The day alone, on the worker's UTC calendar: "Nov 9". */
+    fun day(iso: String): String =
+        runCatching { DAY.format(Instant.parse(iso).atZone(ZoneOffset.UTC)) }.getOrDefault(iso.take(DATE_ONLY))
+
     private val DATE = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
+    private val DAY = DateTimeFormatter.ofPattern("MMM d", Locale.US)
     private const val DATE_ONLY = 10
     private const val MIN_DECIMALS = 2
 }

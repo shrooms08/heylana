@@ -42,7 +42,7 @@ fun HeylanaApp(activity: ComponentActivity, seedVault: SeedVault, forcedScreen: 
     var mode by remember { mutableStateOf(glassModeOf(settings)) }
     var screen by rememberSaveable {
         mutableStateOf(
-            forcedScreen?.let { name -> Screen.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+            forcedScreen?.let { name -> Screen.entries.firstOrNull { it.name.equals(name, ignoreCase = true) && AppRoute.reachable(it) } }
                 ?: AppRoute.start(settings.firstRunDone, settings.callMe.isNotBlank())
         )
     }

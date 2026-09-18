@@ -19,7 +19,7 @@ class MenuScreensTest {
     fun `free shows talks, a bar and Go Pro`() {
         val free = standing("free", used = 12, limit = 30)
         assertEquals("Free", MenuText.planName(free))
-        assertEquals("12 of 30 talks", MenuText.planLine(free))
+        assertEquals("30 talks a month", MenuText.planLine(free))
         assertEquals(0.4f, MenuText.planFill(free)!!, 0.001f)
         assertTrue(MenuText.showGoPro(free))
     }
@@ -28,7 +28,7 @@ class MenuScreensTest {
     fun `judge shows its end date and no Go Pro`() {
         val judge = standing("judge", judgeUntil = "2026-11-09T23:59:59Z")
         assertEquals("Judge", MenuText.planName(judge))
-        assertEquals("Judge until Nov 9, 2026", MenuText.planLine(judge))
+        assertEquals("Unlimited until Nov 9", MenuText.planLine(judge))
         assertNull(MenuText.planFill(judge))
         assertFalse(MenuText.showGoPro(judge))
     }

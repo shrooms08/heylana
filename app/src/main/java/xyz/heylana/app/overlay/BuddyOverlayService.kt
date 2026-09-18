@@ -42,7 +42,9 @@ import xyz.heylana.app.brain.TypedAddresses
 import xyz.heylana.app.brain.SendAction
 import xyz.heylana.app.brain.SendGuard
 import xyz.heylana.app.wallet.Answer
+import xyz.heylana.app.wallet.BuildText
 import xyz.heylana.app.wallet.SendActivity
+import xyz.heylana.app.wallet.SimulationResult
 import xyz.heylana.app.wallet.SendQuote
 import xyz.heylana.app.wallet.SendRelay
 import xyz.heylana.app.wallet.SendResult
@@ -817,7 +819,7 @@ class BuddyOverlayService : Service() {
         }
         overlayView?.setWorking(true)
         scope.launch {
-            val prepared = walletApi.prepareSend(allowed.to, allowed.amount, allowed.token)
+            val prepared = walletApi.prepareSend(allowed.to, allowed.amount, allowed.token, said = question)
             overlayView?.setWorking(false)
             when (val answer = prepared) {
                 is Answer.Ok -> {
@@ -843,19 +845,64 @@ class BuddyOverlayService : Service() {
         }
     }
 
-    /** "Send 5 USDC to bob.skr (7c2y…ab12). Fee ~0.000005 SOL." — shown, read aloud, and held. */
+    /**
+     * The strip goes up at once with Confirm greyed out, while the worker builds the exact
+     * transfer and simulates it. Passed: the strip shows the full preview and "Simulation
+     * passed", Confirm can be tapped, and the preview is read aloud. Failed: the strip goes
+     * and the reason is said; the wallet is never opened.
+     */
     private fun showSendStrip(quote: SendQuote) {
         val view = overlayView ?: return
-        val text = SendText.strip(quote)
         awaitingConfirm = quote
+        simulationPassed = false
         HeylanaLog.state("send: strip token=${quote.token} amount=${quote.amount} to=${quote.toAddress.take(4)}")
-        view.showSendConfirm(text)
-        speak(text)
+        view.showSendConfirm(SendText.strip(quote).removeSuffix(" Confirm?"), ChatPanelView.Simulation.CHECKING)
+        overlayView?.setWorking(true)
+        scope.launch {
+            val built = walletApi.build(id = quote.id, reference = null, cluster = quote.cluster, final = false)
+            overlayView?.setWorking(false)
+            // Cancelled, or another send, while this one was being checked.
+            if (awaitingConfirm !== quote) return@launch
+            val failure: String? = when (built) {
+                is Answer.Ok -> when (val sim = built.value.simulation) {
+                    SimulationResult.Passed -> null
+                    is SimulationResult.Failed -> {
+                        HeylanaLog.state("send: simulation failed reason=${sim.reason}, wallet not opened")
+                        BuildText.failed(sim.words)
+                    }
+                }
+                is Answer.Refused -> {
+                    HeylanaLog.state("send: not built reason=${built.reason}")
+                    built.detail.ifBlank { WalletProblem.fromWorker(built.reason).words }
+                }
+                is Answer.Unreachable -> WalletProblem.UNREACHABLE.words
+            }
+            if (failure != null) {
+                awaitingConfirm = null
+                overlayView?.hideSendConfirm()
+                sayLine(failure)
+                return@launch
+            }
+            val preview = (built as Answer.Ok).value.preview
+            simulationPassed = true
+            HeylanaLog.state("send: simulation passed fee=${preview.feeSol} new_account=${preview.createsAccount} cluster=${preview.cluster}")
+            val text = SendText.previewed(preview)
+            overlayView?.showSimulationPassed(text)
+            speak(text)
+        }
     }
+
+    /** True once the send on the strip has passed its simulation; Confirm does nothing before. */
+    private var simulationPassed = false
 
     private fun confirmSend() {
         val quote = awaitingConfirm ?: return
+        if (!simulationPassed) {
+            HeylanaLog.state("send: confirm before the simulation passed, ignored")
+            return
+        }
         awaitingConfirm = null
+        simulationPassed = false
         mouth?.stop()
         overlayView?.hideSendConfirm()
         overlayView?.showNotice("Approve it in Seed Vault.")
@@ -872,6 +919,7 @@ class BuddyOverlayService : Service() {
     private fun cancelSend() {
         if (awaitingConfirm == null) return
         awaitingConfirm = null
+        simulationPassed = false
         overlayView?.hideSendConfirm()
         HeylanaLog.state("send: cancelled")
         sayLine(SendText.CANCELLED)

@@ -45,6 +45,8 @@ DEVNET = "--devnet" in sys.argv
 #   --send-reply  /chat proposes sending 0.05 USDC to the stub treasury, and /send/* answer,
 #                 so the confirmation strip can be seen without a model or a wallet
 SEND_REPLY = "--send-reply" in sys.argv
+#   --sim-fail    /send/build answers a failed simulation ("Not enough USDC. You have 0.03.").
+SIM_FAIL = "--sim-fail" in sys.argv
 STUB_SEND_TO = "7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv"
 #   --skr-name N  the first sign-in's profile carries N as the wallet's .skr name
 SKR_NAME = sys.argv[sys.argv.index("--skr-name") + 1] if "--skr-name" in sys.argv else ""
@@ -262,6 +264,23 @@ class Stub(BaseHTTPRequestHandler):
 
         if route == "send/confirm":
             return self.send_json(200, {"confirmed": True, "signature": "5555…5555"})
+
+        if route == "send/build":
+            # A preview only: the stub builds no transaction, so the app never opens the wallet
+            # from here — whatever is tapped. --sim-fail makes the simulation fail.
+            cluster = "devnet" if DEVNET else "mainnet-beta"
+            if body.get("cluster", cluster) != cluster:
+                return self.send_json(409, {"reason": "wrong_cluster",
+                                            "detail": f"This is for {body.get('cluster')}, but Heylana is on {cluster}. I stopped before building it."})
+            simulation = ({"ok": False, "reason": "not_enough_token", "words": "Not enough USDC. You have 0.03."}
+                          if SIM_FAIL else {"ok": True, "units_consumed": 6200})
+            return self.send_json(200, {
+                "kind": "pay" if body.get("reference") else "send",
+                "preview": {"from": "9WzD…AWWM", "from_label": "your wallet", "to": "7c2y…SxSv",
+                            "to_label": "your Heylana treasury", "amount": "0.05", "token": "USDC",
+                            "fee_sol": "0.000005", "account_rent_sol": "0", "creates_account": False,
+                            "programs": ["Associated Token Account Program", "SPL Token Program"], "cluster": cluster},
+                "simulation": simulation, "last_valid_block_height": 1})
 
         if self.path.strip("/") == "chat":
             STATE["used"] += 1

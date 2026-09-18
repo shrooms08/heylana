@@ -320,7 +320,7 @@ class DebugStatesActivity : Activity() {
         panel.visibility = View.VISIBLE
         panel.showNotice(SEND_STRIP)
         panel.morphTo(ChatPanelView.Shape.STRIP)
-        panel.showConfirm()
+        panel.showConfirm(ChatPanelView.Simulation.PASSED)
     }
 
     /**

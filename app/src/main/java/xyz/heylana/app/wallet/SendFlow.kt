@@ -1,7 +1,6 @@
 package xyz.heylana.app.wallet
 
 import kotlinx.coroutines.delay
-import org.sol4k.PublicKey
 import xyz.heylana.app.HeylanaLog
 
 /** How a confirmed send ended, told back to the buddy. */
@@ -10,35 +9,46 @@ sealed interface SendResult {
     data class Stopped(val line: String) : SendResult
 }
 
-/** Carries the result from [SendActivity] to the overlay service, in the same process. */
+/** Where a confirmed send has got to, for the mode chip: simulating, approve in wallet, sent. */
+enum class SendStage { SIMULATING, APPROVE_IN_WALLET, CHECKING }
+
+/** Carries progress and the result from [SendActivity] to the overlay service, in the same process. */
 object SendRelay {
     @Volatile
     var listener: ((SendResult) -> Unit)? = null
+
+    @Volatile
+    var progress: ((SendStage) -> Unit)? = null
 }
 
 /**
- * A confirmed send, from blockhash to landed.
+ * A confirmed send, the safe way: the worker builds the exact transfer and simulates
+ * it again on the send's cluster; only a passing simulation comes back as bytes; the
+ * app checks those bytes are the transfer the user confirmed; then Seed Vault, where
+ * the user approves or rejects it; then the chain, asked with growing waits.
  *
- * The cluster comes from the quote, which comes from the worker, and it goes to
- * both places a network is chosen: the blockhash request (a transaction belongs
- * to whichever network its blockhash came from) and Seed Vault's authorisation.
- * The transfer itself has no network field. Heylana builds it unsigned; Seed
- * Vault signs and sends it, or does not.
+ * A failed simulation, a wrong network or bytes that do not match never open the
+ * wallet. A rejection is final and never retried. A signature is never submitted a
+ * second time: when the outcome is unknown, the send is looked for on chain by its
+ * reference, and "not found" says to check the wallet, never to try again.
  */
 class SendFlow(
-    private val blockhash: suspend (Cluster) -> Answer<String>,
+    /** The final build: fresh blockhash, fresh simulation, bytes only if it passed. */
+    private val build: suspend (id: String, cluster: Cluster) -> Answer<BuiltTransfer>,
     private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<String>,
     /** [signature] is null when the wallet gave none: the worker then looks for the transfer itself. */
     private val confirm: suspend (id: String, signature: String?) -> Answer<String>,
     private val log: (String) -> Unit = { HeylanaLog.state(it) },
     private val now: () -> Long = System::currentTimeMillis,
-    private val sleep: suspend (Long) -> Unit = { delay(it) }
+    private val sleep: suspend (Long) -> Unit = { delay(it) },
+    private val stage: (SendStage) -> Unit = {}
 ) {
 
-    constructor(api: WalletApi, seedVault: SeedVault) : this(
-        blockhash = { cluster -> api.blockhash(cluster) },
+    constructor(api: WalletApi, seedVault: SeedVault, stage: (SendStage) -> Unit = {}) : this(
+        build = { id, cluster -> api.build(id = id, reference = null, cluster = cluster, final = true) },
         signAndSend = { transaction, cluster -> seedVault.pay(transaction, cluster) },
-        confirm = { id, signature -> api.confirmSend(id, signature) }
+        confirm = { id, signature -> api.confirmSend(id, signature) },
+        stage = stage
     )
 
     /** Everything the transfer needs, and nothing the user did not confirm. */
@@ -65,56 +75,59 @@ class SendFlow(
     }
 
     suspend fun run(request: Request, from: String): SendResult {
-        log("send: blockhash asked cluster=${request.cluster.id}")
-        val recent = when (val answer = blockhash(request.cluster)) {
+        stage(SendStage.SIMULATING)
+        log("send: building and simulating cluster=${request.cluster.id}")
+        val built = when (val answer = build(request.id, request.cluster)) {
             is Answer.Ok -> answer.value
-            is Answer.Refused -> return SendResult.Stopped(
-                answer.detail.ifBlank { WalletProblem.fromWorker(answer.reason).words }
-            )
+            is Answer.Refused -> {
+                log("send: not built reason=${answer.reason} cluster=${request.cluster.id}")
+                return SendResult.Stopped(answer.detail.ifBlank { WalletProblem.fromWorker(answer.reason).words })
+            }
             is Answer.Unreachable -> return SendResult.Stopped(WalletProblem.UNREACHABLE.words)
         }
-
-        val unsigned = runCatching {
-            SendTransaction.serializeUnsigned(
-                SendTransaction.Order(
-                    from = PublicKey(from),
-                    to = PublicKey(request.to),
-                    mint = request.mint?.let { PublicKey(it) },
-                    tokenProgram = request.tokenProgram?.let { PublicKey(it) },
-                    units = request.units,
-                    decimals = request.decimals,
-                    recentBlockhash = recent
-                )
-            )
-        }.getOrElse {
-            log("send: could not build the transfer")
-            return SendResult.Stopped(WalletProblem.UNKNOWN.words)
+        val simulation = built.simulation
+        if (simulation is SimulationResult.Failed) {
+            log("send: simulation failed reason=${simulation.reason}, wallet not opened")
+            return SendResult.Stopped(BuildText.failed(simulation.words))
+        }
+        val bytes = built.transaction ?: return SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED)
+        val verdict = BuiltCheck.check(
+            bytes,
+            BuiltCheck.Expected(from = from, to = request.to, mint = request.mint, tokenProgram = request.tokenProgram, units = request.units)
+        )
+        if (verdict is BuiltCheck.Verdict.Differs) {
+            log("send: built transfer differs from the confirmed one why=${verdict.why}, wallet not opened")
+            return SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED)
         }
 
-        log("send: opening Seed Vault cluster=${request.cluster.id}")
-        val signature = when (val trip = signAndSend(unsigned, request.cluster)) {
+        stage(SendStage.APPROVE_IN_WALLET)
+        log("send: simulation passed, opening Seed Vault cluster=${request.cluster.id}")
+        val signature = when (val trip = signAndSend(bytes, request.cluster)) {
             is SeedVault.Trip.Done -> trip.value
             SeedVault.Trip.NoWallet -> return SendResult.Stopped(WalletProblem.NO_WALLET.words)
             is SeedVault.Trip.Stopped -> {
-                // Declined, or not enough funds: nothing was sent, say so at once.
+                // Rejected in the wallet: nothing was submitted, and it is never asked again.
+                if (trip.problem == WalletProblem.CANCELLED) {
+                    log("send: rejected in the wallet")
+                    return SendResult.Stopped(BuildText.REJECTED)
+                }
                 if (trip.problem !in UNSURE) return SendResult.Stopped(trip.problem.words)
                 // Anything else, a timeout included, may still have gone through.
                 log("send: wallet gave no signature (${trip.problem.name}), looking for it on chain cluster=${request.cluster.id}")
-                return when (val found = awaitLanded(request.id, null)) {
-                    is SendResult.Sent -> found.also { log("send: found on chain") }
-                    is SendResult.Stopped -> SendResult.Stopped(UNSURE_LINE)
-                }
+                stage(SendStage.CHECKING)
+                return awaitLanded(request.id, null)
             }
         }
+        stage(SendStage.CHECKING)
         log("send: signed in Seed Vault, waiting for it to land cluster=${request.cluster.id}")
         return awaitLanded(request.id, signature)
     }
 
     /**
-     * Asks the worker whether the send has landed, with growing waits (2s, 3s, 5s…)
-     * for up to a minute. Only "that transfer is not this send" or "not yours" ends
-     * it early; anything else, including a slow chain or a dropped connection, is
-     * asked again. Every look is logged with its result.
+     * Asks the worker whether the send has landed, with growing waits (2s, 3s, 5s…) for up
+     * to a minute. Landed is "Sent"; a blockhash that ran out with nothing on chain is
+     * expired; a transfer that is not this send, or not yours, ends it at once; anything
+     * else is asked again. Every look is logged with its result.
      */
     private suspend fun awaitLanded(id: String, signature: String?): SendResult {
         val waits = Backoff.delays(LAND_TIMEOUT_MS)
@@ -129,12 +142,15 @@ class SendFlow(
             )
             when (answer) {
                 is Answer.Ok -> return SendResult.Sent(answer.value)
-                is Answer.Refused -> if (answer.code == MISMATCH || answer.code == NOT_YOURS) {
-                    return SendResult.Stopped(DID_NOT_MATCH)
+                is Answer.Refused -> when (answer.code) {
+                    MISMATCH, NOT_YOURS -> return SendResult.Stopped(DID_NOT_MATCH)
+                    GONE -> return SendResult.Stopped(BuildText.EXPIRED)
                 }
                 is Answer.Unreachable -> Unit
             }
-            if (attempt > waits.size) return SendResult.Stopped(NOT_CONFIRMED_YET)
+            if (attempt > waits.size) {
+                return SendResult.Stopped(if (signature == null) BuildText.NOT_FOUND else BuildText.UNKNOWN_SIGNED)
+            }
             sleep(waits[attempt - 1])
         }
     }
@@ -143,16 +159,12 @@ class SendFlow(
         const val LAND_TIMEOUT_MS = 60_000L
         private const val MISMATCH = 402
         private const val NOT_YOURS = 403
+        private const val GONE = 410
 
         /** What the wallet can end with even after a send went out, a timeout among them. */
         private val UNSURE = setOf(WalletProblem.UNKNOWN, WalletProblem.TOOK_TOO_LONG)
 
-        const val UNSURE_LINE =
-            "Seed Vault didn't confirm the send, and I can't find it on chain. Check your wallet before trying again."
-
         const val DID_NOT_MATCH =
             "That send didn't land the way it was prepared. Check your wallet before trying again."
-        const val NOT_CONFIRMED_YET =
-            "Seed Vault sent it, but I couldn't confirm it landed yet. Check your wallet in a minute."
     }
 }

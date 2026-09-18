@@ -1,26 +1,25 @@
 package xyz.heylana.app.wallet
 
 import kotlinx.coroutines.delay
-import org.sol4k.PublicKey
 import xyz.heylana.app.HeylanaLog
 
 /** How paying for Pro ended. */
 sealed interface PayOutcome {
     data class Paid(val standing: Standing) : PayOutcome
-    data class Stopped(val problem: WalletProblem) : PayOutcome
+    data class Stopped(val problem: WalletProblem, val line: String = problem.words) : PayOutcome
 }
 
 /**
- * One Pro payment, start to finish: a fresh blockhash from the worker, the
- * transfer built on the phone, Seed Vault to sign and send it, then the worker
- * asked until it has seen the payment on chain.
+ * One Pro payment, the safe way: the worker builds the exact transfer from the quote
+ * and simulates it; only a passing simulation comes back as bytes; the app checks they
+ * are the quoted payment to the treasury; Seed Vault, where the user approves or
+ * rejects it; then the worker is asked until it has seen the payment on chain.
  *
- * Heylana never holds a key and never sends the transaction itself; the wallet
- * does both, after the user approves it there. The cluster goes to both the
- * blockhash and the wallet, so the transaction is made for the chain it lands on.
+ * A failed simulation never opens the wallet, and a rejection is never retried.
+ * Heylana never holds a key and never sends the transaction itself.
  */
 class ProPayment(
-    private val blockhash: suspend (Cluster) -> Answer<String>,
+    private val build: suspend (reference: String, cluster: Cluster) -> Answer<BuiltTransfer>,
     private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<String>,
     /** [signature] is null when the wallet gave none: the worker then looks the payment up by its reference. */
     private val confirm: suspend (reference: String, signature: String?) -> Answer<Standing>,
@@ -28,7 +27,7 @@ class ProPayment(
 ) {
 
     constructor(api: WalletApi, seedVault: SeedVault) : this(
-        blockhash = { cluster -> api.blockhash(cluster) },
+        build = { reference, cluster -> api.build(id = null, reference = reference, cluster = cluster, final = true) },
         signAndSend = { transaction, cluster -> seedVault.pay(transaction, cluster) },
         confirm = { reference, signature -> api.confirm(reference, signature) }
     )
@@ -43,35 +42,41 @@ class ProPayment(
         cluster: Cluster,
         onSent: (reference: String, signature: String) -> Unit
     ): PayOutcome {
-        val recent = when (val answer = blockhash(cluster)) {
+        log("pay: building and simulating cluster=${cluster.id}")
+        val built = when (val answer = build(quote.reference, cluster)) {
             is Answer.Ok -> answer.value
-            is Answer.Refused -> return PayOutcome.Stopped(WalletProblem.fromWorker(answer.reason))
+            is Answer.Refused -> return PayOutcome.Stopped(
+                WalletProblem.fromWorker(answer.reason),
+                answer.detail.ifBlank { WalletProblem.fromWorker(answer.reason).words }
+            )
             is Answer.Unreachable -> return PayOutcome.Stopped(WalletProblem.UNREACHABLE)
         }
-
-        val unsigned = runCatching {
-            PaymentTransaction.serializeUnsigned(
-                PaymentTransaction.Order(
-                    payer = PublicKey(session.pubkey),
-                    mint = PublicKey(quote.mint),
-                    tokenProgram = PublicKey(quote.tokenProgram),
-                    treasury = PublicKey(quote.treasury),
-                    amount = quote.amount,
-                    decimals = quote.decimals,
-                    reference = PublicKey(quote.reference),
-                    recentBlockhash = recent
-                )
+        val simulation = built.simulation
+        if (simulation is SimulationResult.Failed) {
+            log("pay: simulation failed reason=${simulation.reason}, wallet not opened")
+            return PayOutcome.Stopped(WalletProblem.UNKNOWN, BuildText.failed(simulation.words))
+        }
+        val bytes = built.transaction
+        val matches = bytes != null && BuiltCheck.check(
+            bytes,
+            BuiltCheck.Expected(
+                from = session.pubkey, to = quote.treasury, mint = quote.mint,
+                tokenProgram = quote.tokenProgram, units = quote.amount
             )
-        }.getOrElse {
-            log("pay: could not build the transfer")
-            return PayOutcome.Stopped(WalletProblem.UNKNOWN)
+        ) == BuiltCheck.Verdict.Matches
+        if (bytes == null || !matches) {
+            log("pay: built transfer differs from the quote, wallet not opened")
+            return PayOutcome.Stopped(WalletProblem.UNKNOWN, BuildText.NOT_WHAT_WAS_CONFIRMED)
         }
 
-        val signature = when (val trip = signAndSend(unsigned, cluster)) {
+        log("pay: simulation passed, opening Seed Vault cluster=${cluster.id}")
+        val signature = when (val trip = signAndSend(bytes, cluster)) {
             is SeedVault.Trip.Done -> trip.value
             SeedVault.Trip.NoWallet -> return PayOutcome.Stopped(WalletProblem.NO_WALLET)
             is SeedVault.Trip.Stopped -> {
-                // Declined or short of funds: nothing was paid.
+                if (trip.problem == WalletProblem.CANCELLED) {
+                    return PayOutcome.Stopped(WalletProblem.CANCELLED, BuildText.REJECTED)
+                }
                 if (trip.problem != WalletProblem.UNKNOWN && trip.problem != WalletProblem.TOOK_TOO_LONG) {
                     return PayOutcome.Stopped(trip.problem)
                 }
@@ -115,8 +120,9 @@ object ConfirmPoll {
             log("pay: check #$attempt result=${describe(answer)}")
             when (answer) {
                 is Answer.Ok -> return PayOutcome.Paid(answer.value)
-                is Answer.Refused -> if (!keepWaiting(answer)) {
-                    return PayOutcome.Stopped(WalletProblem.fromWorker(answer.reason))
+                is Answer.Refused -> {
+                    if (answer.code == GONE) return PayOutcome.Stopped(WalletProblem.UNKNOWN, BuildText.EXPIRED)
+                    if (!keepWaiting(answer)) return PayOutcome.Stopped(WalletProblem.fromWorker(answer.reason))
                 }
                 is Answer.Unreachable -> Unit
             }
@@ -128,6 +134,7 @@ object ConfirmPoll {
     fun keepWaiting(refused: Answer.Refused): Boolean =
         refused.reason == "not_confirmed" || refused.code >= SERVER_ERROR || refused.code == TOO_MANY
 
+    private const val GONE = 410
     private const val SERVER_ERROR = 500
     private const val TOO_MANY = 429
 }

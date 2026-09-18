@@ -53,7 +53,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.graphics.Color
 import java.time.Instant
 import kotlinx.coroutines.launch
+import xyz.heylana.app.wallet.BuildText
 import xyz.heylana.app.wallet.ConfirmPoll
+import xyz.heylana.app.wallet.SimulationResult
 import xyz.heylana.app.wallet.PayOutcome
 import xyz.heylana.app.wallet.PlanText
 import xyz.heylana.app.wallet.ProPayment
@@ -642,13 +644,22 @@ private fun GoProSheet(
     var line by remember { mutableStateOf("") }
     var paying by remember { mutableStateOf(false) }
     var refresh by remember { mutableStateOf(0) }
+    // The payment is built and simulated before Pay can be tapped; null while it is checked.
+    var simulation by remember { mutableStateOf<SimulationResult?>(null) }
 
     LaunchedEffect(currency, refresh) {
         quote = null
+        simulation = null
         line = "Getting the price\u2026"
         when (val answer = api.quote(currency)) {
             is Answer.Ok -> {
                 quote = answer.value
+                line = BuildText.SIMULATING
+                simulation = when (val built = api.build(id = null, reference = answer.value.reference, cluster = cluster, final = false)) {
+                    is Answer.Ok -> built.value.simulation
+                    is Answer.Refused -> SimulationResult.Failed(built.reason, built.detail.ifBlank { WalletProblem.fromWorker(built.reason).words })
+                    is Answer.Unreachable -> SimulationResult.Failed("unreachable", WalletProblem.UNREACHABLE.words)
+                }
                 line = ""
             }
             is Answer.Refused -> line = WalletProblem.fromWorker(answer.reason).words
@@ -706,6 +717,17 @@ private fun GoProSheet(
                     text = "Plus a small network fee, paid in SOL.",
                     style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
                 )
+                when (val sim = simulation) {
+                    SimulationResult.Passed -> Text(
+                        text = "\u2713 ${BuildText.PASSED}",
+                        style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.success)
+                    )
+                    is SimulationResult.Failed -> Text(
+                        text = BuildText.failed(sim.words),
+                        style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.error)
+                    )
+                    null -> Unit
+                }
                 Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
             }
 
@@ -713,7 +735,8 @@ private fun GoProSheet(
                 GlassButton(
                     text = if (paying) "Paying\u2026" else "Pay",
                     primary = true,
-                    enabled = quote != null && !paying,
+                    // Only a payment whose simulation passed can be paid.
+                    enabled = quote != null && simulation == SimulationResult.Passed && !paying,
                     onClick = {
                         val shown = quote ?: return@GlassButton
                         if (quoteExpired(shown)) {
@@ -739,7 +762,7 @@ private fun GoProSheet(
                                     if (outcome.problem != WalletProblem.TOOK_TOO_LONG) {
                                         settings.pendingPayment = null
                                     }
-                                    line = outcome.problem.words
+                                    line = outcome.line
                                 }
                             }
                         }

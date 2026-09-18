@@ -38,7 +38,7 @@ class SendActivity : ComponentActivity() {
             request == null -> deliverAndFinish(SendResult.Stopped(WalletProblem.UNKNOWN.words))
             session == null -> deliverAndFinish(SendResult.Stopped(SendText.NO_WALLET))
             else -> scope.launch {
-                deliverAndFinish(SendFlow(WalletApi(settings), seedVault).run(request, session.pubkey))
+                deliverAndFinish(SendFlow(WalletApi(settings), seedVault) { stage -> SendRelay.progress?.invoke(stage) }.run(request, session.pubkey))
             }
         }
     }

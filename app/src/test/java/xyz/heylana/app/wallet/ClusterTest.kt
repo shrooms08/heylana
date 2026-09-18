@@ -12,14 +12,15 @@ import org.junit.Test
 class ClusterTest {
 
     private val session = WalletSession("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM", "token")
+    /** The quoted payment exactly as BuiltFixtures.PAY transfers it. */
     private val quote = Quote(
         currency = "usdc",
-        mint = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+        mint = BuiltFixtures.USDC,
         amount = 100_000,
         decimals = 6,
-        tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-        treasury = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-        reference = "11111111111111111111111111111111",
+        tokenProgram = BuiltFixtures.TOKEN_PROGRAM,
+        treasury = BuiltFixtures.TREASURY,
+        reference = BuiltFixtures.REFERENCE,
         expiresAt = "2099-01-01T00:00:00.000Z"
     )
     private val pro = Standing("pro", 0, null, 10, "2026-10-15T12:00:00.000Z", null, session.pubkey, Cluster.DEVNET)
@@ -47,12 +48,12 @@ class ClusterTest {
     }
 
     @Test
-    fun `a devnet payment asks for a devnet blockhash and a devnet wallet`() = runBlocking {
+    fun `a devnet payment is built on devnet and signed by a devnet wallet`() = runBlocking {
         val asked = mutableListOf<String>()
         val payment = ProPayment(
-            blockhash = { cluster ->
-                asked += "blockhash:${cluster.id}"
-                Answer.Ok("EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k")
+            build = { _, cluster ->
+                asked += "build:${cluster.id}"
+                Answer.Ok(BuiltFixtures.built(BuiltFixtures.PAY))
             },
             signAndSend = { _, cluster ->
                 asked += "wallet:${cluster.id}"
@@ -64,15 +65,15 @@ class ClusterTest {
 
         val outcome = payment.pay(session, quote, Cluster.DEVNET) { _, _ -> }
 
-        assertEquals(listOf("blockhash:devnet", "wallet:devnet"), asked)
+        assertEquals(listOf("build:devnet", "wallet:devnet"), asked)
         assertEquals(PayOutcome.Paid(pro), outcome)
     }
 
     @Test
-    fun `a blockhash refused for the wrong cluster never reaches the wallet`() = runBlocking {
+    fun `a build refused for the wrong cluster never reaches the wallet`() = runBlocking {
         var walletAsked = false
         val payment = ProPayment(
-            blockhash = { Answer.Refused(409, "wrong_cluster") },
+            build = { _, _ -> Answer.Refused(409, "wrong_cluster", "This is for mainnet-beta, but Heylana is on devnet. I stopped before building it.") },
             signAndSend = { _, _ -> walletAsked = true; SeedVault.Trip.Done("signature") },
             confirm = { _, _ -> Answer.Ok(pro) },
             log = {}
@@ -81,6 +82,6 @@ class ClusterTest {
         val outcome = payment.pay(session, quote, Cluster.MAINNET) { _, _ -> }
 
         assertFalse(walletAsked)
-        assertTrue(outcome is PayOutcome.Stopped)
+        assertEquals("This is for mainnet-beta, but Heylana is on devnet. I stopped before building it.", (outcome as PayOutcome.Stopped).line)
     }
 }

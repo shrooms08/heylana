@@ -422,14 +422,21 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * The confirmation strip for a send: what will be sent, to whom, the fee, and
      * confirm or cancel. It stays until one of them is tapped.
      */
-    fun showSendConfirm(text: String) {
+    fun showSendConfirm(text: String, simulation: ChatPanelView.Simulation) {
         panel.showNotice(text)
         ensurePanelOpen()
         if (mode == Mode.COMPOSE && panel.shape == ChatPanelView.Shape.BOX) {
             panel.releaseInput()
             panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
         }
-        panel.showConfirm()
+        panel.showConfirm(simulation)
+        applyPosition()
+    }
+
+    /** The send's simulation passed: the strip's words become the full preview, and Confirm can be tapped. */
+    fun showSimulationPassed(text: String) {
+        panel.showNotice(text)
+        panel.setSimulation(ChatPanelView.Simulation.PASSED)
         applyPosition()
     }
 

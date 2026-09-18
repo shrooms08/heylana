@@ -113,9 +113,20 @@ class WalletApi(private val settings: HeylanaSettings) {
             )
         }
 
-    /** Refused 409 wrong_cluster if the worker takes payments on another cluster. */
-    suspend fun blockhash(cluster: Cluster): Answer<String> =
-        post("pay/blockhash", JSONObject().put("cluster", cluster.id)) { it.getString("blockhash") }
+    /**
+     * The worker builds and simulates the transfer for a prepared send ([id]) or a Pro
+     * quote ([reference]) on [cluster]. A preview comes back with no bytes; [final] asks
+     * for the unsigned transaction too, which only comes back if the simulation passed.
+     * Refused 409 wrong_cluster when the worker is on another cluster.
+     */
+    suspend fun build(id: String?, reference: String?, cluster: Cluster, final: Boolean): Answer<BuiltTransfer> =
+        post(
+            "send/build",
+            JSONObject().put("cluster", cluster.id).put("final", final).apply {
+                if (id != null) put("id", id)
+                if (reference != null) put("reference", reference)
+            }
+        ) { builtOf(it) }
 
     /** Answers Refused(409, "not_confirmed") until the chain has confirmed it. */
     /** Without [signature], the worker looks the payment up by its reference. */
@@ -148,9 +159,13 @@ class WalletApi(private val settings: HeylanaSettings) {
             }
         }
 
-    /** Has the worker check a send; [amount] is a plain decimal, or "all". Nothing is built or signed. */
-    suspend fun prepareSend(to: String, amount: String, token: String): Answer<SendQuote> =
-        post("send/prepare", JSONObject().put("to", to).put("amount", amount).put("token", token)) {
+    /**
+     * Has the worker check a send; [amount] is a plain decimal, or "all". [said] is the user's
+     * own words, so the worker can check the recipient in them a second time. Nothing is
+     * built or signed.
+     */
+    suspend fun prepareSend(to: String, amount: String, token: String, said: String): Answer<SendQuote> =
+        post("send/prepare", JSONObject().put("to", to).put("amount", amount).put("token", token).put("said", said)) {
             SendQuote(
                 id = it.getString("id"),
                 toAddress = it.getString("to_address"),
@@ -173,6 +188,33 @@ class WalletApi(private val settings: HeylanaSettings) {
         post("send/confirm", JSONObject().put("id", id).apply { if (signature != null) put("signature", signature) }) {
             it.optString("signature")
         }
+
+    private fun builtOf(json: JSONObject): BuiltTransfer {
+        val p = json.getJSONObject("preview")
+        val sim = json.getJSONObject("simulation")
+        val programs = p.optJSONArray("programs")
+        return BuiltTransfer(
+            kind = json.optString("kind"),
+            preview = TransferPreview(
+                from = p.optString("from"),
+                fromLabel = p.optString("from_label"),
+                to = p.optString("to"),
+                toLabel = p.optString("to_label"),
+                amount = p.optString("amount"),
+                token = p.optString("token"),
+                feeSol = p.optString("fee_sol"),
+                accountRentSol = p.optString("account_rent_sol", "0"),
+                createsAccount = p.optBoolean("creates_account"),
+                programs = List(programs?.length() ?: 0) { programs!!.getString(it) },
+                cluster = p.optString("cluster")
+            ),
+            simulation = if (sim.optBoolean("ok")) SimulationResult.Passed
+            else SimulationResult.Failed(sim.optString("reason"), sim.optString("words")),
+            transaction = json.optString("transaction").takeIf { it.isNotEmpty() }
+                ?.let { java.util.Base64.getDecoder().decode(it) },
+            lastValidBlockHeight = json.optLong("last_valid_block_height")
+        )
+    }
 
     private fun profileOf(json: JSONObject) = Profile(
         name = json.optString("name"),

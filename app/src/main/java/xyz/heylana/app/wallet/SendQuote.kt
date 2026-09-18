@@ -44,6 +44,18 @@ object SendText {
         return "Send ${quote.amount} ${quote.token} to $who.$rent Confirm?"
     }
 
+    /**
+     * The strip once the simulation has passed: from, to and who that is, amount, token,
+     * fee, any account it opens, and the cluster. "Send 0.05 USDC from your wallet
+     * (9WzD…AWWM) to your Heylana treasury (7c2y…SxSv). Fee 0.000005 SOL, on devnet.
+     * Nothing has been signed. Confirm?"
+     */
+    fun previewed(p: TransferPreview): String {
+        val opens = if (p.createsAccount) " It opens their ${p.token} account for ${p.accountRentSol} SOL." else ""
+        return "Send ${p.amount} ${p.token} from ${p.fromLabel} (${p.from}) to ${p.toLabel} (${p.to}). " +
+            "Fee ${p.feeSol} SOL, on ${p.cluster}.$opens Nothing has been signed. Confirm?"
+    }
+
     fun sent(shortSignature: String): String = "Sent. Signature $shortSignature."
 
     const val CANCELLED = "Cancelled. Nothing was sent."

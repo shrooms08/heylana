@@ -170,8 +170,14 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     private val done = TextView(context)
 
     private val confirmRow = LinearLayout(context)
+    private val simStatus = TextView(context)
     private val confirm = TextView(context)
     private val cancel = TextView(context)
+
+    /** Where the send's simulation stands; Confirm can be tapped only once it has passed. */
+    enum class Simulation { CHECKING, PASSED }
+
+    private var simulation = Simulation.CHECKING
 
     /** The width the box takes when it rides beside the buddy as a task HUD. */
     val hudWidth = dp(264f)
@@ -273,9 +279,15 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             visibility = View.GONE
         }
+        // "Checking it with the network…", then "✓ Simulation passed" in green.
+        styleLabel(simStatus, secondaryText)
+        confirmRow.addView(simStatus, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         stylePill(cancel, "cancel", secondaryText) { onCancel?.invoke() }
         confirmRow.addView(cancel, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
-        stylePill(confirm, "confirm", selectedText, selected = true) { onConfirm?.invoke() }
+        stylePill(confirm, "confirm", selectedText, selected = true) {
+            // Never before the simulation has passed, whatever reaches the view.
+            if (simulation == Simulation.PASSED) onConfirm?.invoke()
+        }
         confirmRow.addView(
             confirm,
             LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
@@ -741,10 +753,20 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         morphTo(Shape.STRIP)
     }
 
-    /** Shows confirm and cancel under whatever the answer line says. */
-    fun showConfirm() {
+    /** Shows confirm and cancel under whatever the answer line says; Confirm waits for the simulation. */
+    fun showConfirm(state: Simulation) {
         confirmRow.visibility = View.VISIBLE
         enable(true)
+        setSimulation(state)
+    }
+
+    fun setSimulation(state: Simulation) {
+        simulation = state
+        val passed = state == Simulation.PASSED
+        simStatus.text = if (passed) SIMULATION_PASSED else SIMULATING
+        simStatus.setTextColor(if (passed) HeylanaTokens.success else secondaryText)
+        confirm.isEnabled = passed
+        confirm.alpha = if (passed) 1f else DISABLED_ALPHA
     }
 
     fun hideConfirm() {
@@ -1034,6 +1056,11 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
 
     companion object {
         private const val PLACEHOLDER = "ask about this screen"
+        private const val SIMULATING = "checking with the network…"
+        private const val SIMULATION_PASSED = "✓ Simulation passed"
+
+        /** How far a pill that cannot be tapped yet is faded. */
+        private const val DISABLED_ALPHA = 0.4f
         private const val THINKING = "thinking…"
         private const val LISTENING = "listening…"
         private const val MAX_ANSWER_LINES = 8

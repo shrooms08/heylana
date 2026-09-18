@@ -63,6 +63,9 @@ class SendGuardTest {
         assertTrue(SendGuard.overLimit("3.01", "12"))
         assertFalse(SendGuard.overLimit("3", "12"))
         assertFalse(SendGuard.overLimit("0.05", null))
+        // More than they hold is not asked twice: the simulation says not enough.
+        assertFalse(SendGuard.overLimit("500", "5"))
+        assertFalse(SendGuard.overLimit("12.000001", "12"))
         assertTrue(SendGuard.overLimitLine("USDC").contains("yes send it all"))
     }
 

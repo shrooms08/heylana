@@ -155,6 +155,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     /** Called when the compact strip is tapped, to reopen the box for a follow-up. */
     var onStripTapped: (() -> Unit)? = null
 
+    private val modeChip = TextView(context)
     private val answer = TextView(context)
     private val note = TextView(context)
     private val input = EditText(context)
@@ -205,6 +206,26 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         setPadding(pad, pad, pad, pad)
         // Hardware rendered: the glass's shadow is a GPU shadow layer, and its liquid
         // edges are a RuntimeShader, which only runs on a hardware canvas.
+
+        // ------------------------------------------------------- mode chip
+        // What Heylana is doing: reading, thinking, simulating, approve in wallet…
+        styleLabel(modeChip, HeylanaTokens.textPrimary)
+        modeChip.background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(HeylanaTokens.inputFill)
+            cornerRadius = HeylanaTokens.dp(context, HeylanaTokens.RADIUS_FULL_DP)
+        }
+        modeChip.setPadding(
+            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_1_DP),
+            dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_1_DP)
+        )
+        softShadow(modeChip)
+        modeChip.visibility = View.GONE
+        addView(
+            modeChip,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(HeylanaTokens.SPACE_2_DP)
+            }
+        )
 
         // ---------------------------------------------------- answer + mute
         // Packed to the end so the speaker stays in the corner even with no answer.
@@ -753,6 +774,16 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         morphTo(Shape.STRIP)
     }
 
+    /** The chip saying what Heylana is doing; null takes it away. */
+    fun showMode(mode: BuddyMode?) {
+        if (mode == null) {
+            modeChip.visibility = View.GONE
+            return
+        }
+        modeChip.text = mode.label
+        modeChip.visibility = View.VISIBLE
+    }
+
     /** Shows confirm and cancel under whatever the answer line says; Confirm waits for the simulation. */
     fun showConfirm(state: Simulation) {
         confirmRow.visibility = View.VISIBLE
@@ -804,6 +835,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     }
 
     override fun clearSignals() {
+        modeChip.visibility = View.GONE
         streakThinking = false
         setBeam(Beam.NONE)
         gooeyRun?.cancel()

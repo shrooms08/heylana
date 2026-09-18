@@ -192,6 +192,7 @@ class BuddyOverlayService : Service() {
             registerDebugPanel()
         }
         val onSpeaking: (Boolean) -> Unit = { speaking ->
+            speakingNow = speaking
             main.post {
                 HeylanaLog.state("speak: speaking=$speaking")
                 overlayView?.setTalking(speaking)
@@ -410,6 +411,9 @@ class BuddyOverlayService : Service() {
             view.onNext = { advance(userAsked = true) }
             view.onDone = { stopSessionOnRequest() }
             view.onConfirmSend = { confirmSend() }
+            // Touching the disc while Heylana speaks stops her.
+            view.isSpeaking = { speakingNow }
+            view.onInterrupt = { interruptSpeech() }
             view.onCancelSend = { cancelSend() }
             view.onPanelClosed = {
                 HeylanaLog.state("panel: closed")
@@ -571,7 +575,9 @@ class BuddyOverlayService : Service() {
             // send, a quick action or chat, which have their own shapes.
             val walkThrough = Teaching.wantsSession(question) &&
                 route.why != Routing.Why.SEND_QUESTION && route.why != Routing.Why.QUICK_ACTION && !route.skipsScreen
+            mode(BuddyMode.THINKING)
             val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough)
+            mode(null)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
             if (reply is BrainReply.Say) {
@@ -635,6 +641,7 @@ class BuddyOverlayService : Service() {
 
     /** The ordinary read for a question: the app under the box, after the keyboard has gone. */
     private suspend fun readScreenForQuestion(view: BuddyOverlayView): ScreenSnapshot {
+        mode(BuddyMode.READING)
         // The app under the box has to be readable for the moment of the read.
         view.letScreenReadThrough(true)
         return try {
@@ -820,6 +827,31 @@ class BuddyOverlayService : Service() {
         }
     }
 
+    // ------------------------------------------------------------ mode and speech
+
+    /** True while Heylana's voice is playing. */
+    @Volatile
+    private var speakingNow = false
+
+    /** The chip on the strip or HUD: what Heylana is doing now. */
+    private fun mode(mode: BuddyMode?) {
+        HeylanaLog.state("mode: ${mode?.label ?: "none"}")
+        overlayView?.showMode(mode)
+    }
+
+    /**
+     * The disc was touched while Heylana was speaking: she stops at once. A teaching flight
+     * in progress stops too (and flies home) rather than moving on to its next sentence.
+     */
+    private fun interruptSpeech() {
+        HeylanaLog.state("speak: stopped by a touch on the disc")
+        teaching?.let {
+            it.cancel()
+            teaching = null
+        }
+        mouth?.stop()
+    }
+
     // ------------------------------------------------------------------ sending
 
     /**
@@ -845,9 +877,11 @@ class BuddyOverlayService : Service() {
             return
         }
         overlayView?.setWorking(true)
+        mode(BuddyMode.PREPARING)
         scope.launch {
             val prepared = walletApi.prepareSend(allowed.to, allowed.amount, allowed.token, said = question)
             overlayView?.setWorking(false)
+            mode(null)
             when (val answer = prepared) {
                 is Answer.Ok -> {
                     val quote = answer.value
@@ -885,9 +919,11 @@ class BuddyOverlayService : Service() {
         HeylanaLog.state("send: strip token=${quote.token} amount=${quote.amount} to=${quote.toAddress.take(4)}")
         view.showSendConfirm(SendText.strip(quote).removeSuffix(" Confirm?"), ChatPanelView.Simulation.CHECKING)
         overlayView?.setWorking(true)
+        mode(BuddyMode.SIMULATING)
         scope.launch {
             val built = walletApi.build(id = quote.id, reference = null, cluster = quote.cluster, final = false)
             overlayView?.setWorking(false)
+            mode(null)
             // Cancelled, or another send, while this one was being checked.
             if (awaitingConfirm !== quote) return@launch
             val failure: String? = when (built) {
@@ -936,6 +972,8 @@ class BuddyOverlayService : Service() {
         HeylanaLog.state("send: confirmed, opening Seed Vault")
         // Seed Vault, then the chain: the working orb until the send lands or stops.
         overlayView?.setWorking(true)
+        mode(BuddyMode.SIMULATING)
+        SendRelay.progress = { stage -> main.post { mode(BuddyMode.of(stage)) } }
         SendRelay.listener = { result -> main.post { onSendResult(result) } }
         startActivity(
             SendActivity.intentFor(this, quote)
@@ -954,7 +992,9 @@ class BuddyOverlayService : Service() {
 
     private fun onSendResult(result: SendResult) {
         SendRelay.listener = null
+        SendRelay.progress = null
         overlayView?.setWorking(false)
+        mode(if (result is SendResult.Sent) BuddyMode.SENT else null)
         when (result) {
             is SendResult.Sent -> {
                 HeylanaLog.state("send: landed")
@@ -1283,6 +1323,7 @@ class BuddyOverlayService : Service() {
         // and the next step's line waits behind it in the voice's queue.
         if (userAsked) mouth?.stop()
         view.setWorking(true)
+        mode(BuddyMode.WORKING)
         exchange.asking()
         view.showThinking()
         view.hideKeyboard()
@@ -1308,6 +1349,7 @@ class BuddyOverlayService : Service() {
                 teaching = current.teaching
             )
             view.setWorking(false)
+            mode(null)
             exchange.over()
 
             if (reply is BrainReply.Say) {

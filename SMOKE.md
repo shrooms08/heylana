@@ -1,43 +1,54 @@
-# Smoke test — Skill market retired to the roadmap
+# Smoke test — simulate before signing, the registry, the mode chip
 
-For Minos, on the Seeker, on the **Judge** plan. The Seeker was not connected when this was
-built, so Claude Code could not check it on the phone: this is the first check on a device.
+For Minos, on the Seeker, on the **Judge** plan, with the worker on **devnet** (it is:
+`CLUSTER = "devnet"`, deployed). Claude Code ran steps 1–3 on the Seeker already (see the
+report); this is the final confirmation.
 
-**Live calls this test spends: 1 chat, 1 tts** — one question in the Wallet, to see that the
-built-in skills still load.
+**Live calls this test spends: 3 chat, about 4 tts** — two sends and one question — and
+**one real devnet transfer of 0.05 USDC** to the Heylana treasury, which you approve in
+Seed Vault yourself in step 1.
 
 ## 0. Set up
 
-Install this build, run `./scripts/a11y.sh`, open **Heylana**.
+Install this build, run `./scripts/a11y.sh`, open **Heylana**, Menu → **Start buddy** on.
+Go to the home screen. Watch along with `adb logcat -s HeylanaState` if you like.
 
-## 1. The menu has no Skill market
+## 1. A send that passes (1 chat, 1–2 tts)
 
-Tap the **menu** icon (top left). Expected, under the small headings:
-- **Buddy** — Start buddy with its switch.
-- **Account** — **Plan** only, reading **Unlimited until Nov 9**, with "Judge" on the right.
-  There is **no Skill market row** and no "8 active" anywhere.
-- **More** — Advanced, Privacy, Settings.
+Tap the disc, type **send 0.05 USDC to 7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv**,
+tap **ask**.
 
-Tap the dimmed part to close it. Nothing on any screen mentions skills or "n of n active".
+Expected, in order:
+1. A small chip at the top of the box says **reading**, then **thinking**, then
+   **preparing**.
+2. The strip says "Send 0.05 USDC to 7c2y…SxSv." with the chip **simulating**, the line
+   "checking with the network…" and a **greyed confirm** that does nothing if tapped.
+3. Then the strip says **"Send 0.05 USDC from your wallet (EFj9…5L1S) to your Heylana
+   treasury (7c2y…SxSv). Fee 0.000005 SOL, on devnet. Nothing has been signed.
+   Confirm?"**, a green **✓ Simulation passed** appears, and **confirm** lights up. The
+   preview is read aloud.
+4. Tap **confirm**. The chip says **simulating** for a moment, then **approve in wallet**,
+   and Seed Vault opens on the transfer. **Approve it.**
+5. The chip says **working**, then **sent**, and Heylana says **"Sent. Signature …"**.
 
-## 2. The market cannot be opened
+## 2. A send that fails simulation (1 chat, 1 tts)
 
-On the computer: `adb shell am start -S -n xyz.heylana.app/.MainActivity -e screen skills`.
-Expected: Heylana opens on **Home**, not a Skill market.
-`adb logcat -s HeylanaState` shows no `skills: index` line at any point: the public list is
-never downloaded.
+Tap the disc, type **send 500 USDC to 7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv**,
+tap **ask**.
 
-## 3. Built-in skills still load (1 chat, 1 tts)
+Expected: the strip shows **simulating**, then goes, and Heylana says **"I did not open
+the wallet because the simulation failed. Not enough USDC. You have …"**. Seed Vault never
+opens. (It no longer asks "that's more than a quarter, say it again" first: 500 is more
+than the whole balance, so there is nothing to ask twice.)
 
-Menu → **Start buddy** on. Open the **Wallet** app. Tap the disc, type **how do I earn on my
-USDC**, tap **ask**.
+## 3. Touch the disc mid-sentence (1 chat, 1 tts)
 
-Expected: an answer about the Wallet's Earn vault (Kamino), and in `adb logcat -s
-HeylanaState` the `brain:` line says **`skill=kamino`** (or `skill=seed-vault-wallet`), not
-`skill=none`. Stop the buddy afterwards.
+Tap the disc, type **tell me a short story about a lighthouse keeper in three
+sentences**, tap **ask**. While Heylana is speaking, **tap the disc once**.
 
-## 4. Plan words elsewhere
+Expected: she stops at once, mid-sentence. The box does not open or close from that tap.
 
-On a Free account (or with a Free wallet) the menu's Plan reads **30 talks a month** with a
-thin bar under it and a **Go Pro** button; the Go Pro sheet says "Unlimited talks for 30
-days" with no mention of skills. (Skip on Judge.)
+## 4. Nothing to check by hand
+
+The registry and the red-team tests run in CI (`.github/workflows/worker.yml`) and with
+`cd worker && npm test`: 262 tests, the red-team file among them.

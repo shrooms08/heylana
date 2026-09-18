@@ -68,10 +68,15 @@ object SendGuard {
         return Verdict.Allowed(action.to.trim(), amount.stripTrailingZeros().toPlainString(), action.token)
     }
 
-    /** More than a quarter of what they hold. An unknown balance cannot be checked, so it is not over. */
+    /**
+     * More than a quarter of what they hold, up to all of it. An unknown balance cannot be
+     * checked, so it is not over; nor is more than the whole balance — there is nothing to
+     * ask twice about, and the simulation says "not enough" in plain words instead.
+     */
     fun overLimit(amount: String, balance: String?): Boolean {
         val value = amount.toBigDecimalOrNull() ?: return false
         val held = balance?.toBigDecimalOrNull() ?: return false
+        if (value > held) return false
         return value > held.multiply(QUARTER)
     }
 

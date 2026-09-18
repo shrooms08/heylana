@@ -39,6 +39,10 @@ mic. Ask anything; Heylana answers in her voice and in a strip under the orb. Ta
 the mic to talk. Setting a timer or opening an app works from here too. Nothing in the
 app reads your screen; to ask about another app, start the buddy and tap it there.
 
+On the buddy, a small label on its box says what it is doing — reading, thinking,
+preparing, simulating, approve in wallet, sent, working — and touching the buddy while it
+talks stops it mid-sentence.
+
 The menu holds the buddy's on switch, your plan, your own API key (Advanced), exactly what leaves the phone (Privacy), and Settings: the voice, Dark or
 Light, and Stop buddy.
 

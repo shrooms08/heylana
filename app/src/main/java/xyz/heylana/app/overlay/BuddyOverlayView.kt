@@ -99,6 +99,15 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     /** The user cancelled the send on the strip. */
     var onCancelSend: (() -> Unit)? = null
 
+    /** Whether Heylana is speaking now; a touch on the disc then stops her. */
+    var isSpeaking: () -> Boolean = { false }
+
+    /** The disc was touched while Heylana was speaking: stop the voice. */
+    var onInterrupt: (() -> Unit)? = null
+
+    /** This touch began by stopping Heylana's voice, so a tap is not also a toggle. */
+    private var interruptedSpeech = false
+
     /**
      * The full-screen layer the disc flies across. Moving a window every frame
      * is not GPU animated and stutters; a view translation on a layer that is
@@ -430,6 +439,12 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
         }
         panel.showConfirm(simulation)
+        applyPosition()
+    }
+
+    /** The chip on the strip or HUD saying what Heylana is doing; null takes it away. */
+    fun showMode(mode: BuddyMode?) {
+        panel.showMode(mode)
         applyPosition()
     }
 
@@ -1068,6 +1083,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 HeylanaLog.state("touch: down")
+                // Mid-sentence, the first thing a touch does is stop her.
+                interruptedSpeech = SpeechTouch.stops(isSpeaking())
+                if (interruptedSpeech) onInterrupt?.invoke()
                 onTouched?.invoke()
                 cancelFlight()
                 refreshMetrics()
@@ -1132,7 +1150,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
                     dragging -> snapToNearestEdge()
                     else -> {
                         onNotAHold?.invoke()
-                        togglePanel()
+                        // A tap that stopped the voice did what it was for; the box stays as it is.
+                        if (SpeechTouch.tapToggles(interruptedSpeech)) togglePanel()
                     }
                 }
                 dragging = false

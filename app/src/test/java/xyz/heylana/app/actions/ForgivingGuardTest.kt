@@ -83,4 +83,17 @@ class ForgivingGuardTest {
         // A different number is still refused.
         assertTrue(QuickGuard.check(QuickAction.Message("+44 800 999 9999", null, "hi"), "message 0800 123 4567 hi") is QuickGuard.Verdict.Refused)
     }
+
+    @Test
+    fun `a part the model filled with a stand-in is missing - the Seeker's "Set a timer"`() {
+        fun ask(vararg pairs: Pair<String, Any?>) = QuickAction.clarify(mapOf("type" to "intent", *pairs))
+        // The worker's reply for "Set a timer", as seen on the Seeker.
+        assertEquals("How long should the timer be?", ask("intent" to "timer", "seconds" to "<UNKNOWN>"))
+        assertNull(QuickAction.of(mapOf("type" to "intent", "intent" to "timer", "seconds" to "<UNKNOWN>")))
+        assertEquals("How long should the timer be?", ask("intent" to "timer"))
+        assertEquals("What time should the alarm be?", ask("intent" to "alarm", "hour" to "unknown"))
+        assertEquals("Which app should I open?", ask("intent" to "open_app", "app" to "<UNKNOWN>"))
+        assertNull(ask("intent" to "timer", "seconds" to 120))
+        assertNull(ask("intent" to "timer", "seconds" to "120"))
+    }
 }

@@ -120,7 +120,7 @@ sealed interface QuickAction {
          */
         fun of(fields: Map<String, Any?>): QuickAction? {
             if (fields["type"] != TYPE) return null
-            fun text(key: String): String? = (fields[key] as? String)?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
+            fun text(key: String): String? = (fields[key] as? String)?.trim()?.takeUnless { isPlaceholder(it) }
             fun int(key: String): Int? = when (val value = fields[key]) {
                 is Number -> value.toDouble().takeIf { it % 1.0 == 0.0 }?.toInt()
                 is String -> value.trim().toIntOrNull()
@@ -185,8 +185,10 @@ sealed interface QuickAction {
          */
         fun clarify(fields: Map<String, Any?>): String? {
             if (fields["type"] != TYPE) return null
-            fun has(key: String) = (fields[key] as? String)?.trim()?.let { it.isNotEmpty() && it != "null" } == true ||
-                fields[key] is Number
+            // A part is there only if it is real: the model sometimes fills a part it was not
+            // given with "<UNKNOWN>" rather than leaving it empty. Numbers must be numbers.
+            fun has(key: String) = (fields[key] as? String)?.trim()?.let { !isPlaceholder(it) } == true || fields[key] is Number
+            fun hasNumber(key: String) = fields[key] is Number || (fields[key] as? String)?.trim()?.toDoubleOrNull() != null
             return when (fields["intent"]) {
                 MESSAGE -> when {
                     !has("number") && !has("name") && !has("to") -> "Who should I text?"
@@ -195,11 +197,11 @@ sealed interface QuickAction {
                 }
                 REMINDER -> when {
                     !has("text") -> "What should I remind you about?"
-                    !has("hour") -> "What time should I remind you?"
+                    !hasNumber("hour") -> "What time should I remind you?"
                     else -> null
                 }
-                ALARM -> if (!has("hour")) "What time should the alarm be?" else null
-                TIMER -> if (!has("seconds")) "How long should the timer be?" else null
+                ALARM -> if (!hasNumber("hour")) "What time should the alarm be?" else null
+                TIMER -> if (!hasNumber("seconds")) "How long should the timer be?" else null
                 DIAL -> if (!has("number") && !has("name")) "Who should I call?" else null
                 OPEN_APP -> if (!has("app")) "Which app should I open?" else null
                 NAVIGATE -> if (!has("query")) "Where do you want to go?" else null
@@ -209,6 +211,13 @@ sealed interface QuickAction {
                 SETTINGS -> if (!has("page")) "Which settings should I open?" else null
                 else -> null
             }
+        }
+
+        /** An empty part, or one the model filled with a stand-in: "null", "<UNKNOWN>", "unknown", "n/a". */
+        fun isPlaceholder(value: String): Boolean {
+            val v = value.trim()
+            return v.isEmpty() || v.equals("null", true) || v.equals("none", true) || v.equals("unknown", true) ||
+                v.equals("n/a", true) || (v.startsWith("<") && v.endsWith(">"))
         }
 
         /** Digits and phone punctuation only, at least three digits: a number, not a name. */

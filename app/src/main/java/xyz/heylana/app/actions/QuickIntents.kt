@@ -132,9 +132,11 @@ object QuickIntents {
                 action.message?.let { put(EXTRA_MESSAGE, it) }
             }
         )
+        // SKIP_UI true: on the Seeker's Clock, showing the timer screen only created the
+        // timer, paused at its full length; skipping the screen is what starts it running.
         is QuickAction.Timer -> IntentSpec(
             ACTION_SET_TIMER,
-            extras = mapOf(EXTRA_LENGTH to action.seconds, EXTRA_SKIP_UI to false)
+            extras = mapOf(EXTRA_LENGTH to action.seconds, EXTRA_SKIP_UI to true)
         )
         is QuickAction.OpenApp -> IntentSpec(ACTION_MAIN, launchPackage = requireNotNull(launchPackage))
         is QuickAction.OpenUrl -> IntentSpec(ACTION_VIEW, data = action.url)

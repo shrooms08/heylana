@@ -114,40 +114,31 @@ private fun DrawScope.drawAurora(turn: Float, colours: List<androidx.compose.ui.
     val centre = Offset(size.width / 2f, size.height / 2f)
     val sphere = Path().apply { addOval(androidx.compose.ui.geometry.Rect(centre, r)) }
     clipPath(sphere) {
-        drawCircle(colours[1].copy(alpha = 0.55f), r, centre)
+        drawCircle(colours[0].copy(alpha = 0.30f), r, centre)
         colours.forEachIndexed { i, colour ->
             val a = (turn + i / colours.size.toFloat()) * 2f * Math.PI.toFloat()
-            val at = Offset(centre.x + cos(a) * r * 0.42f, centre.y + sin(a) * r * 0.42f)
-            drawCircle(Brush.radialGradient(listOf(colour, colour.copy(alpha = 0f)), at, r * 0.85f), r, centre)
+            val at = Offset(centre.x + cos(a) * r * 0.48f, centre.y + sin(a) * r * 0.48f)
+            drawCircle(Brush.radialGradient(listOf(colour.copy(alpha = 0.72f), colour.copy(alpha = 0f)), at, r * 0.78f), r, centre)
         }
     }
 }
 
 /**
- * The particles: the aurora is kept only where the dots are. A dot grid at 4dp, each dot a
- * little bigger toward the middle of the sphere so it reads round.
+ * The particles: the aurora is kept only where the dots are. A tile holding one dot is
+ * repeated across the whole sphere and drawn with DstIn, which clears everything between
+ * the dots (drawing the dots alone would leave the gaps untouched).
  */
 private fun DrawScope.drawParticles() {
-    val r = size.minDimension / 2f
-    val centre = Offset(size.width / 2f, size.height / 2f)
-    val step = 4.dp.toPx()
-    val mask = androidx.compose.ui.graphics.Color.Black
-    // Everything is cleared, then the dots are punched back in (DstIn keeps what is under them).
-    val dots = Path()
-    var y = centre.y - r
-    while (y <= centre.y + r) {
-        var x = centre.x - r
-        while (x <= centre.x + r) {
-            val d = (Offset(x, y) - centre).getDistance() / r
-            if (d <= 1f) {
-                val dot = step * (0.34f + 0.16f * (1f - d))
-                dots.addOval(androidx.compose.ui.geometry.Rect(Offset(x, y), dot))
-            }
-            x += step
-        }
-        y += step
-    }
-    drawPath(dots, mask, blendMode = BlendMode.DstIn)
+    val step = 2.8.dp.toPx()
+    val tileSize = step.toInt().coerceAtLeast(2)
+    val tile = androidx.compose.ui.graphics.ImageBitmap(tileSize, tileSize)
+    val canvas = androidx.compose.ui.graphics.Canvas(tile)
+    val paint = androidx.compose.ui.graphics.Paint().apply { color = androidx.compose.ui.graphics.Color.Black; isAntiAlias = true }
+    canvas.drawCircle(Offset(tileSize / 2f, tileSize / 2f), tileSize * 0.42f, paint)
+    val shader = androidx.compose.ui.graphics.ImageShader(
+        tile, androidx.compose.ui.graphics.TileMode.Repeated, androidx.compose.ui.graphics.TileMode.Repeated
+    )
+    drawRect(androidx.compose.ui.graphics.ShaderBrush(shader), blendMode = BlendMode.DstIn)
 }
 
 /** A specular up and to the left, and a shade toward the rim, so the grid reads as a sphere. */

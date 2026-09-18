@@ -130,6 +130,8 @@ class QuickIntentsTest {
         val timer = QuickIntents.spec(QuickAction.Timer(300))
         assertEquals("android.intent.action.SET_TIMER", timer.action)
         assertEquals(300, timer.extras["android.intent.extra.alarm.LENGTH"])
+        // Skipping the Clock's screen is what starts a timer running (the screen alone left it paused).
+        assertEquals(true, timer.extras["android.intent.extra.alarm.SKIP_UI"])
     }
 
     @Test

@@ -222,3 +222,14 @@ class PrintPromptTest {
         println("SYSTEM_PROMPT_BEGIN\n${HeylanaPrompt.SYSTEM}\nSYSTEM_PROMPT_END")
     }
 }
+
+class ChatClockTest {
+    @Test
+    fun `a chat question carries the phone's clock, with its offset`() {
+        val at = java.time.ZonedDateTime.of(2026, 9, 18, 14, 45, 0, 0, java.time.ZoneId.of("Africa/Lagos"))
+        assertEquals("It is now Fri 18 Sep 2026, 14:45 where the user is (UTC+01:00), 13:45 UTC.", HeylanaPrompt.nowLine(at))
+        val message = HeylanaPrompt.chatMessage("what's the time in Tokyo", now = HeylanaPrompt.nowLine(at))
+        assertTrue(message.contains("It is now Fri 18 Sep 2026, 14:45"))
+        assertTrue(message.endsWith("User asks: what's the time in Tokyo"))
+    }
+}

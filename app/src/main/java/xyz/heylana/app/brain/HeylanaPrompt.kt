@@ -146,15 +146,30 @@ object HeylanaPrompt {
      * A question that needs no screen (small talk, a joke, general knowledge): no
      * listing is read or sent, only the recent conversation and, once, the name.
      */
-    fun chatMessage(question: String, history: String? = null, greeting: String? = null, seed: String? = null): String =
+    fun chatMessage(
+        question: String,
+        history: String? = null,
+        greeting: String? = null,
+        seed: String? = null,
+        now: String? = null
+    ): String =
         buildString {
             greeting?.let { append(it).append("\n\n") }
             history?.let { append(it).append("\n\n") }
             append(NO_SCREEN)
+            // "What's the time in Tokyo" needs to know what time it is here.
+            now?.let { append("\n").append(it) }
             // A joke, a fun fact, a riddle: fresh each time, not the model's favourite.
             seed?.let { append("\n\n").append(Variety.line(it)) }
             append("\n\nUser asks: ").append(question)
         }
+
+    /** The phone's clock, for a chat question: date, time and its offset from UTC. */
+    fun nowLine(at: java.time.ZonedDateTime): String =
+        "It is now " + at.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM yyyy, HH:mm", java.util.Locale.US)) +
+            " where the user is (UTC" + at.offset.id.replace("Z", "+00:00") + "), " +
+            at.withZoneSameInstant(java.time.ZoneOffset.UTC).format(java.time.format.DateTimeFormatter.ofPattern("HH:mm", java.util.Locale.US)) +
+            " UTC."
 
     /** Stands in for the listing on a chat question, so point_at has nothing to name. */
     const val NO_SCREEN: String = "No screen was read: this question does not need it. point_at is null."

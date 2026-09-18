@@ -222,6 +222,20 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
      * "Darker glass": a black 25% base under the clear glass, for people who mostly use
      * light apps, where clear glass and white text wash out. Off by default.
      */
+    /** The app's glass: "dark" (the design, on black) or "light". Settings → Glass mode. */
+    var glassMode: String
+        get() = prefs.getString(KEY_GLASS_MODE, null)?.takeIf { it == GLASS_LIGHT || it == GLASS_DARK } ?: GLASS_DARK
+        set(value) {
+            prefs.edit().putString(KEY_GLASS_MODE, if (value == GLASS_LIGHT) GLASS_LIGHT else GLASS_DARK).apply()
+        }
+
+    /** True once the first run (sign in, name, permissions) has been through to Home once. */
+    var firstRunDone: Boolean
+        get() = prefs.getBoolean(KEY_FIRST_RUN_DONE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_FIRST_RUN_DONE, value).apply()
+        }
+
     var darkerGlass: Boolean
         get() = prefs.getBoolean(KEY_DARKER_GLASS, false)
         set(value) {
@@ -274,6 +288,10 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_VOICE_NAME_PREFIX = "voice_name_"
         private const val KEY_SIMULATE_FREE = "simulate_free_plan"
         private const val KEY_DARKER_GLASS = "darker_glass"
+        private const val KEY_GLASS_MODE = "glass_mode"
+        private const val KEY_FIRST_RUN_DONE = "first_run_done"
+        const val GLASS_DARK = "dark"
+        const val GLASS_LIGHT = "light"
 
         private const val FILE_NAME = "heylana_secure_settings"
         private const val KEY_API_KEY = "api_key"

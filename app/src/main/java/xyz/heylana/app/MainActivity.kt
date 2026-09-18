@@ -45,6 +45,8 @@ import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.settings.VoiceCopy
 import xyz.heylana.app.settings.SettingsActivity
 import xyz.heylana.app.ui.theme.HeylanaTheme
+import xyz.heylana.app.home.HeylanaApp
+import xyz.heylana.app.wallet.SeedVault
 
 /**
  * The four things Heylana needs before it can answer anything, plus the
@@ -62,97 +64,18 @@ private data class Checklist(
 
 class MainActivity : ComponentActivity() {
 
-    private val checklist: MutableState<Checklist> = mutableStateOf(Checklist())
-    private val buddyRunning: MutableState<Boolean> = mutableStateOf(false)
+    /** Created with the activity, as Mobile Wallet Adapter requires. */
+    private lateinit var seedVault: SeedVault
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        refreshStatus()
-        setContent {
-            HeylanaTheme {
-                val notificationLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { refreshStatus() }
-                val microphoneLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { refreshStatus() }
-
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    SetupScreen(
-                        checklist = checklist.value,
-                        buddyRunning = buddyRunning.value,
-                        onAllowOverlay = ::openOverlaySettings,
-                        onOpenAccessibility = ::openAccessibilitySettings,
-                        onAllowNotifications = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                        },
-                        onAllowMicrophone = {
-                            microphoneLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        },
-                        onOpenSettings = ::openHeylanaSettings,
-                        onToggleBuddy = {
-                            if (buddyRunning.value) stopBuddy() else startBuddy()
-                        },
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        refreshStatus()
-    }
-
-    private fun refreshStatus() {
-        checklist.value = Checklist(
-            overlay = Settings.canDrawOverlays(this),
-            // Ticked only when the service is really running, not merely listed:
-            // after a crash Android keeps it in the list and stops binding it.
-            accessibility = HeylanaAccessibilityService.isRunning(this),
-            notifications = notificationsAllowed(),
-            microphone = ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.RECORD_AUDIO
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-        buddyRunning.value = BuddyOverlayService.isRunning
-    }
-
-    private fun notificationsAllowed(): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-
-    private fun openOverlaySettings() {
-        startActivity(
-            Intent(
-                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-        )
-    }
-
-    private fun openAccessibilitySettings() {
-        startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-
-    private fun openHeylanaSettings() {
-        startActivity(Intent(this, SettingsActivity::class.java))
-    }
-
-    private fun startBuddy() {
-        BuddyOverlayService.start(this)
-        buddyRunning.value = true
-    }
-
-    private fun stopBuddy() {
-        BuddyOverlayService.stop(this)
-        buddyRunning.value = false
+        seedVault = SeedVault(this)
+        // First run (sign in, name, permissions) or, for a returning user, Home.
+        // Debug builds only: `-e screen home|sign_in|permissions|voice|skills|advanced|privacy|settings`
+        // opens that screen, so each can be looked at without wiping the app's data.
+        val forced = if (BuildConfig.DEBUG) intent.getStringExtra("screen") else null
+        setContent { HeylanaApp(this, seedVault, forced) }
     }
 }
 

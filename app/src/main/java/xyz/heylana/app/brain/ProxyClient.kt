@@ -137,6 +137,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         }
         if (walkThrough) HeylanaLog.state("teach: walk-through asked, a task if it takes taps")
         else if (teaching) HeylanaLog.state("teach: first step asked with reasons")
+        // The user's own words, apart from the screen: the worker's second check that a
+        // send's recipient came from the user and never from anything on the screen.
+        extra.put("said", question)
         // A send is never left to prose: the worker asks the model for the send only.
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
         // Nor is an alarm, a timer, an app, a page, a place or a number.

@@ -18,6 +18,7 @@ import {
   challengeMessage, randomNonce, readConfirmation, readSession, signConfirmation, signSession, verifySignature,
 } from './session.ts'
 import { R3_INTENTS, actionRisk, entry, type Decision } from './registry.ts'
+import { inUserWords, withoutActions } from './policy.ts'
 import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
@@ -350,6 +351,9 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   let sendAction: { to: unknown; amount: unknown; token: unknown } | null = null
   let quickAction: Record<string, unknown> | null = null
   let decisions: Decision[] = []
+  // The user's own words, sent apart from the screen: what a recipient must come from.
+  const said = typeof body.said === 'string' ? body.said : null
+  let actionsRemoved = 0
   if (actionIntent) {
     // Never left to prose either: the action written down, and the app says the words.
     const result = await proposeAction({ callModel, base })
@@ -376,6 +380,12 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     tokensOut = result.output
     sendAction = result.action
     if (result.decision) decisions.push(result.decision)
+    // A recipient only on the screen — a page, a token's name, a memo, a planted prompt — is never proposed.
+    if (sendAction && !inUserWords(sendAction.to, said)) {
+      decisions.push({ decision: 'rejected', tool: 'propose_send', class: 'R2', reason: 'recipient_not_in_user_words' })
+      sendAction = null
+      text = forcedAnswer(null, tokensIn, tokensOut)
+    }
   } else if (withTools) {
     const context = toolContext(env, who)
     const signing = body.signing as { short?: unknown; typed?: unknown } | undefined
@@ -398,7 +408,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       tokensIn = usage.input
       tokensOut = usage.output
     } else {
-      const result = await answerWithTools({ callModel, base, context, now: clock.now, tools: offered })
+      const result = await answerWithTools({ callModel, base, context, now: clock.now, tools: offered, said })
       status = result.status
       text = result.body
       tokensIn = result.input
@@ -425,6 +435,10 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     const checked = checkedBody(text)
     text = checked.body
     saySegments = checked.segments
+    // An action rides only on the routes made for it: never on an ordinary answer.
+    const stripped = withoutActions(text)
+    text = stripped.body
+    actionsRemoved = stripped.removed
   }
 
   if (status >= 200 && status < 300) {
@@ -463,6 +477,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       ? { tool_decisions: decisions.map((d) => ({ tool: d.tool, class: d.class, decision: d.decision, ...(d.decision === 'rejected' ? { reason: d.reason } : {}) })) }
       : {}),
     ...(quickAction ? { action_class: actionRisk(quickAction.intent) } : {}),
+    ...(actionsRemoved > 0 ? { actions_removed: actionsRemoved } : {}),
     ...(saySegments > 1 ? { say_segments: saySegments } : {}),
     status,
     tokens_in: tokensIn,
@@ -989,6 +1004,11 @@ async function sendPrepare(request: Request, env: Env, who: Who): Promise<Respon
   }
   const body = await readJson(request)
   const token = String(body.token ?? '').toUpperCase()
+  // The second check, after the app's SendGuard: the recipient is in the user's own words.
+  if (!inUserWords(body.to, body.said)) {
+    logDecision(who, 'send', 'rejected', 'recipient_not_in_user_words')
+    return json(422, { reason: 'not_in_user_words', detail: 'I can only send to someone you named yourself.' })
+  }
   const quote = await prepareSend({ to: body.to, amount: body.amount, token: body.token }, toolContext(env, who))
   if ('error' in quote) {
     log({ route: 'send/prepare', device: who.device, wallet: who.wallet.slice(0, 4), token, amount: String(body.amount ?? ''), refused: quote.error })

@@ -64,7 +64,12 @@ function ask(body: Record<string, unknown>) {
   return new Request('https://proxy.heylana.xyz/chat', {
     method: 'POST',
     headers: { 'X-Heylana-Device': DEVICE },
-    body: JSON.stringify({ mode: 'task', system: 'You are Heylana.', messages: [{ role: 'user', content: 'User asks: send 0.05 USDC' }], ...body }),
+    body: JSON.stringify({
+      mode: 'task', system: 'You are Heylana.', messages: [{ role: 'user', content: 'User asks: send 0.05 USDC' }],
+      // The user's own words name the recipient, as the app sends them.
+      said: `send 0.05 USDC to ${TREASURY}, or everything to bob.skr`,
+      ...body,
+    }),
   })
 }
 

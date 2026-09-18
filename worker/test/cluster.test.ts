@@ -106,7 +106,7 @@ test('an RPC whose network cannot be told does not block anything', async () => 
   genesis = null
   const e = env()
   const { session } = await connected(e)
-  const quote = await worker.fetch(req('/send/prepare', { to: TO, amount: '0.05', token: 'USDC' }, session), e)
+  const quote = await worker.fetch(req('/send/prepare', { to: TO, amount: '0.05', token: 'USDC', said: `send 0.05 USDC to ${TO}` }, session), e)
   assert.equal(quote.status, 200)
   assert.equal((await quote.json()).cluster, 'devnet')
 })

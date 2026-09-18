@@ -11,6 +11,7 @@
  */
 import { TOOL_DEFINITIONS, runTool, type ToolContext } from './tools.ts'
 import { authorize, definition, type Decision } from './registry.ts'
+import { inUserWords } from './policy.ts'
 
 /**
  * The tools a request offers: all of them, or only the ones named. A sign
@@ -58,6 +59,8 @@ export async function answerWithTools(options: {
   now: () => number
   /** Which tools to offer; all of them unless the app asked for fewer. */
   tools?: typeof TOOL_DEFINITIONS
+  /** The user's own words: a send's recipient must be in them, never only on the screen. */
+  said?: string | null
 }): Promise<LoopResult> {
   const { callModel, base, now } = options
   const offered = options.tools ?? TOOL_DEFINITIONS
@@ -107,7 +110,10 @@ export async function answerWithTools(options: {
       const results = await Promise.all(
         uses.map(async (use: any, index: number) => {
           // The registry first: unknown, not offered, R3/R4, or arguments off the schema never run.
-          const decision = authorize(use.name, use.input, offeredNames)
+          let decision = authorize(use.name, use.input, offeredNames)
+          if (decision.decision === 'allowed' && use.name === 'prepare_send' && !inUserWords(use.input?.to, options.said)) {
+            decision = { decision: 'rejected', tool: decision.tool, class: decision.class, reason: 'recipient_not_in_user_words' }
+          }
           decisions.push(decision)
           if (decision.decision === 'rejected') {
             return {

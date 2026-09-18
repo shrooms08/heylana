@@ -130,6 +130,12 @@ beforeEach(() => {
 })
 
 function req(path: string, body: unknown, session?: string) {
+  // These tests are about preparing and confirming: the user named the recipient themselves.
+  // (Whether they did is test/redteam.test.ts's business.)
+  if (path === '/send/prepare' && body && typeof body === 'object' && !('said' in body)) {
+    const b = body as Record<string, unknown>
+    body = { ...b, said: `send ${b.amount} ${b.token} to ${b.to}` }
+  }
   const headers: Record<string, string> = { 'X-Heylana-Device': DEVICE }
   if (session) headers.Authorization = `Bearer ${session}`
   return new Request(`https://proxy.heylana.xyz${path}`, { method: 'POST', headers, body: JSON.stringify(body) })

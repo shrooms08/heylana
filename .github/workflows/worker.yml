@@ -1,0 +1,33 @@
+name: worker
+
+# The worker's tests, the red-team ones among them, on every push and pull request
+# that touches the worker. No secrets: every upstream (Anthropic, the RPC, Jupiter,
+# Deepgram) is mocked in the tests, and nothing is deployed from here.
+on:
+  push:
+    paths: ['worker/**', '.github/workflows/worker.yml']
+  pull_request:
+    paths: ['worker/**', '.github/workflows/worker.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          # Node runs the TypeScript tests directly (type stripping), as it does locally.
+          node-version: 24
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - name: Red-team tests
+        run: node --test test/redteam.test.ts
+      - name: All worker tests
+        run: npm test

@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import xyz.heylana.app.settings.HeylanaSettings
+import xyz.heylana.app.overlay.BuddyOverlayService
 import xyz.heylana.app.ui.app.AccentButton
 import xyz.heylana.app.ui.app.Backdrop
 import xyz.heylana.app.ui.app.GlassField
@@ -224,6 +225,15 @@ fun PermissionsScreen(backdrop: Backdrop, rows: List<PermissionRow>, required: B
                 }
             }
             Spacer(Modifier.weight(1f))
+            // The promise the notification makes too; the code keeps it (CLAUDE.md, events).
+            Row(Modifier.padding(bottom = 16.dp), verticalAlignment = Alignment.Top) {
+                Icon(Glyph.SHIELD, palette.inkTertiary, size = 16.dp)
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    "Heylana ${BuddyOverlayService.PRIVACY_LINE}.",
+                    style = HeylanaType.small, color = palette.inkTertiary
+                )
+            }
             AccentButton(if (required) "Continue" else "Continue for now", onDone, height = 54.dp)
             Spacer(Modifier.height(24.dp))
         }

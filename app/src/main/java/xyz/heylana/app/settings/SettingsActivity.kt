@@ -820,7 +820,7 @@ private fun JudgeCodeCard(api: WalletApi, onStanding: (Standing) -> Unit) {
     }
 }
 
-/** The plain-words version of what goes where. Same sentences as onboarding. */
+/** The plain-words version of what goes where. The app's Privacy screen has the full list. */
 @Composable
 private fun PrivacyCard(provider: String) {
     Card(modifier = Modifier.fillMaxWidth()) {

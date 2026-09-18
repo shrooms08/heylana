@@ -28,6 +28,21 @@ Seeker owners finding their way around Solana apps (and every other app) who wan
 a patient guide on the screen they are already looking at, and people who know
 their way around but want a quick answer without leaving what they are doing.
 
+## The app
+
+Open Heylana and it is a place to talk, not a settings page. The first time: sign in with
+your wallet (Seed Vault signs one message; no transaction), say what to call you, and
+switch on four things — showing over other apps, screen reading, notifications and,
+if you like, the microphone — each with one line on why. After that it opens on Home: a
+glowing orb, "Hi, <name>. What do you need?", a few suggestions, and a message bar with a
+mic. Ask anything; Heylana answers in her voice and in a strip under the orb. Tap or hold
+the mic to talk. Setting a timer or opening an app works from here too. Nothing in the
+app reads your screen; to ask about another app, start the buddy and tap it there.
+
+The menu holds the buddy's on switch, your plan, the Skill market, your own API key
+(Advanced), exactly what leaves the phone (Privacy), and Settings: the voice, Dark or
+Light glass, and Stop buddy.
+
 ## Plans
 
 | Plan  | Talks                                  | Skills | How you get it                                   |
@@ -42,7 +57,7 @@ talks. Skills are reference notes for one app each — where things are, how com
 go, what to watch out for — loaded only while that app is on screen, one at a time.
 Eight are built in (Seed Vault Wallet, Kamino Earn, Seed Vault signing, Solana dApp
 Store, Jupiter, YouTube, Spotify, and x402 payments — that one is for no single app and
-loads whenever you ask about a 402 payment request); more install from a public list in Settings → Skills. The plan's
+loads whenever you ask about a 402 payment request); more install from a public list in the Skill market (Menu → Skill market). The plan's
 cap is how many can be active; the rest show greyed. A skill never acts for you:
 it cannot authorise a send, a sign or a tap, and anything in it that reads like an
 order is removed before it is stored.
@@ -76,7 +91,8 @@ Exactly what leaves the phone, and where it goes:
    it go up to your last three questions and answers from the same app (at most
    600 characters, forgotten after ten minutes or when the buddy stops) and, on
    the first answer after the buddy starts, the name you asked to be called.
-2. **Your voice, only while you hold the buddy** — to **Deepgram**, to be written
+   Questions asked in the app itself carry no screen at all.
+2. **Your voice, only while you hold the buddy or use the mic in the app** — to **Deepgram**, to be written
    down. The phone connects to Deepgram directly with a key that stops working
    after two minutes. Deepgram is also sent a fixed list of Solana words to listen
    for; never anything from your screen.
@@ -117,7 +133,7 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 ## Architecture in ten lines
 
-1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; Settings is Compose.
+1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; the app itself (sign in, Home with the orb and chat, voice, menu, skill market, settings) is Compose in the same clear glass, with real refraction.
 2. An accessibility service reads the screen only on request and turns it into a numbered text listing.
 3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model, holds every key, and for Solana questions runs lookups first (balances, prices, addresses, activity, names, send checks).
 4. The model replies with strict JSON: what to say, which element to point at, and whether this is a multi-step task.

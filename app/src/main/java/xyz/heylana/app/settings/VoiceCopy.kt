@@ -24,7 +24,7 @@ object VoiceCopy {
     const val LIVE_SENTENCE =
         "Conversation mode, when enabled, uses Gemini Live's free tier; Google may use that audio to improve its models."
 
-    /** The "what leaves the phone" paragraph about voice, on onboarding and in Settings. */
+    /** The "what leaves the phone" paragraph about voice, in the old Settings screen. */
     fun privacyLine(provider: String): String =
         "Your voice goes to Deepgram to be transcribed while you hold the buddy. ${ttsSentence(provider)} " +
             "$LIVE_SENTENCE The screen never goes to either."

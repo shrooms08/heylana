@@ -18,7 +18,22 @@ after each step.
 
 ```
 xyz.heylana.app
-├── MainActivity.kt          setup checklist + start/stop buddy
+├── MainActivity.kt          the one activity: first run or Home (home/AppRoute)
+├── home/                    the app itself, all Compose, all clear glass
+│   ├── AppRoute             sign in → name → permissions → Home; where back goes
+│   ├── FirstRun             the sign-in screen (wallet, name card) and Permissions
+│   ├── Permissions          the four rows and their live state, re-read on resume
+│   ├── HeylanaApp           the screen state, glass mode, permission prompts
+│   ├── AppScreens           Home and everything it opens; the menu over it
+│   ├── HomeScreen           orb, greeting or answer strip, chips, message bar, mic
+│   ├── HomeChips            the six chips: five send a message, one starts the buddy
+│   ├── AppChat              in-app conversation: chat or quick action, never a screen read
+│   ├── VoiceSession         the app's ears: the buddy's two, raced the same way
+│   ├── VoiceScreen          the aurora wave, timer, state, big mic, pause, close
+│   ├── MenuSheet            Start buddy, plan, skill market, advanced, privacy, settings
+│   ├── SkillMarketScreen    the real skills with switches, the index's others with Get
+│   ├── AdvancedScreen       the own key (Anthropic; OpenAI and Gemini "soon"), Privacy
+│   └── AppSettingsScreen    voice, glass mode, buddy switches, judge code, Stop buddy
 ├── overlay/                 everything that draws on top of other apps
 │   ├── BuddyOverlayService  foreground service (specialUse), notification, ask flow
 │   ├── BuddyOverlayView     window container: drag, snap-to-edge, panel placement
@@ -88,8 +103,10 @@ xyz.heylana.app
 ├── settings/                stored configuration
 │   ├── HeylanaSettings      EncryptedSharedPreferences: device id, voice, advanced bits
 │   ├── DeviceId             the random id the proxy counts a phone's day by
-│   └── SettingsActivity     the voice picker, what leaves the phone, advanced, debug
-└── ui/theme/                Compose theme (scaffolded)
+│   └── SettingsActivity     the old settings: kept for Go Pro (opened on it by the menu)
+├── ui/app/                  the app's glass kit: Glass (real refraction), Orb, Beam,
+│                            Gooey, Kit (buttons, rows, switch, field), Icons
+└── ui/theme/                HeylanaTheme: the Dark and Light glass palettes, Outfit
 ```
 
 ## Look and feel
@@ -213,6 +230,72 @@ split and the purple bloom (design-2c) are still in the code behind
 glass when the platform is blurring what is behind, a heavier fill when it is
 not and the surface has to carry itself. Never hardcode one or the other.
 
+## The app
+
+**The app is the product's front door, and it never reads a screen.** One activity
+(`MainActivity`) routes (`home/AppRoute`): a first run is Sign in with wallet (the existing
+Mobile Wallet Adapter flow, or "Continue without a wallet"), the name card, then
+Permissions; once Home has been reached (`HeylanaSettings.firstRunDone`) the app opens on
+Home. The screens follow design/refs "Heylana App Screens.html" (layout, spacing, copy),
+with two corrections: Home says "Hi, <name>. What do you need?", and the Advanced note is
+"Held in the phone's keystore. It never leaves the device." (never Seed Vault there).
+Debug builds open any screen with `-e screen home|sign_in|permissions|voice|skills|advanced|privacy|settings`.
+
+**Colours live in `ui/theme/HeylanaTheme` and nowhere else; the type is Outfit only.**
+`HeylanaPalette` has a Dark glass (the export: black ground, white 7% glass, 13% hairline)
+and a Light glass (#F3F1F8 ground, white 60% glass); Settings → Glass switches them
+(`HeylanaSettings.glassMode`), and the status and navigation icons follow. Every screen
+is checked in both.
+
+**Real refraction.** Each page records what is behind its glass into one GraphicsLayer
+(`ui/app/Glass`, `backdropSource`); every `GlassSurface` draws that layer, offset to its
+own place, through the ClearGlass AGSL (the `GlassSpec` panel numbers, edge and strength
+capped at 40% of the short side) over an 8dp blur, then the fill, hairline, top highlight
+and outside shadow. Below API 33 the refraction is left out. The border beam
+(`ui/app/Beam`, the BeamShader) laps the message bar while thinking and the answer strip
+while speaking; the chips and the "You asked" card, and the menu, come and go through
+`GooeyReveal` (GooeySpec's blur and alpha contrast).
+
+**Permissions** has four rows — over other apps, screen reading, notifications,
+microphone (optional) — each with a one-line why and a live tick, read again on every
+resume (`PermissionsModel.refresh`, `app: permissions …`). Screen reading is ticked only
+when the service is bound. A tap opens the right system page, or the runtime prompt first.
+After the first run it is reached from Settings → Permissions and goes back there.
+
+**Home talks in the app** (`home/AppChat`): a typed message, a chip or the mic's words go
+as chat (`why=chat`, `app: ask chars=N screen=not_read`), with the Solana lookups when
+they have Solana words, and quick actions ("set a timer") the buddy's way through
+`QuickGuard` and the runner, including its one clarifying question, merged with the
+reply. The chat message carries the phone's time and UTC (`HeylanaPrompt.nowLine`), so
+"what's the time in Tokyo" is worked out, not guessed. Answers are spoken unless the
+speaker is off and shown in the strip under the orb (six lines, scrolling); the chevron
+reaches the last three exchanges, kept in memory only. "Ask about this screen" starts the
+buddy and says where to ask; the app itself never reads a screen. The orb is idle
+(breathing 4.4s, the mark faint inside), thinking (drift at 3.4s, the gapped ring at
+1.2s), listening or speaking (swelling with the level).
+
+**The voice screen** (`home/VoiceSession`, `VoiceScreen`) uses the buddy's two ears
+(`DeepgramEars` and `Listener`, raced by `EarsRace`). A tap on the mic — here or on Home —
+listens until the next tap; a hold sends on release. A press on Home's mic opens the voice
+screen at once and Home stays composed under it until the finger lifts, because the press
+belongs to Home's mic. Listening stops without sending after 20 seconds; words the phone's
+recogniser showed are kept if it then ends with no final (it often does in tap-to-talk),
+Deepgram's are not revived once it hears no speech. The wave moves with the mic level
+while listening and with Heylana's voice while she speaks.
+
+**The menu** grows in from the left over a dimmed Home: Start buddy (its switch starts and
+stops the overlay service), the plan from `/me` (Free: "n of 30 talks" and Go Pro, which
+opens the old Settings screen on the Go Pro sheet; Pro or Judge: the end date), Skill
+market with its active count, Advanced, Privacy, Settings, and the name with the short
+wallet. The skill market lists the real skills with their switches and the public index's
+others with Get (the index is fetched on open, a plain GET with no Heylana headers).
+Advanced is the own key: Anthropic wired; OpenAI and Gemini shown, disabled, "soon".
+Privacy is PRODUCT.md's list (`PrivacyCopy`, naming the voice provider `/me` reports) and
+the no-pixels line; keep the two the same. Settings: voice (a pick says a short line),
+glass mode, show spoken answers as text, darker buddy glass, Permissions, judge code,
+Stop buddy, the version (long press crashes debug builds on purpose), and in debug builds
+the debug switches and Debug states.
+
 ## Where the keys are
 
 **Not on the phone.** `worker/` is a Cloudflare Worker holding the Anthropic,
@@ -246,7 +329,7 @@ takes a WAV header off, split across chunks or not, should one ever come). `skyl
 American voices, one of each. Deepgram's 429 comes back as `429 quota`. `/me` carries
 `voice: {provider, skylar, archie}` (`voiceInfo`), which the phone keeps
 (`HeylanaSettings.rememberVoice`): the privacy line names the provider that speaks
-(`settings/VoiceCopy.ttsSentence`, on onboarding and in Settings) and the picker shows
+(`settings/VoiceCopy.ttsSentence`; the app's Privacy screen uses `PrivacyCopy.speechSentence`) and the picker shows
 those two names; until `/me` has been heard the phone assumes Deepgram, as the worker is
 set. **Gemini**, when selected, is
 is `gemini-3.1-flash-tts-preview` (override with the `GEMINI_TTS_MODEL` var) on Google's
@@ -889,7 +972,7 @@ straight back off:
 
 Events from Heylana's own package are dropped before anything else looks at them.
 Do not widen this to "always listening" for convenience, and keep the promise in
-the notification and the onboarding screen matching the code: *reads the screen
+the notification and the Permissions screen matching the code: *reads the screen
 only when you ask, and watches for your tap only while it is pointing at
 something*.
 
@@ -1024,7 +1107,7 @@ screen conversation around it.
 
 **Enabled is not running.** Android keeps a service's name in the accessibility
 setting after the app crashes with that service bound, and simply stops binding
-it. So "is Heylana in the list" is the wrong question: onboarding ticks the row
+it. So "is Heylana in the list" is the wrong question: the Permissions screen ticks the row
 only when the name is listed, the master switch is on and the service is bound,
 and `scripts/a11y.sh` empties the list before writing it back — writing the same
 value changes nothing — then waits until the service is actually bound.
@@ -1230,16 +1313,15 @@ cheap model.
 ## Debug workflow
 
 **After every Run from Android Studio, run `./scripts/a11y.sh`.** Installing the
-app switches its accessibility service off, which greys out Start buddy on the
-onboarding screen and leaves the buddy unable to read anything. The script sets
+app switches its accessibility service off, which shows Screen reading as "Allow" on
+the Permissions screen and leaves the buddy unable to read anything. The script sets
 `enabled_accessibility_services` to Heylana's fully qualified component and
 turns `accessibility_enabled` on, which is the same thing as walking through
 Settings by hand and considerably faster.
 
 Force-stopping the app clears the setting too, so run it again after any
 `am force-stop` — and note that a running Heylana will not notice until the
-onboarding screen is resumed, so restart the app rather than just re-launching
-the intent.
+app is resumed, so restart the app rather than just re-launching the intent.
 
 **Watch what the buddy is doing with `HeylanaState`.** Debug builds trace every
 gesture, mode change, recogniser callback and settle through `HeylanaLog`:

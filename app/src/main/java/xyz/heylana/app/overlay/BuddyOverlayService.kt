@@ -1782,7 +1782,7 @@ class BuddyOverlayService : Service() {
         /** Lets a screen settle after a tap before deciding the step is finished. */
         private const val AUTO_ADVANCE_DEBOUNCE_MS = 900L
 
-        /** The same sentence as the onboarding screen, in the operator's words. */
+        /** The same sentence as the app's Permissions screen, in the operator's words. */
         const val PRIVACY_LINE = "reads the screen only when you ask, and watches for " +
             "your tap only while it is pointing at something"
 

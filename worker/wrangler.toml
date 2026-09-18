@@ -44,7 +44,7 @@ CLUSTER = "devnet"
 # Signing certificate SHA-256 fingerprints of the app, comma-separated, served at
 # /.well-known/assetlinks.json so Seed Vault can verify the app. Not secret. The first
 # is the debug certificate; add the release one after a comma. See README.md.
-ASSETLINKS_SHA256 = "51:E4:C2:7A:95:E1:70:B3:42:D8:42:C2:1E:6A:1C:44:ED:7B:B0:2C:D9:6E:E0:F9:40:C7:E2:55:B4:72:10:A3"
+ASSETLINKS_SHA256 = "51:E4:C2:7A:95:E1:70:B3:42:D8:42:C2:1E:6A:1C:44:ED:7B:B0:2C:D9:6E:E0:F9:40:C7:E2:55:B4:72:10:A3,69:C0:A8:88:10:C9:FF:4C:4D:97:0F:4D:55:1D:DB:5B:A8:99:E8:6D:4E:48:AA:C0:F7:B7:C6:86:99:63:06:18"
 
 # The last day of judging. A judge code gives Pro until the end of this day (UTC).
 JUDGE_UNTIL = "2026-11-09"

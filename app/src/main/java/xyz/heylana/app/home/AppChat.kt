@@ -47,6 +47,12 @@ class AppChat(
     private val runner = QuickActionRunner(context)
     private val wallet = xyz.heylana.app.wallet.WalletApi(settings)
     private val memoryDesk = xyz.heylana.app.memory.memoryDeskFor(settings, wallet, source = "app")
+    val lessons = xyz.heylana.app.lessons.LessonLibrary(context)
+    private var lesson: xyz.heylana.app.lessons.Lesson? = null
+
+    /** "PDAs, 2 of 5" while a lesson runs, for the strip; null otherwise. */
+    var lessonProgress by mutableStateOf<String?>(null)
+        private set
 
     val exchanges = mutableStateListOf<Exchange>()
     var thinking by mutableStateOf(false)
@@ -72,10 +78,48 @@ class AppChat(
         )
     }
 
+    /** A lesson from the topic list, or from "teach me <topic>": any earlier lesson gives way. */
+    fun startLesson(note: xyz.heylana.app.lessons.LessonNote) {
+        if (inFlight?.isActive == true) return
+        val fresh = xyz.heylana.app.lessons.lessonFor(note, brain, settings, wallet)
+        lesson = fresh
+        HeylanaLog.state("lesson: started topic=${note.id} chunks=${fresh.size} in=app")
+        voice.stop()
+        asked = note.title
+        thinking = true
+        inFlight = scope.launch { lessonAnswer(note.title) { fresh.start() } }
+    }
+
+    private suspend fun lessonAnswer(shownAs: String, block: suspend () -> xyz.heylana.app.lessons.LessonLine) {
+        val current = lesson
+        val line = block()
+        if (line.ended && lesson === current) lesson = null
+        lessonProgress = lesson?.let { "${it.note.short}, ${it.step} of ${it.size}" }
+        thinking = false
+        asked = null
+        exchanges.add(Exchange(shownAs, line.text))
+        while (exchanges.size > MAX_EXCHANGES) exchanges.removeAt(0)
+        if (!settings.voiceMuted) voice.speak(line.text)
+    }
+
     /** A typed question, a chip, or what the ears heard. */
     fun send(raw: String) {
         val typed = raw.trim()
         if (typed.isEmpty() || inFlight?.isActive == true) return
+        // A lesson hears everything said while it runs, but "remember that…", which is memory's.
+        val running = lesson
+        if (running != null && xyz.heylana.app.memory.MemoryWords.explicit(typed) == null) {
+            voice.stop()
+            asked = typed
+            thinking = true
+            HeylanaLog.state("app: ask chars=${typed.length} screen=not_read why=lesson")
+            inFlight = scope.launch { lessonAnswer(typed) { running.hear(typed) } }
+            return
+        }
+        xyz.heylana.app.lessons.LessonWords.topic(typed, lessons.notes)?.let { note ->
+            startLesson(note)
+            return
+        }
         voice.stop()
         // The answer to a clarifying question goes with the question it answers.
         val question = pendingClarify?.takeUnless { QuickActions.isQuickAction(typed) }?.let { "$it $typed" } ?: typed
@@ -85,6 +129,7 @@ class AppChat(
         HeylanaLog.state("app: ask chars=${question.length} screen=not_read")
         inFlight = scope.launch {
             val answer = when {
+                xyz.heylana.app.lessons.LessonWords.wantsTopicList(question) -> xyz.heylana.app.lessons.LessonText.PICK
                 // "Remember that…", a preference, or the yes that keeps it: no question to the model.
                 memoryDesk.claims(question) -> memoryDesk.handle(question)
                 QuickActions.isQuickAction(question) -> action(question)

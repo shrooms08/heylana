@@ -186,3 +186,30 @@ test('the block goes with a question, not with a quick action, and only when mem
   await ask({})
   assert.equal(modelBodies[0].system, 'You are Heylana.')
 })
+
+// ------------------------------------------------------------------ lessons
+
+test('every lesson\'s progress line is one the worker keeps, and nothing else passes as progress', async () => {
+  const { readdirSync, readFileSync } = await import('node:fs')
+  const dir = new URL('../../skills/lessons/', import.meta.url)
+  const files = readdirSync(dir).filter((f: string) => f.endsWith('.md'))
+  assert.equal(files.length, 21)
+  for (const file of files) {
+    const text = readFileSync(new URL(file, dir), 'utf8')
+    const short = /^short: (.+)$/m.exec(text)?.[1] ?? /^title: (.+)$/m.exec(text)![1]
+    const content = `knows ${short}, 2026-09-18`
+    assert.equal(refusal({ category: 'skill_progress', content, consent: 'inferred' }), null, file)
+  }
+  assert.equal(refusal({ category: 'skill_progress', content: `knows ${ADDRESS}, 2026-09-18`, consent: 'inferred' }), 'has_address')
+  assert.equal(refusal({ category: 'skill_progress', content: 'knows 7c2y…SxSv, 2026-09-18', consent: 'inferred' }), 'has_address')
+  assert.equal(refusal({ category: 'skill_progress', content: 'knows staking 40 SOL, 2026-09-18', consent: 'inferred' }), 'has_money')
+})
+
+test('a lesson turn carries the About the user block like any question', async () => {
+  const e = env()
+  const session = await connected(e)
+  await worker.fetch(req('/memory/consent', { on: true }, session), e)
+  await worker.fetch(req('/memory', { category: 'skill_progress', content: 'knows PDAs, 2026-09-18', consent: 'inferred', source_turn: 'lesson' }, session), e)
+  await worker.fetch(req('/chat', { mode: 'quick', system: 'You are Heylana, a warm, patient Solana tutor.', messages: [{ role: 'user', content: 'Lesson: RPC, chunk 1 of 5.' }] }, session), e)
+  assert.ok(modelBodies[0].system.endsWith('- knows PDAs, 2026-09-18'))
+})

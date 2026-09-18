@@ -39,6 +39,16 @@ mic. Ask anything; Heylana answers in her voice and in a strip under the orb. Ta
 the mic to talk. Setting a timer or opening an app works from here too. Nothing in the
 app reads your screen; to ask about another app, start the buddy and tap it there.
 
+Heylana is also a Solana tutor. "Teach me PDAs" — or the Learn Solana suggestion, which
+opens the topics in two tracks, Build and Infrastructure — starts a short lesson: four to
+six small pieces, each under 40 spoken words and followed by one question to check it
+landed. Answer by voice or typing; a right answer moves on, a wrong one gets explained
+another way. Say "skip", "slower", "example", "why" or "stop" at any point. It ends with a
+one-line recap and, if memory is on, "knows PDAs" and the date in Menu, Memory. Lessons
+work in the app and over any app; over Solana's docs or Playground in the browser, "explain
+this" explains the paragraph or code in view and "why" goes one level deeper. Each lesson
+is taught only from Heylana's own hand-checked notes, never from the screen.
+
 On the buddy, a small label on its box says what it is doing — reading, thinking,
 preparing, simulating, approve in wallet, sent, working — and touching the buddy while it
 talks stops it mid-sentence.
@@ -151,10 +161,10 @@ yet (it never sends a second copy); or not found — check your wallet.
    or wipe them in Menu, Memory; turning it off keeps nothing. You're asked once, when you
    first sign in.
 
-9. **Crash reports, if turned on in the build** — when the app or Heylana's server
-   crashes, what went wrong goes to **Sentry**: the error, the app version and the
-   phone model. No screen text, no screenshots, no taps, no name, and every Solana
-   address and key is removed before it leaves.
+10. **Crash reports, if turned on in the build** — when the app or Heylana's server
+    crashes, what went wrong goes to **Sentry**: the error, the app version and the
+    phone model. No screen text, no screenshots, no taps, no name, and every Solana
+    address and key is removed before it leaves.
 
 Never: the screen never goes to Deepgram or Google's voice. No API key is ever stored
 on the phone. What Heylana reads off the screen is used for one request and then

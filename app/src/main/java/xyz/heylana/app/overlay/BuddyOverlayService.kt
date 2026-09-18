@@ -53,6 +53,7 @@ import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.WalletProblem
 import xyz.heylana.app.brain.FinishedTask
 import xyz.heylana.app.brain.GuidanceSession
+import xyz.heylana.app.brain.HeylanaPrompt
 import xyz.heylana.app.brain.Teaching
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
@@ -132,6 +133,11 @@ class BuddyOverlayService : Service() {
     private data class PendingSend(val quote: SendQuote, val at: Long)
 
     private val walletApi by lazy { WalletApi(settings) }
+    private val lessons by lazy { xyz.heylana.app.lessons.LessonLibrary(this) }
+    /** The lesson in progress, if one is: it hears every word until it ends. */
+    private var lesson: xyz.heylana.app.lessons.Lesson? = null
+    /** When "explain this" last explained Solana docs, so "why" straight after goes deeper. */
+    private var docsExplainedAt = 0L
     private val memoryDesk by lazy { xyz.heylana.app.memory.memoryDeskFor(settings, walletApi, source = "buddy") }
 
     /** Addresses typed since the buddy started, to recognise them shortened on a wallet screen. Memory only. */
@@ -357,6 +363,7 @@ class BuddyOverlayService : Service() {
         debugQuickAction = null
         // Stop means forget: the memory never outlives the buddy.
         conversation.clear()
+        lesson = null
         endSession(clearBox = false)
         stopTapWatch()
         main.removeCallbacksAndMessages(null)
@@ -476,6 +483,23 @@ class BuddyOverlayService : Service() {
         val view = overlayView ?: return
         if (inFlight?.isActive == true) return
 
+        // A lesson hears everything said while it runs — answers and its own words (skip,
+        // slower, example, why, stop) — except "remember that…", which is memory's.
+        val running = lesson
+        if (running != null && xyz.heylana.app.memory.MemoryWords.explicit(question) == null) {
+            lessonTurn { running.hear(question) }
+            return
+        }
+        // "Teach me PDAs": a lesson on a topic from the curriculum, over whatever app is in front.
+        xyz.heylana.app.lessons.LessonWords.topic(question, lessons.notes)?.let { note ->
+            startLesson(note)
+            return
+        }
+        if (xyz.heylana.app.lessons.LessonWords.wantsTopicList(question)) {
+            sayLine(xyz.heylana.app.lessons.LessonText.PICK)
+            return
+        }
+
         // "Remember that…", a preference, or the yes that keeps it: no question to the model.
         if (memoryDesk.claims(question)) {
             exchange.asking()
@@ -490,13 +514,13 @@ class BuddyOverlayService : Service() {
 
         // "Why?" on a step is about the step, not a new question: the task, its box and
         // its pointer all stay, and the rest of the task teaches as it goes.
-        val running = session
-        if (running != null && Teaching.isWhy(question)) {
-            explainStep(running, question)
+        val task = session
+        if (task != null && Teaching.isWhy(question)) {
+            explainStep(task, question)
             return
         }
         // "Stop" while a task runs ends it, the same as Done.
-        if (running != null && Teaching.isStop(question)) {
+        if (task != null && Teaching.isStop(question)) {
             HeylanaLog.state("teach: stop asked")
             exchange.over()
             overlayView?.endVoiceExchange()
@@ -587,8 +611,21 @@ class BuddyOverlayService : Service() {
             // send, a quick action or chat, which have their own shapes.
             val walkThrough = Teaching.wantsSession(question) &&
                 route.why != Routing.Why.SEND_QUESTION && route.why != Routing.Why.QUICK_ACTION && !route.skipsScreen
+            // Solana docs or Playground in the browser: "explain this" explains the passage in
+            // view, and "why" straight after goes one level deeper on it.
+            val docs = xyz.heylana.app.lessons.LessonWords.isSolanaDocs(snapshot.packageName, screenText)
+            val now = System.currentTimeMillis()
+            val lens = when {
+                !docs -> null
+                xyz.heylana.app.lessons.LessonWords.isExplainThis(question) -> HeylanaPrompt.DOCS_EXPLAIN_LINE.also { docsExplainedAt = now }
+                now - docsExplainedAt < Teaching.RECAP_WINDOW_MS &&
+                    xyz.heylana.app.lessons.LessonWords.command(question) == xyz.heylana.app.lessons.LessonWords.Command.DEEPER ->
+                    HeylanaPrompt.DOCS_DEEPER_LINE
+                else -> null
+            }
+            if (docs) HeylanaLog.state("docs: solana docs in front lens=${when (lens) { null -> "none"; HeylanaPrompt.DOCS_EXPLAIN_LINE -> "explain"; else -> "deeper" }}")
             mode(BuddyMode.THINKING)
-            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough)
+            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough, lens)
             mode(null)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
@@ -1020,6 +1057,39 @@ class BuddyOverlayService : Service() {
                 HeylanaLog.state("send: stopped")
                 sayLine(result.line)
             }
+        }
+    }
+
+    // ------------------------------------------------------------------ lessons
+
+    /** A lesson from the curriculum starts here; any task or earlier lesson gives way. */
+    private fun startLesson(note: xyz.heylana.app.lessons.LessonNote) {
+        teaching?.cancel()
+        endSession(clearBox = false)
+        val fresh = xyz.heylana.app.lessons.lessonFor(note, brain, settings, walletApi)
+        lesson = fresh
+        HeylanaLog.state("lesson: started topic=${note.id} chunks=${fresh.size} in=buddy")
+        lessonTurn { fresh.start() }
+    }
+
+    /**
+     * One lesson turn: no screen read (a lesson needs none), the quick model, and the line
+     * shown and spoken. The user answers by holding the disc or typing in the box.
+     */
+    private fun lessonTurn(block: suspend () -> xyz.heylana.app.lessons.LessonLine) {
+        val view = overlayView ?: return
+        exchange.asking()
+        mouth?.stop()
+        view.showThinking()
+        HeylanaLog.state("ask: screen not read why=lesson")
+        inFlight = scope.launch {
+            mode(BuddyMode.THINKING)
+            val line = block()
+            mode(null)
+            exchange.over()
+            view.endVoiceExchange()
+            if (line.ended) lesson = null
+            sayLine(line.text)
         }
     }
 

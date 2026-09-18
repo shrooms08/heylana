@@ -20,6 +20,9 @@ import java.io.IOException
 /** A multi-step task the model says it is walking the user through. */
 data class TaskState(val goal: String, val done: Boolean)
 
+/** A lesson turn's extras: the check question to ask, and "right", "partly" or "wrong" on the last answer. */
+data class LessonReply(val check: String?, val verdict: String?)
+
 /** What the buddy says back, or why it could not. */
 sealed interface BrainReply {
     /**
@@ -43,7 +46,9 @@ sealed interface BrainReply {
         /** The model named a quick action but left a part out: the one question to ask for it. */
         val clarify: String? = null,
         /** The worker's id for an R3 action it proposed (a message, a reminder), confirmed before it fires. */
-        val quickId: String? = null
+        val quickId: String? = null,
+        /** A lesson turn's check question and its verdict on the last answer. */
+        val lesson: LessonReply? = null
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -89,7 +94,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         knownAddresses: List<String> = emptyList(),
         skill: Skill? = null,
         teaching: Boolean = false,
-        walkThrough: Boolean = false
+        walkThrough: Boolean = false,
+        /** One more line for this question: "explain this" over Solana docs, or "why" after it. */
+        lens: String? = null
     ): BrainReply {
         val tools = route.toolsWanted && !settings.useOwnKey
         val quickAction = route.why == Routing.Why.QUICK_ACTION
@@ -133,7 +140,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 HeylanaPrompt.nowLine(java.time.ZonedDateTime.now())
             )
         } else {
-            HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching, walkThrough)
+            HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching, walkThrough, lens)
         }
         if (walkThrough) HeylanaLog.state("teach: walk-through asked, a task if it takes taps")
         else if (teaching) HeylanaLog.state("teach: first step asked with reasons")
@@ -157,6 +164,15 @@ class ProxyClient(private val settings: HeylanaSettings) {
         // A reply that starts a task is a spoken step: under 25 words.
         val startsTask = reply is BrainReply.Say && reply.task?.done == false
         return limitLength(reply, AnswerLength.capFor(route.explainsSigning, startsTask))
+    }
+
+    /**
+     * One lesson turn: the topic note is the only context, on the quick model, with no screen,
+     * no tools and no skill. The lesson caps the words itself, so nothing is sent to shorten.
+     */
+    suspend fun lessonTurn(message: String, topic: String, step: Int): BrainReply {
+        HeylanaLog.state("brain: mode=$MODE_QUICK why=lesson lesson=$topic step=$step screen=not_read")
+        return send(message, MODE_QUICK, system = HeylanaPrompt.LESSON_SYSTEM)
     }
 
     /** "Why?" on the step in hand: its reason and the step again. Quick model, no screen. */
@@ -292,19 +308,20 @@ class ProxyClient(private val settings: HeylanaSettings) {
         extra: JSONObject? = null,
         skill: Skill? = null,
         signing: Boolean = false,
-        quickRules: Boolean = false
+        quickRules: Boolean = false,
+        system: String? = null
     ): BrainReply = withContext(Dispatchers.IO) {
         // A send or a quick action comes back with an empty say and the action (or none):
         // an empty say is expected there, not a reply to ask for again.
         val expectsAction = extra?.optString("intent").orEmpty().isNotEmpty()
-        when (val first = attempt(userMessage, mode, solana, tools, extra, skill, signing, quickRules, expectsAction)) {
+        when (val first = attempt(userMessage, mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system)) {
             is Attempt.Done -> first.reply
             is Attempt.Unreadable -> {
                 HeylanaLog.state("reply: unreadable reason=${first.reason} retry=once")
                 logRawReply(first.raw)
                 val retry = attempt(
                     userMessage + "\n\n" + ReplyParser.JSON_ONLY,
-                    mode, solana, tools, extra, skill, signing, quickRules, expectsAction
+                    mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system
                 )
                 when (retry) {
                     is Attempt.Done -> retry.reply.also { HeylanaLog.state("reply: retry readable") }
@@ -333,10 +350,11 @@ class ProxyClient(private val settings: HeylanaSettings) {
         skill: Skill?,
         signing: Boolean,
         quickRules: Boolean,
-        expectsAction: Boolean
+        expectsAction: Boolean,
+        systemOverride: String?
     ): Attempt {
         val ownKey = settings.useOwnKey
-        val system = HeylanaPrompt.system(solana, skill, signing, quickRules)
+        val system = systemOverride ?: HeylanaPrompt.system(solana, skill, signing, quickRules)
         val request = if (ownKey) {
             ownKeyRequest(userMessage, mode, system)
         } else {
@@ -491,7 +509,14 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val segments = parsed.segments.map { it.copy(text = AddressText.shorten(it.text)) }
         // One piece keeps point_at as it always did; segments carry their own.
         val pointAt = if (parsed.segments.size <= 1) parsed.segments.firstOrNull()?.pointAt ?: readPointAt(json) else null
-        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments, clarify, quickId))
+        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments, clarify, quickId, readLesson(json)))
+    }
+
+    /** A lesson turn's check and verdict, when the reply has either. Addresses shortened like every word said. */
+    private fun readLesson(json: JSONObject): LessonReply? {
+        if (!json.has("check") && !json.has("verdict")) return null
+        fun text(key: String) = if (json.isNull(key)) null else json.optString(key).trim().takeIf { it.isNotEmpty() }
+        return LessonReply(text("check")?.let(AddressText::shorten), text("verdict"))
     }
 
     /**

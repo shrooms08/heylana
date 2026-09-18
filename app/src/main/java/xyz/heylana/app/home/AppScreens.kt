@@ -4,7 +4,17 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import xyz.heylana.app.settings.SettingsActivity
+import xyz.heylana.app.skills.SkillCap
+import xyz.heylana.app.skills.SkillStore
+import xyz.heylana.app.wallet.Answer
+import xyz.heylana.app.wallet.Standing
+import xyz.heylana.app.wallet.WalletApi
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -41,6 +51,24 @@ fun AppScreens(
     // screen asks for it and starts.
     var voiceStartOnOpen by remember { mutableStateOf(false) }
 
+    // The menu's plan and the buddy's switch: read again whenever the menu opens.
+    var standing by remember { mutableStateOf<Standing?>(null) }
+    var buddyOn by remember { mutableStateOf(BuddyOverlayService.isRunning) }
+    var skillsVersion by remember { mutableIntStateOf(0) }
+    LaunchedEffect(menuOpen, screen) {
+        buddyOn = BuddyOverlayService.isRunning
+        if (!menuOpen) return@LaunchedEffect
+        when (val answer = WalletApi(settings).me()) {
+            is Answer.Ok -> {
+                standing = answer.value
+                settings.skillsCap = answer.value.skillsCap
+                answer.value.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie) }
+                HeylanaLog.state("app: plan ${answer.value.plan}")
+            }
+            else -> HeylanaLog.state("app: plan not heard")
+        }
+    }
+
     // A press on home's mic opens the voice screen at once. Home stays composed under it
     // until the finger lifts, because the press belongs to home's mic: that is where the
     // release arrives, and a hold ends there.
@@ -52,7 +80,10 @@ fun AppScreens(
             name = settings.callMe,
             chat = chat,
             muted = muted,
-            onMenu = { menuOpen = true },
+            onMenu = {
+                HeylanaLog.state("app: menu opened")
+                menuOpen = true
+            },
             onMute = { next ->
                 muted = next
                 settings.voiceMuted = next
@@ -90,7 +121,68 @@ fun AppScreens(
                 onScreen(Screen.HOME)
             }
         )
+        Screen.SKILLS -> SkillMarketScreen(backdrop, settings, onBack = { onScreen(Screen.HOME) }, onChanged = { skillsVersion++ })
+        Screen.ADVANCED -> AdvancedScreen(backdrop, settings, onBack = { onScreen(Screen.HOME) })
+        Screen.PRIVACY -> PrivacyScreen(backdrop, settings.voiceProvider, onBack = { onScreen(Screen.HOME) })
+        Screen.SETTINGS -> AppSettingsScreen(
+            backdrop = backdrop,
+            settings = settings,
+            buddyOn = buddyOn,
+            onGlassMode = onGlassMode,
+            onSample = { chat.sample(it) },
+            onStanding = { standing = it },
+            onStopBuddy = {
+                HeylanaLog.state("app: buddy stopped from settings")
+                BuddyOverlayService.stop(activity)
+                buddyOn = false
+            },
+            onScreen = onScreen,
+            onBack = { onScreen(Screen.HOME) }
+        )
         else -> Unit
+    }
+
+    if (screen == Screen.HOME) {
+        BackHandler(enabled = menuOpen) { menuOpen = false }
+        val skillsActive = remember(menuOpen, skillsVersion) {
+            SkillStore(activity, settings).rows().count { it.state == SkillCap.State.ACTIVE }
+        }
+        MenuSheet(
+            backdrop = backdrop,
+            open = menuOpen,
+            buddyOn = buddyOn,
+            standing = standing,
+            skillsActive = skillsActive,
+            name = settings.callMe,
+            shortWallet = settings.walletSession?.shortAddress,
+            onBuddy = { on ->
+                if (on) {
+                    if (!Settings.canDrawOverlays(activity)) {
+                        menuOpen = false
+                        chat.note(HomeChips.BUDDY_NEEDS_OVERLAY)
+                    } else {
+                        HeylanaLog.state("app: buddy started from the menu")
+                        BuddyOverlayService.start(activity)
+                        buddyOn = true
+                    }
+                } else {
+                    HeylanaLog.state("app: buddy stopped from the menu")
+                    BuddyOverlayService.stop(activity)
+                    buddyOn = false
+                }
+            },
+            onGoPro = {
+                menuOpen = false
+                activity.startActivity(
+                    Intent(activity, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_GO_PRO, true)
+                )
+            },
+            onScreen = { next ->
+                menuOpen = false
+                onScreen(next)
+            },
+            onClose = { menuOpen = false }
+        )
     }
     }
 }

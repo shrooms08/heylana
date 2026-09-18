@@ -142,6 +142,12 @@ class AppChat(
         if (!settings.voiceMuted) voice.speak(line)
     }
 
+    /** A voice picked in Settings says a short line in it, speaker on or off. */
+    fun sample(line: String) {
+        voice.stop()
+        voice.speak(line)
+    }
+
     /** The speaker was switched off: stop mid-sentence. */
     fun silence() = voice.stop()
 

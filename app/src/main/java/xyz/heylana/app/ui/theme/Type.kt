@@ -24,6 +24,9 @@ object HeylanaType {
     /** Screen titles: "Skill market", "Use my own key". */
     val title = TextStyle(fontFamily = Outfit, fontWeight = FontWeight.Normal, fontSize = 30.sp, lineHeight = 36.sp, letterSpacing = (-0.3).sp)
     /** Row titles and the message bar. */
+    /** The menu's "heylana" beside the mark. */
+    val wordmark = TextStyle(fontFamily = Outfit, fontWeight = FontWeight.Medium, fontSize = 22.sp, lineHeight = 26.sp, letterSpacing = (-0.2).sp)
+
     val body = TextStyle(fontFamily = Outfit, fontWeight = FontWeight.Normal, fontSize = 16.sp, lineHeight = 22.sp)
     val bodyLight = TextStyle(fontFamily = Outfit, fontWeight = FontWeight.Light, fontSize = 16.sp, lineHeight = 22.sp)
     val bodyMedium = TextStyle(fontFamily = Outfit, fontWeight = FontWeight.Medium, fontSize = 16.sp, lineHeight = 22.sp)

@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -99,6 +100,8 @@ fun VoiceScreen(
         HeylanaLog.state("app: voice microphone granted=$granted")
         if (granted) voice.start()
     }
+    // Leaving the voice screen, by any way out, stops listening; nothing half-heard is sent.
+    DisposableEffect(voice) { onDispose { voice.cancel() } }
     LaunchedEffect(Unit) {
         if (!startOnOpen) return@LaunchedEffect
         if (!voice.start()) askMic.launch(Manifest.permission.RECORD_AUDIO)

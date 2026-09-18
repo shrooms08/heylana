@@ -23,9 +23,13 @@ object AppRoute {
     /** After the permissions: Home, and the first run is over. */
     fun afterPermissions(): Screen = Screen.HOME
 
-    /** Where back goes from [screen]; null leaves the app. The first run has no way back. */
-    fun back(screen: Screen): Screen? = when (screen) {
-        Screen.HOME, Screen.SIGN_IN, Screen.PERMISSIONS -> null
+    /**
+     * Where back goes from [screen]; null leaves the app. The first run has no way back;
+     * after it, Permissions is opened from Settings and goes back there.
+     */
+    fun back(screen: Screen, firstRunDone: Boolean = false): Screen? = when (screen) {
+        Screen.HOME, Screen.SIGN_IN -> null
+        Screen.PERMISSIONS -> if (firstRunDone) Screen.SETTINGS else null
         Screen.VOICE, Screen.SKILLS, Screen.ADVANCED, Screen.PRIVACY, Screen.SETTINGS -> Screen.HOME
     }
 }

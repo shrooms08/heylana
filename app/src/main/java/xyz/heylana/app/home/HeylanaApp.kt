@@ -12,6 +12,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +68,18 @@ fun HeylanaApp(activity: ComponentActivity, seedVault: SeedVault, forcedScreen: 
         HeylanaLog.state("app: permission answered granted=$granted")
     }
 
-    BackHandler(enabled = AppRoute.back(screen) != null) { AppRoute.back(screen)?.let { screen = it } }
+    BackHandler(enabled = AppRoute.back(screen, settings.firstRunDone) != null) {
+        AppRoute.back(screen, settings.firstRunDone)?.let { screen = it }
+    }
+
+    // Dark status and navigation icons on the light page, white ones on black.
+    val view = LocalView.current
+    SideEffect {
+        WindowCompat.getInsetsController(activity.window, view).apply {
+            isAppearanceLightStatusBars = mode == GlassMode.LIGHT
+            isAppearanceLightNavigationBars = mode == GlassMode.LIGHT
+        }
+    }
 
     HeylanaTheme(mode) {
         when (screen) {

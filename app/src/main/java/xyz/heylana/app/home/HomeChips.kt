@@ -41,5 +41,5 @@ object HomeChips {
 
     /** What "Ask about this screen" says, running or started. */
     const val BUDDY_LINE = "I'm on. Open the app you want help with and tap me there."
-    const val BUDDY_NEEDS_OVERLAY = "Allow Heylana over other apps first: it's in Menu, then Settings."
+    const val BUDDY_NEEDS_OVERLAY = "Allow Heylana over other apps first: Menu, Settings, Permissions."
 }

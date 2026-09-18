@@ -113,6 +113,7 @@ class SettingsActivity : ComponentActivity() {
                             sample?.speak(SAMPLE_LINE)
                         },
                         onDone = { finish() },
+                        startGoPro = intent.getBooleanExtra(EXTRA_GO_PRO, false),
                         modifier = Modifier.padding(innerPadding)
                     )
                 }
@@ -127,9 +128,12 @@ class SettingsActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private companion object {
+    companion object {
         /** Three words, so hearing a voice costs as little as it can. */
-        const val SAMPLE_LINE = "Hi, I'm Heylana."
+        private const val SAMPLE_LINE = "Hi, I'm Heylana."
+
+        /** Opens straight onto the Go Pro sheet: the app's menu sends people here to pay. */
+        const val EXTRA_GO_PRO = "go_pro"
     }
 }
 
@@ -139,6 +143,7 @@ private fun SettingsScreen(
     seedVault: SeedVault,
     onSample: () -> Unit,
     onDone: () -> Unit,
+    startGoPro: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showSpokenText by remember { mutableStateOf(settings.showTextForVoice) }
@@ -148,7 +153,7 @@ private fun SettingsScreen(
     var session by remember { mutableStateOf(settings.walletSession) }
     var standing by remember { mutableStateOf<Standing?>(null) }
     var planProblem by remember { mutableStateOf("") }
-    var goPro by remember { mutableStateOf(false) }
+    var goPro by remember { mutableStateOf(startGoPro) }
 
     // The buddy picks skills without asking the worker, so it keeps the plan's cap.
     LaunchedEffect(standing) {
@@ -1052,4 +1057,4 @@ private fun SwitchCard(
     }
 }
 
-private const val DEBUG_STATES_ACTIVITY = "xyz.heylana.app.debug.DebugStatesActivity"
+const val DEBUG_STATES_ACTIVITY = "xyz.heylana.app.debug.DebugStatesActivity"

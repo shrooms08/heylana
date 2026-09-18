@@ -75,10 +75,12 @@ class VoiceSession(
     private val phone: Listener by lazy { Listener(context, callbacksFor(EarsRace.Ear.ANDROID)) }
 
     private val raceTick = Runnable { judge(race?.tick(SystemClock.uptimeMillis())) }
+    /** A mic left open is not a question: at the limit, listening stops and nothing is sent. */
     private val limit = Runnable {
         if (phase == Phase.LISTENING) {
-            HeylanaLog.state("app: voice listened for the limit, finishing")
-            finish()
+            HeylanaLog.state("app: voice listened for the limit, stopped without sending")
+            pause()
+            note = TOO_LONG
         }
     }
 
@@ -181,6 +183,8 @@ class VoiceSession(
      * The last words each ear showed. In tap-to-talk the phone's recogniser often ends on
      * its own ("no match") after showing the right words as they were said; those words
      * are not thrown away (seen on the Seeker: "Tell me a joke." shown, then nothing heard).
+     * Deepgram's are not revived: when it answers the finalize with no speech, its guesses
+     * so far were noise (seen on the Seeker: room sound sent as a question).
      */
     private val shown = HashMap<EarsRace.Ear, String>()
 
@@ -199,7 +203,7 @@ class VoiceSession(
             judge(race?.failed(ear, SystemClock.uptimeMillis(), message))
         },
         onNothingHeard = {
-            val partial = shown[ear].orEmpty().trim()
+            val partial = if (ear == EarsRace.Ear.ANDROID) shown[ear].orEmpty().trim() else ""
             if (partial.isNotEmpty()) {
                 HeylanaLog.state("ears: ${ear.name.lowercase()} ended with no final, its shown words kept")
                 judge(race?.heard(ear, SystemClock.uptimeMillis(), partial))
@@ -263,6 +267,7 @@ class VoiceSession(
         const val LISTEN_LIMIT_MS = 20_000L
 
         const val NOTHING_HEARD = "I didn't hear anything. Tap the mic and try again."
+        const val TOO_LONG = "I stopped listening after 20 seconds. Tap the mic to talk."
         const val NEEDS_MIC = "Heylana needs the microphone to listen. Allow it, or type instead."
     }
 }

@@ -52,14 +52,53 @@ export async function readSession(token: string, secret: string, now: number): P
   if (!secret || typeof token !== 'string') return null
   const [payload, mac] = token.split('.')
   if (!payload || !mac) return null
-  const key = await hmacKey(secret)
-  const valid = await crypto.subtle.verify('HMAC', key, fromBase64url(mac), new TextEncoder().encode(payload))
-  if (!valid) return null
   try {
+    const key = await hmacKey(secret)
+    const valid = await crypto.subtle.verify('HMAC', key, fromBase64url(mac), new TextEncoder().encode(payload))
+    if (!valid) return null
     const claims = JSON.parse(new TextDecoder().decode(fromBase64url(payload)))
     if (typeof claims.sub !== 'string' || typeof claims.exp !== 'number') return null
     if (claims.exp <= now) return null
     return claims.sub
+  } catch {
+    return null
+  }
+}
+
+/** How long a confirmation stays good: long enough to open the wallet, not long enough to keep. */
+export const CONFIRMATION_MS = 5 * 60 * 1000
+
+export interface Confirmation {
+  kind: string
+  subject: string
+  holder: string
+}
+
+/**
+ * A confirmation token: this [kind] of R3 action, for this [subject] (a send's id, a
+ * quote's reference, a proposed action's id), confirmed by this [holder] (the account
+ * key), good for [CONFIRMATION_MS]. Sealed like a session, and never mistaken for one:
+ * it has no subject wallet, and a session has no kind.
+ */
+export async function signConfirmation(confirmation: Confirmation, secret: string, now: number): Promise<string> {
+  const claims = { t: 'confirm', k: confirmation.kind, s: confirmation.subject, h: confirmation.holder, exp: now + CONFIRMATION_MS }
+  const payload = base64url(new TextEncoder().encode(JSON.stringify(claims)))
+  return `${payload}.${base64url(await hmac(secret, payload))}`
+}
+
+/** What a confirmation token confirms, or null if it is forged, edited, expired or not one. */
+export async function readConfirmation(token: unknown, secret: string, now: number): Promise<Confirmation | null> {
+  if (!secret || typeof token !== 'string') return null
+  const [payload, mac] = token.split('.')
+  if (!payload || !mac) return null
+  try {
+    const key = await hmacKey(secret)
+    const valid = await crypto.subtle.verify('HMAC', key, fromBase64url(mac), new TextEncoder().encode(payload))
+    if (!valid) return null
+    const claims = JSON.parse(new TextDecoder().decode(fromBase64url(payload)))
+    if (claims.t !== 'confirm' || typeof claims.exp !== 'number' || claims.exp <= now) return null
+    if (typeof claims.k !== 'string' || typeof claims.s !== 'string' || typeof claims.h !== 'string') return null
+    return { kind: claims.k, subject: claims.s, holder: claims.h }
   } catch {
     return null
   }

@@ -14,11 +14,14 @@
  */
 
 import { isAddress } from './base58.ts'
-import { challengeMessage, randomNonce, readSession, signSession, verifySignature } from './session.ts'
+import {
+  challengeMessage, randomNonce, readConfirmation, readSession, signConfirmation, signSession, verifySignature,
+} from './session.ts'
+import { R3_INTENTS, actionRisk, entry, type Decision } from './registry.ts'
 import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
-import { answerWithTools, proposeAction, proposeSend, toolsNamed } from './brain.ts'
+import { answerWithTools, forcedAnswer, proposeAction, proposeSend, toolsNamed } from './brain.ts'
 import { sentryFor, type WaitUntil } from './sentry.ts'
 import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
 import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.ts'
@@ -129,6 +132,8 @@ const DAILY_CAPS: Record<string, number> = {
   'send/confirm': 200,
   // A preview, the final build at Confirm, and a rebuild if it went stale.
   'send/build': 150,
+  // One per confirmed send, payment, message or reminder.
+  confirm: 200,
 }
 
 /** Pro and Judge questions and spoken answers: unlimited in practice, with an abuse ceiling. */
@@ -159,6 +164,7 @@ const ROUTES: Record<string, readonly string[]> = {
   'send/prepare': ['POST'],
   'send/confirm': ['POST'],
   'send/build': ['POST'],
+  confirm: ['POST'],
 }
 
 /** Who is asking: always a device, and a wallet once one has been connected. */
@@ -264,6 +270,7 @@ export default {
       if (route === 'send/prepare') return await sendPrepare(request, env, who)
       if (route === 'send/confirm') return await sendConfirm(request, env, who)
       if (route === 'send/build') return await sendBuild(request, env, who)
+      if (route === 'confirm') return await confirm(request, env, who)
       return await me(env, who)
     } catch (error) {
       // Whatever went wrong, the reply is a shape the app understands and
@@ -342,6 +349,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   let signingMs: number | undefined
   let sendAction: { to: unknown; amount: unknown; token: unknown } | null = null
   let quickAction: Record<string, unknown> | null = null
+  let decisions: Decision[] = []
   if (actionIntent) {
     // Never left to prose either: the action written down, and the app says the words.
     const result = await proposeAction({ callModel, base })
@@ -350,6 +358,14 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     tokensIn = result.input
     tokensOut = result.output
     quickAction = result.action
+    if (result.decision) decisions.push(result.decision)
+    // A message or a reminder is R3: it gets an id the app must confirm before firing it.
+    if (quickAction && R3_INTENTS.has(String(quickAction.intent))) {
+      const id = newReference()
+      await env.CAPS.put(`proposed:${id}`, JSON.stringify({ device, intent: quickAction.intent }), { expirationTtl: PROPOSAL_TTL_SECONDS })
+      quickAction = { ...quickAction, action_id: id }
+      text = forcedAnswer(quickAction, tokensIn, tokensOut)
+    }
   } else if (sendIntent) {
     // A send is never left to prose: one call, the send written down and nothing
     // else. The app writes every word the user sees and hears about it.
@@ -359,6 +375,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     tokensIn = result.input
     tokensOut = result.output
     sendAction = result.action
+    if (result.decision) decisions.push(result.decision)
   } else if (withTools) {
     const context = toolContext(env, who)
     const signing = body.signing as { short?: unknown; typed?: unknown } | undefined
@@ -391,6 +408,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       toolTimeout = result.timedOut
       toolMs = result.toolMs
       toolTimings = result.timings
+      decisions = result.decisions
     }
   } else {
     const upstream = await callModel(base)
@@ -440,6 +458,11 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       }
       : {}),
     ...(toolTimeout ? { tool_timeout: true } : {}),
+    // Every tool call the model made: the tool, its class, and what the registry decided.
+    ...(decisions.length > 0
+      ? { tool_decisions: decisions.map((d) => ({ tool: d.tool, class: d.class, decision: d.decision, ...(d.decision === 'rejected' ? { reason: d.reason } : {}) })) }
+      : {}),
+    ...(quickAction ? { action_class: actionRisk(quickAction.intent) } : {}),
     ...(saySegments > 1 ? { say_segments: saySegments } : {}),
     status,
     tokens_in: tokensIn,
@@ -1016,6 +1039,13 @@ async function sendBuild(request: Request, env: Env, who: Who): Promise<Response
   const target = await buildTarget(body, env, who)
   if ('error' in target) return target.error
   const final = body.final === true
+  // R3: the bytes for Seed Vault only with the user's confirmation of exactly this send or payment.
+  if (final) {
+    const confirmed = await readConfirmation(body.confirmation, env.SESSION_SECRET, clock.now())
+    const holds = confirmed !== null && confirmed.kind === target.kind && confirmed.subject === target.subject && confirmed.holder === who.key
+    logDecision(who, target.kind, holds ? 'allowed' : 'rejected', holds ? undefined : 'confirmation_required')
+    if (!holds) return json(403, { reason: 'confirmation_required', detail: 'Tap Confirm first.' })
+  }
   const built = await buildAndSimulate(env.RPC_URL, target.plan, target.facts)
   const record: BuildRecord = { sim_ok: built.simulation.ok, last_valid_block_height: built.last_valid_block_height, at: clock.now() }
   await env.CAPS.put(`built:${target.subject}`, JSON.stringify(record), { expirationTtl: SEND_TTL_SECONDS })
@@ -1122,6 +1152,54 @@ async function expired(env: Env, subject: string): Promise<boolean> {
   if (!record.last_valid_block_height) return false
   const height = await rpc(env.RPC_URL, 'getBlockHeight', [{ commitment: 'confirmed' }]).catch(() => null)
   return typeof height === 'number' && height > record.last_valid_block_height
+}
+
+/** One line per R3 decision: the action, its class, allowed or rejected, and why. */
+function logDecision(who: Who, action: string, decision: 'allowed' | 'rejected', reason?: string) {
+  log({ route: 'policy', device: who.device, tool: action, class: entry(action)?.risk ?? 'unknown', decision, ...(reason ? { reason } : {}) })
+}
+
+/** A proposed R3 phone action, kept until the app's guard fires it or ten minutes pass. */
+const PROPOSAL_TTL_SECONDS = 600
+
+/**
+ * The user confirmed an R3 action: a confirmation token for it, if it is one this
+ * worker prepared for this user and it is ready. A send or a payment must have been
+ * built with a passing simulation; a message or a reminder must be one the model
+ * proposed to this device, and the app's guard must have found it in the user's own
+ * words ("guard": "allowed"). A proposal is confirmed once.
+ */
+async function confirm(request: Request, env: Env, who: Who): Promise<Response> {
+  const body = await readJson(request)
+  const kind = String(body.kind ?? '')
+  const subject = String(body.subject ?? '')
+  const refuse = (reason: string) => {
+    logDecision(who, kind || 'unknown', 'rejected', reason)
+    return json(403, { reason: 'not_confirmable', detail: reason })
+  }
+  if (!subject) return refuse('no_subject')
+
+  if (kind === 'send' || kind === 'pay') {
+    if (!who.wallet) return refuse('session_required')
+    const stored = await env.CAPS.get(kind === 'send' ? `send:${subject}` : `quote:${subject}`)
+    if (!stored) return refuse('unknown')
+    const owner = kind === 'send' ? (JSON.parse(stored) as PreparedSend).from : (JSON.parse(stored) as Quote).pubkey
+    if (owner !== who.wallet) return refuse('not_yours')
+    const built = await env.CAPS.get(`built:${subject}`)
+    if (!built || !(JSON.parse(built) as BuildRecord).sim_ok) return refuse('not_simulated')
+  } else if (kind === 'message' || kind === 'reminder') {
+    const stored = await env.CAPS.get(`proposed:${subject}`)
+    if (!stored) return refuse('not_proposed')
+    const proposal = JSON.parse(stored) as { device: string; intent: string }
+    if (proposal.device !== who.device || proposal.intent !== kind) return refuse('not_proposed')
+    if (body.guard !== 'allowed') return refuse('guard_not_passed')
+    await env.CAPS.delete(`proposed:${subject}`)
+  } else {
+    return refuse('not_r3')
+  }
+  const token = await signConfirmation({ kind, subject, holder: who.key }, env.SESSION_SECRET, clock.now())
+  logDecision(who, kind, 'allowed')
+  return json(200, { confirmation: token })
 }
 
 /** The user signed; did it land as prepared? 409 while it is not confirmed yet. */

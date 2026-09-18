@@ -121,10 +121,20 @@ transfer is shown in Seed Vault, and only you can approve it there. A recipient 
 ever comes from your own words, never from the screen, and more than a quarter of a
 balance has to be asked for twice.
 
-8. **Skills, only when you tap Get more or Install** — the phone downloads the list
-   and the skill's text from GitHub. Nothing about you goes with it: no install id,
-   no wallet, no screen. A skill itself is text on the phone; it reads nothing and
-   sends nothing.
+**Checked before you sign.** Every send and every Pro payment is built by Heylana's
+server exactly as it will be signed, then run through Solana's own simulation on the
+network it will land on. The strip shows what it will do — from, to (and who that is),
+amount, token, network fee, any account it opens, the network — and **Simulation
+passed** before Confirm can be tapped. If the simulation fails, Heylana says why in
+plain words ("Not enough USDC.", "The recipient's USDC account needs creating, fee
+0.002 SOL, and there isn't enough SOL for it.", "This is for mainnet-beta, but Heylana
+is on devnet.") and the wallet never opens. The phone also checks that what it hands
+Seed Vault is exactly the transfer you confirmed. Afterwards Heylana says what happened:
+sent, with its signature; rejected in the wallet; expired before signing; not confirmed
+yet (it never sends a second copy); or not found — check your wallet.
+
+8. **Skills** — nothing. The public list of more skills is on the roadmap and is
+   never downloaded; the built-in ones are text inside the app.
 
 9. **Crash reports, if turned on in the build** — when the app or Heylana's server
    crashes, what went wrong goes to **Sentry**: the error, the app version and the
@@ -135,6 +145,32 @@ Never: the screen never goes to Deepgram or Google's voice. No API key is ever s
 on the phone. What Heylana reads off the screen is used for one request and then
 dropped — never logged, never saved. The hidden "use my own key" setting is the
 one exception to (1): questions go straight to Anthropic on a key you typed in.
+
+## What Heylana may do: the tool registry
+
+Every tool the model can be offered, and every action Heylana can take, is one entry in
+the server's registry (`worker/src/registry.ts`): a name, a version, a JSON schema and a
+risk class. The model proposes; the registry decides; the phone's own checks (the send
+and action guards) come first, and the registry is the second. Unknown tools, tools not
+offered for the question, and arguments that do not fit their schema — an extra field
+included — are rejected, and every decision is logged with the tool and its class.
+
+| Class | Meaning | Entries |
+|-------|---------|---------|
+| R0 | Reads public data | get_price, explain_address, resolve_name |
+| R1 | Reads your own data | get_balances, recent_activity |
+| R2 | Prepares, no side effect; or a phone action done in front of you | prepare_send, propose_send, propose_action (alarm, timer, apps, pages, search, music, camera, settings), build_transfer (the preview and its simulation) |
+| R3 | A side effect that needs your confirmation | send, pay (the bytes for Seed Vault, only after Confirm or Pay), message, reminder (only after the phone's guard found every part in your words) |
+| R4 | Never | sign_transaction, sign_message, submit_transaction, export_seed_phrase, reveal_private_key |
+
+An R3 action needs a confirmation token from the server, issued only when the app reports
+you confirmed it — Confirm on the strip, Pay on Go Pro, or the phone's guard firing a text
+or a reminder the model proposed — and only for something the server itself prepared for
+you: a send or payment whose simulation passed, or an action it proposed to this phone.
+A token is good for five minutes and one thing. No model tool is R3 or R4. (The technical
+blueprint puts transfers in a separate R4 "high impact" class; here R4 means never, and
+transfers are R3 with the strictest confirmation — a passing simulation, the strip, and
+the wallet's own screen.)
 
 ## Architecture in ten lines
 

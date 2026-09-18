@@ -121,8 +121,22 @@ async function preparedSend(e: Env, session: string, to = FRIEND, amount = '0.05
 }
 
 async function build(e: Env, session: string, body: Record<string, unknown>) {
-  const res = await worker.fetch(req('/send/build', { cluster: 'devnet', ...body }, session), e)
+  // A final build is R3: it takes the confirmation the app gets when the user taps Confirm.
+  let confirmation: string | undefined
+  if (body.final === true) {
+    const kind = body.id ? 'send' : 'pay'
+    const confirmed = await worker.fetch(req('/confirm', { kind, subject: body.id ?? body.reference }, session), e)
+    confirmation = confirmed.ok ? (await confirmed.json()).confirmation : undefined
+  }
+  const res = await worker.fetch(req('/send/build', { cluster: 'devnet', ...body, ...(confirmation ? { confirmation } : {}) }, session), e)
   return { status: res.status, body: await res.json() }
+}
+
+/** A preview first, as the strip does; then the final build with its confirmation. */
+async function previewThenFinal(e: Env, session: string, body: Record<string, unknown>) {
+  const preview = await build(e, session, body)
+  const final = await build(e, session, { ...body, final: true })
+  return { preview, final }
 }
 
 const keysOf = (b64: string) => {
@@ -194,9 +208,10 @@ test('not enough USDC: plain words, and no transaction even when final is asked'
   chain.balances[pubkey] = '30000'
   const id = await preparedSend(e, session)
   chain.simulations = [{ err: { InstructionError: [1, { Custom: 1 }] }, logs: ['Program log: Error: insufficient funds'] }]
-  const { body } = await build(e, session, { id, final: true })
-  assert.deepEqual(body.simulation, { ok: false, reason: 'not_enough_token', words: 'Not enough USDC. You have 0.03.' })
-  assert.equal(body.transaction, undefined)
+  const { preview, final } = await previewThenFinal(e, session, { id })
+  assert.deepEqual(preview.body.simulation, { ok: false, reason: 'not_enough_token', words: 'Not enough USDC. You have 0.03.' })
+  assert.equal(final.status, 403, 'a send that failed simulation cannot be confirmed')
+  assert.equal(final.body.transaction, undefined)
 })
 
 test("the recipient's account needs creating and there is no SOL for it", async () => {
@@ -206,10 +221,10 @@ test("the recipient's account needs creating and there is no SOL for it", async 
   chain.recipientHasAccount = false
   const id = await preparedSend(e, session)
   chain.simulations = [{ err: { InstructionError: [0, { Custom: 1 }] }, logs: ['Transfer: insufficient lamports 1000, need 2039280'] }]
-  const { body } = await build(e, session, { id, final: true })
-  assert.equal(body.simulation.reason, 'recipient_account_needs_sol')
-  assert.equal(body.simulation.words, "The recipient's USDC account needs creating, fee 0.00203928 SOL, and there isn't enough SOL for it.")
-  assert.equal(body.transaction, undefined)
+  const { preview, final } = await previewThenFinal(e, session, { id })
+  assert.equal(preview.body.simulation.reason, 'recipient_account_needs_sol')
+  assert.equal(preview.body.simulation.words, "The recipient's USDC account needs creating, fee 0.00203928 SOL, and there isn't enough SOL for it.")
+  assert.equal(final.body.transaction, undefined)
 })
 
 test('not enough SOL for a SOL send', async () => {
@@ -238,10 +253,10 @@ test('a simulation that cannot be run is a failure, never a pass', async () => {
   chain.balances[pubkey] = '5000000'
   const id = await preparedSend(e, session)
   chain.simulateThrows = true
-  const { body } = await build(e, session, { id, final: true })
-  assert.equal(body.simulation.ok, false)
-  assert.equal(body.simulation.reason, 'simulation_unavailable')
-  assert.equal(body.transaction, undefined)
+  const { preview, final } = await previewThenFinal(e, session, { id })
+  assert.equal(preview.body.simulation.ok, false)
+  assert.equal(preview.body.simulation.reason, 'simulation_unavailable')
+  assert.equal(final.body.transaction, undefined)
 })
 
 test('an unexplained program error is named, with no log line or address in it', async () => {
@@ -289,16 +304,17 @@ test('a Pro payment is built and simulated from its quote', async () => {
   const { pubkey, session } = await connected(e)
   chain.balances[pubkey] = '50000'
   const quote = await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, session), e)).json()
-  const { body } = await build(e, session, { reference: quote.reference, final: true })
+  const { final: { body } } = await previewThenFinal(e, session, { reference: quote.reference })
   assert.equal(body.kind, 'pay')
   assert.equal(body.preview.to_label, 'Heylana, for 30 days of Pro')
   assert.equal(body.preview.amount, '0.1')
   assert.ok(keysOf(body.transaction).includes(quote.reference))
 
   chain.simulations = [{ err: { InstructionError: [1, { Custom: 1 }] }, logs: [] }]
-  const short = await build(e, session, { reference: quote.reference, final: true })
-  assert.deepEqual(short.body.simulation, { ok: false, reason: 'not_enough_token', words: 'Not enough USDC. You have 0.05.' })
-  assert.equal(short.body.transaction, undefined)
+  const short = await previewThenFinal(e, session, { reference: quote.reference })
+  assert.deepEqual(short.preview.body.simulation, { ok: false, reason: 'not_enough_token', words: 'Not enough USDC. You have 0.05.' })
+  assert.equal(short.final.status, 403)
+  assert.equal(short.final.body.transaction, undefined)
 })
 
 test("someone else's send or quote is not built", async () => {
@@ -318,7 +334,7 @@ test('a send whose blockhash ran out without landing is expired, not pending', a
   const { pubkey, session } = await connected(e)
   chain.balances[pubkey] = '5000000'
   const id = await preparedSend(e, session)
-  await build(e, session, { id, final: true })
+  await previewThenFinal(e, session, { id })
   chain.blockHeight = 120
   assert.equal((await worker.fetch(req('/send/confirm', { id }, session), e)).status, 409, 'still good: pending')
   chain.blockHeight = 151
@@ -332,7 +348,7 @@ test('a send the wallet gave no signature for is found by its reference, and cou
   const { pubkey, session } = await connected(e)
   chain.balances[pubkey] = '5000000'
   const id = await preparedSend(e, session)
-  await build(e, session, { id, final: true })
+  await previewThenFinal(e, session, { id })
   chain.tx = landedTokenTx(pubkey, id)
   chain.signatures[id] = [{ signature: SIG, blockTime: SEPT / 1000, err: null }]
   const found = await worker.fetch(req('/send/confirm', { id }, session), e)
@@ -347,7 +363,7 @@ test('a Pro payment whose blockhash ran out is expired', async () => {
   const { pubkey, session } = await connected(e)
   chain.balances[pubkey] = '500000'
   const quote = await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, session), e)).json()
-  await build(e, session, { reference: quote.reference, final: true })
+  await previewThenFinal(e, session, { reference: quote.reference })
   chain.blockHeight = 151
   const res = await worker.fetch(req('/pay/confirm', { reference: quote.reference }, session), e)
   assert.equal(res.status, 410)

@@ -119,14 +119,49 @@ class WalletApi(private val settings: HeylanaSettings) {
      * for the unsigned transaction too, which only comes back if the simulation passed.
      * Refused 409 wrong_cluster when the worker is on another cluster.
      */
-    suspend fun build(id: String?, reference: String?, cluster: Cluster, final: Boolean): Answer<BuiltTransfer> =
+    suspend fun build(
+        id: String?,
+        reference: String?,
+        cluster: Cluster,
+        final: Boolean,
+        confirmation: String? = null
+    ): Answer<BuiltTransfer> =
         post(
             "send/build",
             JSONObject().put("cluster", cluster.id).put("final", final).apply {
                 if (id != null) put("id", id)
                 if (reference != null) put("reference", reference)
+                if (confirmation != null) put("confirmation", confirmation)
             }
         ) { builtOf(it) }
+
+    /**
+     * The user confirmed an R3 action — Confirm on the strip for a send ([kind] "send",
+     * [subject] its id), Pay for Pro ("pay", the quote's reference), or the app's guard
+     * firing a message or a reminder the model proposed (its action id, with [guardPassed]).
+     * The worker answers with a short-lived confirmation token, or refuses (403) if it
+     * never prepared this for this user.
+     */
+    suspend fun confirmation(kind: String, subject: String, guardPassed: Boolean = false): Answer<String> =
+        post(
+            "confirm",
+            JSONObject().put("kind", kind).put("subject", subject).apply { if (guardPassed) put("guard", "allowed") }
+        ) { it.getString("confirmation") }
+
+    /** The final build of an R3 transfer: the user's confirmation first, then the bytes. */
+    suspend fun confirmedBuild(kind: String, subject: String, cluster: Cluster): Answer<BuiltTransfer> =
+        when (val token = confirmation(kind, subject)) {
+            is Answer.Ok -> build(
+                id = subject.takeIf { kind == "send" },
+                reference = subject.takeIf { kind == "pay" },
+                cluster = cluster,
+                final = true,
+                confirmation = token.value
+            )
+            // The worker's reason is a code word; the user is told in plain words.
+            is Answer.Refused -> Answer.Refused(token.code, token.reason, NOT_CONFIRMED)
+            is Answer.Unreachable -> token
+        }
 
     /** Answers Refused(409, "not_confirmed") until the chain has confirmed it. */
     /** Without [signature], the worker looks the payment up by its reference. */
@@ -188,6 +223,11 @@ class WalletApi(private val settings: HeylanaSettings) {
         post("send/confirm", JSONObject().put("id", id).apply { if (signature != null) put("signature", signature) }) {
             it.optString("signature")
         }
+
+    companion object {
+        /** When the worker would not confirm an R3 action, the wallet is not opened. */
+        const val NOT_CONFIRMED = "I couldn't confirm that with Heylana's server, so I didn't open the wallet."
+    }
 
     private fun builtOf(json: JSONObject): BuiltTransfer {
         val p = json.getJSONObject("preview")

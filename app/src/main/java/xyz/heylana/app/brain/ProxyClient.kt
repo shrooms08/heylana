@@ -41,7 +41,9 @@ sealed interface BrainReply {
          */
         val segments: List<SaySegment> = emptyList(),
         /** The model named a quick action but left a part out: the one question to ask for it. */
-        val clarify: String? = null
+        val clarify: String? = null,
+        /** The worker's id for an R3 action it proposed (a message, a reminder), confirmed before it fires. */
+        val quickId: String? = null
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -474,6 +476,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         lastClarify = null
         val quick = readQuick(json)
         val clarify = lastClarify
+        val quickId = json.optJSONObject("action")?.optString("action_id")?.takeIf { it.isNotBlank() }
         val task = readTask(json)
         val extraChars = text.length - parsed.objectText.length
         if (extraChars > 0) HeylanaLog.state("reply: text outside the json chars=$extraChars dropped")
@@ -485,7 +488,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val segments = parsed.segments.map { it.copy(text = AddressText.shorten(it.text)) }
         // One piece keeps point_at as it always did; segments carry their own.
         val pointAt = if (parsed.segments.size <= 1) parsed.segments.firstOrNull()?.pointAt ?: readPointAt(json) else null
-        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments, clarify))
+        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments, clarify, quickId))
     }
 
     /**

@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import xyz.heylana.app.HeylanaLog
+import xyz.heylana.app.actions.ConfirmGate
 import xyz.heylana.app.actions.QuickAction
 import xyz.heylana.app.actions.QuickActionRunner
 import xyz.heylana.app.actions.QuickActions
@@ -44,6 +45,7 @@ class AppChat(
     private val brain = ProxyClient(settings)
     private val memory = Conversation()
     private val runner = QuickActionRunner(context)
+    private val wallet = xyz.heylana.app.wallet.WalletApi(settings)
 
     val exchanges = mutableStateListOf<Exchange>()
     var thinking by mutableStateOf(false)
@@ -111,7 +113,7 @@ class AppChat(
                 val quick = reply.quick
                 val clarify = reply.clarify
                 when {
-                    quick != null -> run(quick, question)
+                    quick != null -> run(quick, question, reply.quickId)
                     clarify != null -> {
                         pendingClarify = question
                         HeylanaLog.state("app: clarify asked")
@@ -124,16 +126,24 @@ class AppChat(
         }
     }
 
-    private fun run(action: QuickAction, question: String): String = when (val verdict = QuickGuard.check(action, question)) {
-        is QuickGuard.Verdict.Refused -> {
-            HeylanaLog.state("action: guard verdict=refused intent=${action.intent} reason=${verdict.reason}")
-            verdict.line
+    private suspend fun run(action: QuickAction, question: String, actionId: String?): String =
+        when (val verdict = QuickGuard.check(action, question)) {
+            is QuickGuard.Verdict.Refused -> {
+                HeylanaLog.state("action: guard verdict=refused intent=${action.intent} reason=${verdict.reason}")
+                verdict.line
+            }
+            is QuickGuard.Verdict.Allowed -> {
+                HeylanaLog.state("action: guard verdict=allowed ${QuickLog.describe(verdict.action)}")
+                // A message or a reminder (R3) fires only once the worker confirms it proposed it.
+                when (val decision = ConfirmGate.check(
+                    verdict.action.intent, actionId, settings.useOwnKey,
+                    confirm = { kind, subject -> wallet.confirmation(kind, subject, guardPassed = true) }
+                )) {
+                    is ConfirmGate.Decision.Fire -> runner.run(verdict.action).line
+                    is ConfirmGate.Decision.Hold -> decision.line
+                }
+            }
         }
-        is QuickGuard.Verdict.Allowed -> {
-            HeylanaLog.state("action: guard verdict=allowed ${QuickLog.describe(verdict.action)}")
-            runner.run(verdict.action).line
-        }
-    }
 
     /** A line of Heylana's own (not an answer from the model): shown in the strip, and said. */
     fun note(line: String) {

@@ -9,6 +9,7 @@
 import { isAddress } from './base58.ts'
 import { decimalToUnits, mintInfo } from './pay.ts'
 import { resolveName } from './names.ts'
+import { LOOKUP_TOOLS } from './registry.ts'
 import {
   BPF_UPGRADEABLE_LOADER,
   COMPUTE_BUDGET_PROGRAM,
@@ -44,52 +45,11 @@ export interface ToolContext {
   now: () => number
 }
 
-const ADDRESS = { type: 'string', description: 'A Solana address' }
-
-/** Sent to the model only when Solana knowledge is loaded. Kept short: every word is paid for. */
-export const TOOL_DEFINITIONS = [
-  {
-    name: 'get_balances',
-    description: "SOL, USDC, SKR and the top 5 other tokens a wallet holds, with USD values. Omit wallet for the user's connected wallet.",
-    input_schema: { type: 'object', properties: { wallet: ADDRESS } },
-  },
-  {
-    name: 'get_price',
-    description: 'The current USD price of a token, by symbol (SOL, USDC, SKR, JUP) or mint address.',
-    input_schema: { type: 'object', properties: { symbol_or_mint: { type: 'string' } }, required: ['symbol_or_mint'] },
-  },
-  {
-    name: 'explain_address',
-    description: 'What a Solana address is (wallet, token mint, program, token account), its known name, how old it is and how many transactions it has.',
-    input_schema: { type: 'object', properties: { address: ADDRESS }, required: ['address'] },
-  },
-  {
-    name: 'recent_activity',
-    description: "A wallet's latest transactions as one-line summaries. Omit wallet for the user's.",
-    input_schema: {
-      type: 'object',
-      properties: { wallet: ADDRESS, n: { type: 'integer', minimum: 1, maximum: 5 } },
-    },
-  },
-  {
-    name: 'resolve_name',
-    description: 'The address a .skr or .sol name belongs to.',
-    input_schema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
-  },
-  {
-    name: 'prepare_send',
-    description: 'Checks a send the user asked for: resolves the recipient, the fee, and whether a token account must be created. Builds and signs nothing.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        to: { type: 'string', description: 'Address, .skr or .sol name, exactly as the user said it' },
-        amount: { type: 'number' },
-        token: { type: 'string', enum: ['SOL', 'USDC', 'SKR'] },
-      },
-      required: ['to', 'amount', 'token'],
-    },
-  },
-]
+/**
+ * Sent to the model only when Solana knowledge is loaded. Kept short: every word is paid
+ * for. The definitions, their schemas and their risk classes live in the registry.
+ */
+export const TOOL_DEFINITIONS = LOOKUP_TOOLS
 
 type Failure = { error: string; detail?: string }
 

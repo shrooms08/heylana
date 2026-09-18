@@ -10,6 +10,7 @@
  * answers with what it has.
  */
 import { TOOL_DEFINITIONS, runTool, type ToolContext } from './tools.ts'
+import { authorize, definition, type Decision } from './registry.ts'
 
 /**
  * The tools a request offers: all of them, or only the ones named. A sign
@@ -43,6 +44,8 @@ export interface LoopResult {
   /** Time spent in lookups, added up, and each one as "name:123ms". */
   toolMs: number
   timings: string[]
+  /** What the registry decided for every tool call the model made. */
+  decisions: Decision[]
 }
 
 const LIMIT_REACHED =
@@ -70,6 +73,8 @@ export async function answerWithTools(options: {
   let timedOut = false
   const toolCalls: string[] = []
   const timings: string[] = []
+  const decisions: Decision[] = []
+  const offeredNames = offered.map((tool) => tool.name)
   let toolMs = 0
   const outOfTime = () => now() - started >= toolLimits.ms || controller.signal.aborted
 
@@ -93,7 +98,7 @@ export async function answerWithTools(options: {
       if (!res.ok || !reply || finalRound || reply.stop_reason !== 'tool_use' || uses.length === 0) {
         const usage = { input_tokens: input, output_tokens: output, tool_ms: toolMs, tools: timings.join(',') }
         const body = reply ? JSON.stringify({ ...reply, usage }) : text
-        return { status: res.status, body, input, output, rounds, toolCalls, timedOut, toolMs, timings }
+        return { status: res.status, body, input, output, rounds, toolCalls, timedOut, toolMs, timings, decisions }
       }
 
       // Every tool_use needs a tool_result, run or not. The allowance is handed
@@ -101,6 +106,15 @@ export async function answerWithTools(options: {
       const allowance = Math.max(0, toolLimits.calls - toolCalls.length)
       const results = await Promise.all(
         uses.map(async (use: any, index: number) => {
+          // The registry first: unknown, not offered, R3/R4, or arguments off the schema never run.
+          const decision = authorize(use.name, use.input, offeredNames)
+          decisions.push(decision)
+          if (decision.decision === 'rejected') {
+            return {
+              type: 'tool_result', tool_use_id: use.id, is_error: true,
+              content: JSON.stringify({ error: 'rejected', reason: decision.reason }),
+            }
+          }
           if (index >= allowance || outOfTime()) {
             return { type: 'tool_result', tool_use_id: use.id, content: LIMIT_REACHED, is_error: true }
           }
@@ -149,19 +163,7 @@ function withDeadline<T>(work: Promise<T>, ms: number, late: T): Promise<T> {
  * back, so nothing the model says about a send ever reaches the user — the app
  * writes the confirmation, and /send/prepare does the checking.
  */
-export const PROPOSE_SEND = {
-  name: 'propose_send',
-  description: 'Write down the send the user asked for, exactly as they said it. Heylana checks it and the user confirms and signs it.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      to: { type: 'string', description: 'The recipient exactly as the user wrote or said it: an address, or a .skr or .sol name' },
-      amount: { type: ['number', 'null'], description: 'The amount; null only if the user said everything or all' },
-      token: { type: 'string', enum: ['SOL', 'USDC', 'SKR'] },
-    },
-    required: ['to', 'amount', 'token'],
-  },
-}
+export const PROPOSE_SEND = definition('propose_send')
 
 export interface SendProposal {
   status: number
@@ -169,6 +171,7 @@ export interface SendProposal {
   input: number
   output: number
   action: { type: 'send'; to: string; amount: unknown; token: unknown } | null
+  decision: Decision | null
 }
 
 export async function proposeSend(options: {
@@ -184,12 +187,14 @@ export async function proposeSend(options: {
   const reply = parse(text)
   const input = Number(reply?.usage?.input_tokens ?? 0)
   const output = Number(reply?.usage?.output_tokens ?? 0)
-  if (!res.ok || !reply) return { status: res.status, body: text, input, output, action: null }
+  if (!res.ok || !reply) return { status: res.status, body: text, input, output, action: null, decision: null }
 
   const use = (Array.isArray(reply.content) ? reply.content : []).find(
     (block: any) => block?.type === 'tool_use' && block?.name === PROPOSE_SEND.name,
   )
-  const action = use && typeof use.input?.to === 'string' && use.input.to.trim()
+  // Written down exactly as the schema says, or not at all.
+  const decision = use ? authorize(use.name, use.input, [PROPOSE_SEND.name]) : null
+  const action = use && decision?.decision === 'allowed' && typeof use.input?.to === 'string' && use.input.to.trim()
     ? { type: 'send' as const, to: use.input.to, amount: use.input.amount ?? null, token: use.input.token }
     : null
   // The shape every other answer has, with no words in it: the app writes them.
@@ -201,62 +206,18 @@ export async function proposeSend(options: {
     content: [{ type: 'text', text: JSON.stringify(answer) }],
     usage: { input_tokens: input, output_tokens: output, tool_ms: 0, tools: '' },
   })
-  return { status: res.status, body, input, output, action }
+  return { status: res.status, body, input, output, action, decision }
 }
 
 // ------------------------------------------------------------- quick actions
-
-const NULLABLE_STRING = { type: ['string', 'null'] }
-const NULLABLE_INTEGER = { type: ['integer', 'null'] }
 
 /**
  * The only tool offered when the app says the question is a quick action, and the
  * model has to use it. Like a send: the model writes down what was asked, no prose
  * comes back, the app checks every part against the user's own words and writes the
- * line Heylana says.
+ * line Heylana says. Its schema is the registry's.
  */
-export const PROPOSE_ACTION = {
-  name: 'propose_action',
-  description:
-    "Write down the phone action the user asked for, exactly as they said it. The phone's own app does it; " +
-    'fill only the fields the action uses and leave the rest null.',
-  input_schema: {
-    type: 'object',
-    properties: {
-      intent: {
-        type: 'string',
-        enum: [
-          'alarm', 'timer', 'open_app', 'open_url', 'navigate', 'dial', 'youtube_search', 'spotify_play',
-          'media_control', 'message', 'reminder', 'flashlight', 'camera', 'selfie', 'web_search', 'settings',
-        ],
-      },
-      hour: {
-        ...NULLABLE_INTEGER,
-        description: 'alarm, reminder: 0-23. A bare hour with no pm, evening, afternoon or tonight is the morning: "7 tomorrow" is 7.',
-      },
-      minutes: { ...NULLABLE_INTEGER, description: 'alarm, reminder: 0-59, 0 if not said' },
-      message: { ...NULLABLE_STRING, description: 'alarm only: a label, if the user gave one. For a text message the words go in text.' },
-      seconds: { ...NULLABLE_INTEGER, description: 'timer: the whole length in seconds' },
-      app: { ...NULLABLE_STRING, description: 'open_app: the app name as the user said it' },
-      url: { ...NULLABLE_STRING, description: 'open_url: the web address as the user said it' },
-      query: {
-        ...NULLABLE_STRING,
-        description: 'navigate: the place; youtube_search, web_search: what to search for; spotify_play: the song, artist, playlist or genre. As the user said it.',
-      },
-      number: { ...NULLABLE_STRING, description: 'dial, message: the digits exactly as the user said them, no country code added' },
-      name: { ...NULLABLE_STRING, description: 'dial, message: the contact name as the user said it, if no number' },
-      text: { ...NULLABLE_STRING, description: 'message: the words to send; reminder: what to be reminded of. As the user said it.' },
-      command: { type: ['string', 'null'], enum: ['play', 'pause', 'next', 'previous', null], description: 'media_control' },
-      state: { type: ['string', 'null'], enum: ['on', 'off', null], description: 'flashlight' },
-      page: {
-        type: ['string', 'null'],
-        enum: ['wifi', 'bluetooth', 'display', 'sound', 'battery', 'accessibility', null],
-        description: 'settings: which page',
-      },
-    },
-    required: ['intent'],
-  },
-}
+export const PROPOSE_ACTION = definition('propose_action')
 
 const ACTION_FIELDS = [
   'hour', 'minutes', 'message', 'seconds', 'app', 'url', 'query', 'number', 'name', 'text', 'command', 'state', 'page',
@@ -268,6 +229,7 @@ export interface ActionProposal {
   input: number
   output: number
   action: Record<string, unknown> | null
+  decision: Decision | null
 }
 
 export async function proposeAction(options: {
@@ -283,27 +245,31 @@ export async function proposeAction(options: {
   const reply = parse(text)
   const input = Number(reply?.usage?.input_tokens ?? 0)
   const output = Number(reply?.usage?.output_tokens ?? 0)
-  if (!res.ok || !reply) return { status: res.status, body: text, input, output, action: null }
+  if (!res.ok || !reply) return { status: res.status, body: text, input, output, action: null, decision: null }
 
   const use = (Array.isArray(reply.content) ? reply.content : []).find(
     (block: any) => block?.type === 'tool_use' && block?.name === PROPOSE_ACTION.name,
   )
+  const decision = use ? authorize(use.name, use.input, [PROPOSE_ACTION.name]) : null
   let action: Record<string, unknown> | null = null
-  if (use && typeof use.input?.intent === 'string') {
+  if (use && decision?.decision === 'allowed' && typeof use.input?.intent === 'string') {
     action = { type: 'intent', intent: use.input.intent }
     for (const field of ACTION_FIELDS) {
       const value = use.input[field]
       if (value !== null && value !== undefined && value !== '') action[field] = value
     }
   }
-  // The shape every other answer has, with no words in it: the app writes them.
+  return { status: res.status, body: forcedAnswer(action, input, output), input, output, action, decision }
+}
+
+/** The shape every other answer has, with no words in it: the app writes them. */
+export function forcedAnswer(action: Record<string, unknown> | null, input: number, output: number): string {
   const answer = { say: '', point_at: null, task: null, action }
-  const body = JSON.stringify({
+  return JSON.stringify({
     type: 'message',
     role: 'assistant',
     stop_reason: 'end_turn',
     content: [{ type: 'text', text: JSON.stringify(answer) }],
     usage: { input_tokens: input, output_tokens: output, tool_ms: 0, tools: '' },
   })
-  return { status: res.status, body, input, output, action }
 }

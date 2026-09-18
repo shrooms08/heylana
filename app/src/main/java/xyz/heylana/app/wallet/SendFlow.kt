@@ -45,7 +45,8 @@ class SendFlow(
 ) {
 
     constructor(api: WalletApi, seedVault: SeedVault, stage: (SendStage) -> Unit = {}) : this(
-        build = { id, cluster -> api.build(id = id, reference = null, cluster = cluster, final = true) },
+        // Confirm was tapped: the worker's confirmation token first, then the bytes (R3).
+        build = { id, cluster -> api.confirmedBuild("send", id, cluster) },
         signAndSend = { transaction, cluster -> seedVault.pay(transaction, cluster) },
         confirm = { id, signature -> api.confirmSend(id, signature) },
         stage = stage

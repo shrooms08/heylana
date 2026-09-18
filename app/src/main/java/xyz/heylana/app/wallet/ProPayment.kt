@@ -27,7 +27,8 @@ class ProPayment(
 ) {
 
     constructor(api: WalletApi, seedVault: SeedVault) : this(
-        build = { reference, cluster -> api.build(id = null, reference = reference, cluster = cluster, final = true) },
+        // Pay was tapped: the worker's confirmation token first, then the bytes (R3).
+        build = { reference, cluster -> api.confirmedBuild("pay", reference, cluster) },
         signAndSend = { transaction, cluster -> seedVault.pay(transaction, cluster) },
         confirm = { reference, signature -> api.confirm(reference, signature) }
     )

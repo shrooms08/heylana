@@ -228,7 +228,10 @@ test('the catalogue: every new intent is offered, and a message logs neither its
   script = [actionUse({ intent: 'message', number: '0800 123 4567', text: "I'm on my way", command: null })]
   const res = await worker.fetch(ask({ mode: 'quick', intent: 'quick_action' }), env())
   const answer = JSON.parse((await res.json()).content[0].text)
-  assert.deepEqual(answer.action, { type: 'intent', intent: 'message', number: '0800 123 4567', text: "I'm on my way" })
+  // A message is R3: it comes back with an id the app must confirm before firing it.
+  const { action_id: id, ...rest } = answer.action
+  assert.deepEqual(rest, { type: 'intent', intent: 'message', number: '0800 123 4567', text: "I'm on my way" })
+  assert.match(id, /^[1-9A-HJ-NP-Za-km-z]{32,44}$/)
   const line = logs.find((l) => l.includes('"route":"chat"'))!
   assert.ok(line.includes('"quick_action":{"intent":"message"}'))
   assert.equal(line.includes('0800'), false)

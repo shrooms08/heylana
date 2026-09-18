@@ -65,6 +65,7 @@ import xyz.heylana.app.screen.TapWatch
 import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.skills.SkillStore
+import xyz.heylana.app.actions.ConfirmGate
 import xyz.heylana.app.actions.QuickAction
 import xyz.heylana.app.actions.QuickActions
 import xyz.heylana.app.actions.QuickActionRunner
@@ -592,7 +593,7 @@ class BuddyOverlayService : Service() {
                     }
                     val quick = reply.quick
                     if (quick != null) {
-                        handleQuick(quick, question)
+                        handleQuick(quick, question, actionId = reply.quickId)
                         return@launch
                     }
                     val clarify = reply.clarify
@@ -737,7 +738,7 @@ class BuddyOverlayService : Service() {
                 val action = QuickAction.of(fields)
                 HeylanaLog.state("action: raw debug intent=${action?.intent ?: "malformed"}")
                 // Never spoken: every voice is a /tts call now.
-                if (action != null) handleQuick(action, said, aloud = false)
+                if (action != null) handleQuick(action, said, aloud = false, debug = true)
             }
         }
         ContextCompat.registerReceiver(this, receiver, android.content.IntentFilter(DEBUG_QUICK_ACTION), ContextCompat.RECEIVER_EXPORTED)
@@ -753,17 +754,43 @@ class BuddyOverlayService : Service() {
     private data class LastQuick(val intent: String, val at: Long)
     private var lastQuick: LastQuick? = null
 
-    private fun handleQuick(action: QuickAction, question: String, aloud: Boolean = true) {
-        val outcome = when (val verdict = QuickGuard.check(action, question)) {
+    private fun handleQuick(
+        action: QuickAction,
+        question: String,
+        aloud: Boolean = true,
+        actionId: String? = null,
+        debug: Boolean = false
+    ) {
+        when (val verdict = QuickGuard.check(action, question)) {
             is QuickGuard.Verdict.Refused -> {
                 HeylanaLog.state("action: guard verdict=refused intent=${action.intent} reason=${verdict.reason}")
-                QuickActionRunner.Outcome(verdict.line, fired = false)
+                finishQuick(action, QuickActionRunner.Outcome(verdict.line, fired = false), aloud)
             }
             is QuickGuard.Verdict.Allowed -> {
                 HeylanaLog.state("action: guard verdict=allowed ${QuickLog.describe(verdict.action)}")
-                quickRunner.run(verdict.action)
+                if (!ConfirmGate.needsConfirmation(verdict.action.intent)) {
+                    finishQuick(action, quickRunner.run(verdict.action), aloud)
+                    return
+                }
+                // R3: the worker confirms it proposed this action before the phone's app is opened.
+                scope.launch {
+                    val decision = ConfirmGate.check(
+                        verdict.action.intent, actionId, settings.useOwnKey,
+                        confirm = { kind, subject -> walletApi.confirmation(kind, subject, guardPassed = true) },
+                        debug = debug && BuildConfig.DEBUG
+                    )
+                    val outcome = when (decision) {
+                        is ConfirmGate.Decision.Fire -> quickRunner.run(verdict.action)
+                        is ConfirmGate.Decision.Hold -> QuickActionRunner.Outcome(decision.line, fired = false)
+                    }
+                    finishQuick(action, outcome, aloud)
+                }
             }
         }
+    }
+
+    /** After an action fired, or was refused: the line, and the box out of the way. */
+    private fun finishQuick(action: QuickAction, outcome: QuickActionRunner.Outcome, aloud: Boolean) {
         if (outcome.fired) lastQuick = LastQuick(action.intent, System.currentTimeMillis())
         when {
             outcome.fired -> afterQuickAction(outcome.line, aloud)

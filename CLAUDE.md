@@ -1206,6 +1206,12 @@ deployed worker for testing, from the Seeker (driving the app) or directly:
 
 Every report states how many live calls were made, by kind (`/chat`, `/tts`, ears).
 
+**Claude Code never creates, edits or deletes the user's personal data on the phone** —
+contacts, messages, calendar events, photos, files. Test data goes in a stub or a throwaway
+account, never the operator's own. Any test artefact Claude Code does create (a draft, an
+event, a file) is removed before reporting, and the report says what was created and that
+it is gone.
+
 **A bug reported from the phone is reproduced before it is fixed, and proved after.**
 Reproduce it on the Seeker with the real model first — or say exactly why it cannot
 be reproduced — then fix it, then prove the fix on the Seeker with the real model

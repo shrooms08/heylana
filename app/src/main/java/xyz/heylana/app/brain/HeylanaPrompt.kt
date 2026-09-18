@@ -146,11 +146,14 @@ object HeylanaPrompt {
      * A question that needs no screen (small talk, a joke, general knowledge): no
      * listing is read or sent, only the recent conversation and, once, the name.
      */
-    fun chatMessage(question: String, history: String? = null, greeting: String? = null): String =
+    fun chatMessage(question: String, history: String? = null, greeting: String? = null, seed: String? = null): String =
         buildString {
             greeting?.let { append(it).append("\n\n") }
             history?.let { append(it).append("\n\n") }
-            append(NO_SCREEN).append("\n\nUser asks: ").append(question)
+            append(NO_SCREEN)
+            // A joke, a fun fact, a riddle: fresh each time, not the model's favourite.
+            seed?.let { append("\n\n").append(Variety.line(it)) }
+            append("\n\nUser asks: ").append(question)
         }
 
     /** Stands in for the listing on a chat question, so point_at has nothing to name. */

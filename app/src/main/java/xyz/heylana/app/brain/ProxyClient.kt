@@ -123,7 +123,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
             }
             HeylanaPrompt.signingMessage(screenText, question, found)
         } else if (route.skipsScreen) {
-            HeylanaPrompt.chatMessage(question, history, if (route.allowsGreeting) greeting else null)
+            val seed = if (Variety.wantsVariety(question)) Variety.seedWord() else null
+            // The seed is one of Heylana's own words, never anything the user said.
+            seed?.let { HeylanaLog.state("chat: variety seed=$it") }
+            HeylanaPrompt.chatMessage(question, history, if (route.allowsGreeting) greeting else null, seed)
         } else {
             HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching, walkThrough)
         }

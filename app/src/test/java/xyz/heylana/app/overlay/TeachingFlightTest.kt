@@ -101,3 +101,29 @@ class TeachingFlightTest {
         assertTrue(out[1] >= 0 && out[1] + disc <= 2400)
     }
 }
+
+class PlaceWindowTest {
+
+    @Test
+    fun `the whole window stays off the element - the Seeker's Swap step`() {
+        val out = IntArray(3)
+        // The Swap label, the window as measured (disc and strip), the Seeker's usable screen.
+        TeachingFlight.placeWindow(169, 1308, 258, 1359, 910, 617, 42, 1200, 2531, out)
+        val (x, y) = out[0] to out[1]
+        val clear = x + 910 <= 169 || x >= 258 || y + 617 <= 1308 || y >= 1359
+        assertTrue("window at $x,$y overlaps the element", clear)
+        assertTrue(x >= 0 && y >= 0 && x + 910 <= 1200 && y + 617 <= 2531)
+    }
+
+    @Test
+    fun `beside when the window fits, strip on the far side`() {
+        val out = IntArray(3)
+        // More room on the right: beside it on the right, strip further right.
+        TeachingFlight.placeWindow(200, 1000, 350, 1100, 700, 300, 20, 2000, 2400, out)
+        assertEquals(370, out[0])
+        assertEquals(0, out[2])
+        TeachingFlight.placeWindow(1300, 1000, 1400, 1100, 700, 300, 20, 2000, 2400, out)
+        assertEquals(580, out[0])
+        assertEquals(1, out[2])
+    }
+}

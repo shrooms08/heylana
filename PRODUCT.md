@@ -178,8 +178,10 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
   Spotify has to be installed and signed in.
 - **A selfie asks for the front camera**, but the camera app decides; some open on the back
   camera.
-- **Texting a name opens the contact picker** with the message written, since Heylana has
-  no access to contacts. A number goes straight to the conversation.
+- **Texting a name uses your contacts, on the phone.** The first time, Android asks whether
+  Heylana may read your contacts; after that "text Ada" opens Messages on Ada with the words
+  written. Contacts are read on the phone only, never sent anywhere. Two people who fit the
+  name equally get a question instead of a guess.
 - **Pause needs something playing.** The media keys go to whatever app is playing; with
   nothing playing Heylana says so.
 - **Directions show the place, not turn-by-turn.** The map app opens on what you

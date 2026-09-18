@@ -108,4 +108,49 @@ object TeachingFlight {
         val maxX = screenWidth - discSize - (if (stripOnLeft) 0 else stripWidth)
         put(centre.coerceIn(minX.coerceAtMost(maxX.coerceAtLeast(0)), maxX.coerceAtLeast(0)), y, stripOnLeft)
     }
+
+    /**
+     * Where Heylana's whole window — the disc and its strip, [windowWidth] by
+     * [windowHeight] — goes while it talks about the element at [left], [top], [right],
+     * [bottom]: beside it (the side with more room first), else under it, else over it,
+     * always on screen, and never over the element. Placing only the disc was not enough:
+     * the window around it is touchable, and where the disc sits inside it depends on the
+     * layout, so on the Seeker the disc landed on the Swap button and caught the very tap
+     * the step asked for. [out] gets the window's left and top, and 1 when the strip is on
+     * the disc's left (the disc at the window's right end, nearer the element), else 0.
+     */
+    fun placeWindow(
+        left: Int,
+        top: Int,
+        right: Int,
+        bottom: Int,
+        windowWidth: Int,
+        windowHeight: Int,
+        gap: Int,
+        screenWidth: Int,
+        screenHeight: Int,
+        out: IntArray
+    ) {
+        fun fits(x: Int, y: Int) = x >= 0 && y >= 0 && x + windowWidth <= screenWidth && y + windowHeight <= screenHeight
+        fun clear(x: Int, y: Int) = x + windowWidth <= left || x >= right || y + windowHeight <= top || y >= bottom
+        fun clampY(y: Int) = y.coerceIn(0, (screenHeight - windowHeight).coerceAtLeast(0))
+        fun clampX(x: Int) = x.coerceIn(0, (screenWidth - windowWidth).coerceAtLeast(0))
+        val middleY = clampY((top + bottom) / 2 - windowHeight / 2)
+        val centreX = clampX((left + right) / 2 - windowWidth / 2)
+        val rightFirst = screenWidth - right >= left
+        // x, y, strip on the left
+        val candidates = mutableListOf<Triple<Int, Int, Boolean>>()
+        val besideRight = Triple(right + gap, middleY, false)
+        val besideLeft = Triple(left - gap - windowWidth, middleY, true)
+        if (rightFirst) candidates += listOf(besideRight, besideLeft) else candidates += listOf(besideLeft, besideRight)
+        val stripOnLeft = (left + right) / 2 > screenWidth / 2
+        candidates += Triple(centreX, bottom + gap, stripOnLeft)
+        candidates += Triple(centreX, top - gap - windowHeight, stripOnLeft)
+        val chosen = candidates.firstOrNull { (x, y, _) -> fits(x, y) && clear(x, y) }
+            // Nowhere fully clear: under it, pushed on screen — still never on top if it can help it.
+            ?: Triple(centreX, clampY(bottom + gap), stripOnLeft)
+        out[0] = chosen.first
+        out[1] = chosen.second
+        if (out.size > 2) out[2] = if (chosen.third) 1 else 0
+    }
 }

@@ -78,6 +78,22 @@ data class ScreenSnapshot(
     fun node(id: Int?): ScreenNode? = id?.let { wanted -> nodes.firstOrNull { it.id == wanted } }
 
     /**
+     * What the user actually taps for [node]: itself if it is clickable, else the smallest
+     * clickable element that contains it — the Wallet's "Swap" is a label inside a card, and
+     * the card is what takes the tap. The step's ring and its tap rule both use this.
+     */
+    fun clickTarget(node: ScreenNode): ScreenNode {
+        if (node.clickable) return node
+        val boxes = nodes.map { intArrayOf(it.bounds.left, it.bounds.top, it.bounds.right, it.bounds.bottom) }
+        val index = ClickTarget.containing(
+            intArrayOf(node.bounds.left, node.bounds.top, node.bounds.right, node.bounds.bottom),
+            boxes,
+            nodes.map { it.clickable }
+        )
+        return index?.let { nodes[it] } ?: node
+    }
+
+    /**
      * The tappable things on screen, biggest first, as hints for the ears. Only
      * labels: no coordinates, no text the user cannot already see.
      */

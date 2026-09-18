@@ -988,6 +988,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     fun closePanel() {
         if (mode == Mode.DOCKED) return
+        // A teaching flight moved the disc out over the app: it flies home, not docks where it stands.
+        if (mode == Mode.HUD && teachHome != null) {
+            cancelTeachingFlight()
+            panel.releaseInput()
+            endTeaching()
+            return
+        }
         panel.meltStreak()
         panel.releaseInput()
         if (mode != Mode.COMPOSE) {
@@ -1192,20 +1199,32 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         panel.setVoiceMode(voice = false, showsText = true)
         showAnswer(text)
 
-        TeachingFlight.standBeside(
+        // The whole window — disc and strip, as they measure now with this sentence in —
+        // goes clear of the element, so a tap on it can never land on Heylana.
+        reorderBeside()
+        measureContainer()
+        TeachingFlight.placeWindow(
             target.left - usableLeft, target.top - usableTop,
             target.right - usableLeft, target.bottom - usableTop,
-            discSize,
+            measuredContainerWidth, measuredContainerHeight,
             dp(HeylanaTokens.SPACE_4_DP),
             usableWidth,
             usableHeight,
-            standAt,
-            stripWidth = panel.hudWidth
+            standAt
         )
-        // The strip goes where the placement put it: the far side from the element, with room.
-        panelOnLeft = standAt[2] == 1
-        reorderBeside()
-        flyArc(standAt[0], standAt[1], onArrived)
+        if (panelOnLeft != (standAt[2] == 1)) {
+            panelOnLeft = standAt[2] == 1
+            reorderBeside()
+            measureContainer()
+        }
+        // Where the disc has to be for [applyPosition] to put the window there.
+        val spriteX = standAt[0] + if (panelOnLeft) measuredContainerWidth - discSize else 0
+        val spriteY = standAt[1] + (measuredContainerHeight - discSize) / 2
+        HeylanaLog.state(
+            "teach: window at ${standAt[0] + usableLeft},${standAt[1] + usableTop} " +
+                "size=${measuredContainerWidth}x$measuredContainerHeight clear_of=${target.left},${target.top},${target.right},${target.bottom}"
+        )
+        flyArc(spriteX, spriteY, onArrived)
     }
 
     /** The disc's flight home at the end of a teaching answer: the same arc, then the strip melts. */

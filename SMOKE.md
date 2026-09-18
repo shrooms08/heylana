@@ -1,50 +1,34 @@
-# Smoke test — teaching waits for you, one voice, mic pre-roll, message
+# Smoke test — teaching continues, jokes vary, texting a contact
 
-For Minos, on the Seeker.
+For Minos, on the Seeker. **Claude Code already ran each of these live on the Seeker (18
+`/chat` calls); this is the final confirmation.**
 
-**Live calls this test spends: about 9 chat, 12 tts and 7 Deepgram listens** — the
-walk-through is one chat and one tts per step (3 or 4), the five holds are three chats ("turn
-it off" asks nothing) and five tts, and the message is one chat and one tts.
+**Live calls this test spends: about 7 chat, 8 tts** — two or three for the teaching session,
+three jokes, two texts.
 
 ## 0. Set up
 
-1. **Redeploy the worker**: `cd worker && npx wrangler deploy` (the action tool's wording
-   changed).
-2. Install this build, run `./scripts/a11y.sh`, open Heylana, **Start buddy**.
-3. On the computer: `adb logcat -s HeylanaState`.
+Install this build, run `./scripts/a11y.sh`, open Heylana, **Start buddy**.
 
-## 1. A teaching session that waits for you
+## 1. Teaching carries on past the first tap
 
 Open the **Wallet**. Tap the disc, type **teach me how to swap**, tap **ask**.
 
-Expected, on every step:
-- The disc flies to the thing to tap and stays there, ring breathing. **Nothing moves on by
-  itself**: wait 10 seconds without touching anything and it is still on the same step.
-- The line is spoken **to the end** — never cut off — and there is **no screech** at the end
-  of it or between steps.
-- **Tap the thing it points at.** Only then does the next step come (after the line, if it is
-  still being spoken).
-- At the swap screen Heylana says so and the disc flies back to its edge.
+Expected: step 1 points at Swap, and the disc and its words sit **clear of the Swap button**
+(below it). Tap **Swap**. The swap screen opens and, after the line, **step 2 comes** — the
+session does not end. Carry on or tap Done / say "stop"; the disc flies back to its edge.
+Never approve anything in Seed Vault.
 
-Logcat per step: `step: armed`, then `advance reason=click` (or `content_changed` when the
-screen really changed) — **no `advance` line before you tap**. Also `voice: queued length=…`
-and never two lines playing at once.
+## 2. Jokes vary
 
-## 2. Five short holds
+Stop and start the buddy (Heylana → Stop buddy → Start buddy) between each: tap the disc, type
+**tell me a joke**, three times. Expected: three different jokes.
 
-From the home screen, hold the disc, say it straight away as you press, let go:
+## 3. Texting a contact
 
-1. **"What's the time"**  2. **"Tell me a joke"**  3. **"Open the wallet"**
-4. **"Turn on the flashlight"**  5. **"Turn it off"**
+Tap the disc, type **text Ada I'm on my way**, tap **ask**.
 
-Expected: each understood first time, the first word included. Logcat per hold:
-`deepgram: pre-roll kept_ms=… clipped_ms=0 …`. If `silenced_at_hold=true` appears, send me
-that line: it would mean Android gave the microphone to the phone's own recogniser.
-
-## 3. The message
-
-Tap the disc, type **message 0800 123 4567 I'm on my way**, tap **ask**.
-
-Expected: Messages opens on 0800 123 4567 with the words typed in, first time. Nothing is
-sent; delete the draft. If it does not, send me the `action:` lines — they now say which
-part failed.
+Expected the first time: Android asks whether Heylana may read your contacts — **Allow**. (That
+first time Messages opens with the words, for you to pick Ada.) Ask again: Messages opens **on
+Ada** with "I'm on my way" typed in. Nothing is sent — clear the words before leaving.
+If two contacts fit "Ada" equally, Heylana asks which one.

@@ -49,6 +49,11 @@ class QuickActionRunner(private val context: Context) {
             }
         }
 
+        // A text to a name goes to that contact's number, found on the phone, once that is allowed.
+        if (action is QuickAction.Message && action.number == null && action.name != null) {
+            textContact(action, action.name)?.let { return it }
+        }
+
         // A reminder is saved straight into the calendar once that is allowed; the
         // calendar's own screen is the fallback, and what is asked for the first time.
         if (action is QuickAction.Reminder) {
@@ -137,6 +142,67 @@ class QuickActionRunner(private val context: Context) {
             HeylanaLog.state("action: calendar write failed error=${error::class.simpleName}")
             null
         }
+    }
+
+    /**
+     * "Text Ada": Ada's number from the phone's contacts, and Messages opened on her with the
+     * words written. Null means carry on as before — Messages with the words, for the user to
+     * pick her — because contacts are not allowed yet (asked for now, once), or nobody fits.
+     * Two people who fit equally is a question, not a guess. Only counts are logged.
+     */
+    private fun textContact(action: QuickAction.Message, name: String): Outcome? {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.READ_CONTACTS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            HeylanaLog.state("action: message to a name needs contacts, asking")
+            runCatching {
+                context.startActivity(
+                    Intent(context, ContactsPermissionActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            }
+            return null
+        }
+        val contacts = runCatching { phoneContacts() }.getOrElse {
+            HeylanaLog.state("action: contacts read failed error=${it::class.simpleName}")
+            return null
+        }
+        return when (val match = ContactMatcher.best(name, contacts)) {
+            is ContactMatcher.Match.Found -> {
+                HeylanaLog.state("action: message contact found of=${contacts.size} digits=${match.contact.number.count(Char::isDigit)}")
+                val resolved = action.copy(number = match.contact.number, name = null)
+                val outcome = launch(resolved, QuickIntents.spec(resolved), null)
+                if (outcome.fired) outcome.copy(line = QuickText.messageTo(match.contact.name)) else outcome
+            }
+            is ContactMatcher.Match.Ambiguous -> {
+                HeylanaLog.state("action: message contact ambiguous of=${contacts.size}")
+                Outcome(QuickText.ambiguous(match.first, match.second), fired = false)
+            }
+            ContactMatcher.Match.None -> {
+                HeylanaLog.state("action: message contact not found of=${contacts.size}")
+                null
+            }
+        }
+    }
+
+    /** Every contact with a phone number: name and number, read here and kept nowhere. */
+    private fun phoneContacts(): List<Contact> {
+        val phone = android.provider.ContactsContract.CommonDataKinds.Phone::class.java
+        val columns = arrayOf(
+            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+            android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+        )
+        val out = ArrayList<Contact>()
+        context.contentResolver.query(
+            android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI, columns, null, null, null
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(0)?.trim().orEmpty()
+                val number = cursor.getString(1)?.trim().orEmpty()
+                if (name.isNotEmpty() && number.any(Char::isDigit)) out += Contact(name, number)
+            }
+        }
+        return out
     }
 
     /** The first visible calendar the phone will let Heylana write to, preferring the primary one. */

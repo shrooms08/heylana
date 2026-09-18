@@ -589,7 +589,14 @@ tested per action in `QuickCatalogueTest`):
   ("+44 800 123 4567" for "0800 123 4567") counts as said when its end is the said number
   without its leading zero; the user's own digits are what go to Messages (`saidNumber`, for
   calls too). The worker's tool now says the words go in `text` and the number as said, no
-  country code added.
+  country code added. **A name is looked up in the phone's contacts**: "text Ada" asks for
+  READ_CONTACTS the first time (`ContactsPermissionActivity`, the one-shot pattern; that
+  time, or if refused, Messages opens with the words for the user to pick Ada), then finds
+  her with `ContactMatcher` (the `AppMatcher` scoring: an exact name, else a name holding
+  every word said; two people who fit equally is "I found X and Y. Say which one.") and opens
+  Messages on her number with the words: "Your message to Ada is ready. Check it and tap
+  send." Contacts are read on the phone, kept nowhere, never sent; the log has counts only.
+  A number is still accepted, never required.
 - `reminder(text, hour, minutes)`: saved into the calendar itself
   (`CalendarContract.Events` on the primary writable calendar, plus a ten-minute alert),
   so nothing is left to do: "Reminder saved for 6 PM today." The first one asks for
@@ -823,6 +830,19 @@ one (`GuidanceSession.teaching`): each step the disc flies to the step's element
 beside it with the ring, the strip beside it; there is no Next — `ChatPanelView.showSession(…,
 withNext = false)` — because doing the step moves it on; each step re-reads the screen.
 
+**The window, not just the disc, stays off the element.** On the Seeker the teaching session
+ended when the user tapped Swap: the tap landed on Heylana. Placement had put the disc
+beside the element, but the window around it is touchable and the disc sits at its top in
+the task layout, so the disc ended up on the button and the tap toggled the panel shut —
+which ends the session. `TeachingFlight.placeWindow` now places the whole measured window
+(disc and strip) clear of the element — beside it where it fits, else under, else over — and
+the disc is set so the window lands there (`teach: window at … clear_of=…`). Closing the
+panel mid-session now flies the disc home too, rather than docking it where it stood. A step
+points at what takes the tap: a label inside a clickable card becomes the card
+(`ScreenSnapshot.clickTarget`), but only a button-sized one — no more than 40 times the
+label's area and under half the screen; the Wallet's only clickable container around "Swap"
+was the whole page, so there the label stays, and the step moves on when the screen changes.
+
 **When a step is done: `screen/StepAdvance`.** Every session's step (teaching or not) moves on
 only on (a) a click whose element matches the pointed one, or (b) the target app's content
 really changing — a fresh read whose node set differs from the step's by more than 15%
@@ -982,6 +1002,13 @@ or tells the user to switch screen reading on if the question needed the screen.
 Only a task step — which cannot work without a screen — refuses outright, and only
 when the service really is not running.
 
+**Jokes vary.** Asked fresh, the model reached for the same joke (the scarecrow, two fresh
+starts out of three on the Seeker). A chat question asking for a joke, a pun, a fun fact, a
+riddle, a story or a compliment (`brain/Variety`) now carries "Make it fresh, not the first
+one that comes to mind or a well-worn classic. Build it around this word: <seed>." with a
+random seed from 60 everyday words (`chat: variety seed=…` — Heylana's word, never the
+user's).
+
 **Chat needs no screen, so none is read.** Heylana is a buddy as well as a guide:
 small talk, jokes, opinions, follow-ups and general knowledge are answered naturally in 1
 to 3 short sentences, and the no-self-promotion rule still holds. `brain/ChatQuestions`
@@ -1019,6 +1046,12 @@ words are kept first. Each read logs the windows with package, layer and element
 counts, and which window carried the signing words. While the full-screen box is
 open, it lets touches through for the moment of the read, or Android would leave
 the covered app out of the window list altogether.
+
+**Asking without typing.** In debug builds, `adb shell am broadcast -a
+xyz.heylana.app.debug.PANEL --es ask "tell me a joke"` opens the box if needed and sends that
+question exactly as the ask pill would — a real `/chat`, counted against the live budget. The
+step log then carries the pointed element's bounds (`step: pointed bounds=…`), coordinates
+only, so a test can tap it.
 
 **Checking a read without asking anything.** In debug builds,
 `adb shell am broadcast -a xyz.heylana.app.debug.READ_SCREEN` reads the screen as a

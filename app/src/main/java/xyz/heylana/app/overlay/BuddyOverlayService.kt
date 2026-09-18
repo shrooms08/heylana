@@ -571,6 +571,12 @@ class BuddyOverlayService : Service() {
             val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
+            if (reply is BrainReply.Say) {
+                HeylanaLog.state(
+                    "answer: task=${reply.task != null} done=${reply.task?.done} pointed=${reply.pointAt != null} " +
+                        "segments=${reply.segments.size} words=${AnswerLength.words(reply.text)}"
+                )
+            }
             when (reply) {
                 is BrainReply.Say -> {
                     if (route.allowsGreeting) greeting.answered()
@@ -673,6 +679,13 @@ class BuddyOverlayService : Service() {
                 if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
                 if (intent.getBooleanExtra("thinking", false)) view.showThinking()
                 if (intent.getBooleanExtra("teach", false)) debugTeach()
+                // A typed question, exactly as the ask pill sends it: a real /chat call.
+                //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es ask "tell me a joke"
+                intent.getStringExtra("ask")?.takeIf { it.isNotBlank() }?.let { question ->
+                    HeylanaLog.state("debug: ask chars=${question.length}")
+                    if (!view.isPanelOpen) view.debugToggle()
+                    main.postDelayed({ ask(question) }, DEBUG_ASK_DELAY_MS)
+                }
             }
         }
         ContextCompat.registerReceiver(this, receiver, android.content.IntentFilter(DEBUG_PANEL), ContextCompat.RECEIVER_EXPORTED)
@@ -1109,8 +1122,10 @@ class BuddyOverlayService : Service() {
         val view = overlayView ?: return
         val current = session ?: return
 
-        // A step given as pieces points where its first pointing piece does.
+        // A step given as pieces points where its first pointing piece does, and at what takes
+        // the tap: a label's clickable card rather than the label.
         val node = snapshot.node(reply.pointAt ?: reply.segments.firstNotNullOfOrNull { it.pointAt })
+            ?.let { snapshot.clickTarget(it) }
         val repeated = current.record(
             say = reply.text,
             elementKey = node?.key,
@@ -1220,6 +1235,12 @@ class BuddyOverlayService : Service() {
             view.setWorking(false)
             exchange.over()
 
+            if (reply is BrainReply.Say) {
+                HeylanaLog.state(
+                    "step: reply task=${reply.task != null} done=${reply.task?.done} pointed=${reply.pointAt != null} " +
+                        "segments=${reply.segments.size}"
+                )
+            }
             when (reply) {
                 is BrainReply.Say -> {
                     if (reply.task?.done == true) {
@@ -1291,6 +1312,8 @@ class BuddyOverlayService : Service() {
         HeylanaAccessibilityService.watchTaps { signal -> main.post { onStepSignal(signal) } }
         main.postDelayed(stepTick, StepAdvance.QUIET_MS + STEP_TICK_SLACK_MS)
         HeylanaLog.state("step: armed pointed=${node != null} quiet_ms=${StepAdvance.QUIET_MS}")
+        // Debug builds only (HeylanaLog is): where it is, never what it says.
+        node?.bounds?.let { HeylanaLog.state("step: pointed bounds=${it.left},${it.top},${it.right},${it.bottom} pkg=${snapshot.packageName}") }
     }
 
     private fun onStepSignal(signal: ScreenSignal) {
@@ -1732,6 +1755,9 @@ class BuddyOverlayService : Service() {
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
+
+        /** Debug only: time for the box to open before a broadcast question is sent. */
+        private const val DEBUG_ASK_DELAY_MS = 700L
 
         /** A little past the quiet time, so a held tap is acted on as soon as it may be. */
         private const val STEP_TICK_SLACK_MS = 120L

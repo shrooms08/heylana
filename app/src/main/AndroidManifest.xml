@@ -13,6 +13,8 @@
     <!-- Quick actions: a reminder is saved straight into the calendar, once allowed. -->
     <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Quick actions: "text Ada" finds Ada's number on the phone; nothing about contacts leaves it. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <!-- Package visibility: without these, the text-to-speech and speech
          recognition engines are invisible to us on Android 11 and up. -->
@@ -78,6 +80,13 @@
             android:label="Skills"
             android:parentActivityName=".settings.SettingsActivity"
             android:theme="@style/Theme.Heylana" />
+
+        <activity
+            android:name=".actions.ContactsPermissionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:theme="@style/Theme.Heylana.Invisible" />
 
         <activity
             android:name=".actions.CalendarPermissionActivity"

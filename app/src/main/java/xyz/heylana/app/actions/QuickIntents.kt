@@ -299,6 +299,9 @@ object QuickText {
         else -> NOTHING_HANDLES
     }
 
+    /** A text to a contact found by name: their name, never their number. */
+    fun messageTo(name: String) = "Your message to $name is ready. Check it and tap send."
+
     const val NO_FLASHLIGHT = "This phone has no flashlight I can use."
     const val FLASHLIGHT_BUSY = "The flashlight is busy right now. Close the camera and try again."
     const val NO_MEDIA = "Nothing is playing to control."

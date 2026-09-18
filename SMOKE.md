@@ -1,54 +1,92 @@
-# Smoke test — simulate before signing, the registry, the mode chip
+# Smoke test — system UI skipped, memory, Solana lessons
 
-For Minos, on the Seeker, on the **Judge** plan, with the worker on **devnet** (it is:
-`CLUSTER = "devnet"`, deployed). Claude Code ran steps 1–3 on the Seeker already (see the
-report); this is the final confirmation.
+For Minos, on the Seeker, with a wallet connected, the worker on **devnet** (deployed
+with the memory routes). Claude Code ran every step below on the Seeker already (see
+the report); this is the final confirmation.
 
-**Live calls this test spends: 3 chat, about 4 tts** — two sends and one question — and
-**one real devnet transfer of 0.05 USDC** to the Heylana treasury, which you approve in
-Seed Vault yourself in step 1.
+**Live calls this test spends: 6 chat, about 8 tts, no ears** (unless you answer by voice,
+which adds one ears call per answer). Nothing is sent or signed: never tap **confirm**
+on a send strip, and never approve anything in Seed Vault.
 
 ## 0. Set up
 
-Install this build, run `./scripts/a11y.sh`, open **Heylana**, Menu → **Start buddy** on.
-Go to the home screen. Watch along with `adb logcat -s HeylanaState` if you like.
+Install this build, run `./scripts/a11y.sh`, open **Heylana**. Watch along with
+`adb logcat -s HeylanaState` if you like.
 
-## 1. A send that passes (1 chat, 1–2 tts)
+## 1. The notification shade is never read (1 chat, 1 tts)
 
-Tap the disc, type **send 0.05 USDC to 7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv**,
-tap **ask**.
+1. Menu → **Start buddy** on. Go to the home screen.
+2. Pull the notification shade all the way down, so it covers the screen.
+3. With the shade still down, ask the buddy anything by holding it, for example "what's on
+   my screen?".
 
-Expected, in order:
-1. A small chip at the top of the box says **reading**, then **thinking**, then
-   **preparing**.
-2. The strip says "Send 0.05 USDC to 7c2y…SxSv." with the chip **simulating**, the line
-   "checking with the network…" and a **greyed confirm** that does nothing if tapped.
-3. Then the strip says **"Send 0.05 USDC from your wallet (EFj9…5L1S) to your Heylana
-   treasury (7c2y…SxSv). Fee 0.000005 SOL, on devnet. Nothing has been signed.
-   Confirm?"**, a green **✓ Simulation passed** appears, and **confirm** lights up. The
-   preview is read aloud.
-4. Tap **confirm**. The chip says **simulating** for a moment, then **approve in wallet**,
-   and Seed Vault opens on the transfer. **Approve it.**
-5. The chip says **working**, then **sent**, and Heylana says **"Sent. Signature …"**.
+Expected: the answer never mentions your notifications or quick settings. In the log, a
+line `screen: skipped pkg=com.android.systemui … why=system_ui`.
 
-## 2. A send that fails simulation (1 chat, 1 tts)
+Push the shade back up. Menu → **Start buddy** off.
 
-Tap the disc, type **send 500 USDC to 7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv**,
-tap **ask**.
+## 2. Remember, then delete (no chat, 1 tts)
 
-Expected: the strip shows **simulating**, then goes, and Heylana says **"I did not open
-the wallet because the simulation failed. Not enough USDC. You have …"**. Seed Vault never
-opens. (It no longer asks "that's more than a quarter, say it again" first: 500 is more
-than the whole balance, so there is nothing to ask twice.)
+1. Menu → **Memory**. If **Keep notes about me** is off, tap it on. The list says
+   "Nothing kept yet…".
+2. Back to Home. Type **remember that I'm new to solana** and tap the arrow.
 
-## 3. Touch the disc mid-sentence (1 chat, 1 tts)
+Expected: the strip says **"Got it, I'll remember."** and Heylana says it. No "Thinking…".
 
-Tap the disc, type **tell me a short story about a lighthouse keeper in three
-sentences**, tap **ask**. While Heylana is speaking, **tap the disc once**.
+3. Menu → **Memory**. Expected: one line, **I'm new to solana**, with "You said · <today>"
+   under it and a bin on the right.
+4. Tap the bin. Expected: the line goes; "Nothing kept yet…" comes back.
 
-Expected: she stops at once, mid-sentence. The box does not open or close from that tap.
+## 3. A lesson on PDAs (3 chat, 4 tts)
 
-## 4. Nothing to check by hand
+1. Back to Home. The chips now start **Ask about this screen**, **Learn Solana**. Tap
+   **Learn Solana**.
 
-The registry and the red-team tests run in CI (`.github/workflows/worker.yml`) and with
-`cd worker && npm test`: 262 tests, the red-team file among them.
+Expected: a page titled **Learn Solana** with two lists, **Build** (10 topics, "The account
+model" first) and **Infrastructure** (11 topics, "Validators, leaders, slots and epochs"
+first), each with "4 short parts" or "5 short parts".
+
+2. Tap **PDAs and seeds**.
+
+Expected: back on Home; after a moment the strip shows **Lesson · PDAs, 1 of 5** above a
+short explanation starting "Lesson on PDAs." that ends in one question. Heylana reads it
+aloud.
+
+3. Answer it **wrong** on purpose: type **it is shorter** and tap the arrow.
+
+Expected: "Not quite…" and the same idea explained another way, with a new question. The
+label still says **1 of 5**.
+
+4. Answer it **right**: type **it has no private key** (or whatever the question really
+   asks) and tap the arrow.
+
+Expected: a word of praise, then the next part, with its question. The label says
+**2 of 5**.
+
+5. Type **stop** and tap the arrow.
+
+Expected: at once, without "Thinking…": **"Stopping there. Recap: A PDA is an address
+derived from seeds and a program id…"**. The Lesson label is gone.
+
+6. Menu → **Memory**. Expected: one line, **knows PDAs, <today>**, with "Lesson · <today>".
+
+## 4. Explain the docs in Chrome (2 chat, 2 tts)
+
+1. Menu → **Start buddy** on. In Chrome, open **solana.com/docs/core/pda**, so the first
+   paragraph ("Program Derived Addresses (PDAs) are 32-byte…") is in view.
+2. Tap the disc, type **explain this**, tap **ask**.
+
+Expected: a plain explanation of that paragraph (seeds and a program ID, no private
+key). In the log: `docs: solana docs in front lens=explain`.
+
+3. Tap the disc again, type **why**, tap **ask**.
+
+Expected: one level deeper, not a repeat: why a PDA has to come out the same every time
+(the program can find its own data again). In the log: `lens=deeper`.
+
+## 5. Put it back
+
+1. Menu → **Start buddy** off.
+2. Menu → **Memory** → tap **Keep notes about me** off, if it was off before step 2.
+   Expected: "Memory is off. Nothing is kept." (turning it off deletes every line).
+3. Close the Chrome tab from step 4.

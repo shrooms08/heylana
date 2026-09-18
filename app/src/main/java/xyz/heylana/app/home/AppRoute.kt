@@ -3,7 +3,7 @@ package xyz.heylana.app.home
 import xyz.heylana.app.Features
 
 /** Where the app is. One activity; this is its whole map. */
-enum class Screen { SIGN_IN, PERMISSIONS, HOME, VOICE, SKILLS, ADVANCED, PRIVACY, SETTINGS }
+enum class Screen { SIGN_IN, PERMISSIONS, HOME, VOICE, SKILLS, ADVANCED, PRIVACY, SETTINGS, LEARN, MEMORY }
 
 /**
  * First run versus returning, and where back goes. Kept free of Android so it is tested.
@@ -35,6 +35,6 @@ object AppRoute {
     fun back(screen: Screen, firstRunDone: Boolean = false): Screen? = when (screen) {
         Screen.HOME, Screen.SIGN_IN -> null
         Screen.PERMISSIONS -> if (firstRunDone) Screen.SETTINGS else null
-        Screen.VOICE, Screen.SKILLS, Screen.ADVANCED, Screen.PRIVACY, Screen.SETTINGS -> Screen.HOME
+        Screen.VOICE, Screen.SKILLS, Screen.ADVANCED, Screen.PRIVACY, Screen.SETTINGS, Screen.LEARN, Screen.MEMORY -> Screen.HOME
     }
 }

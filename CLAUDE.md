@@ -26,10 +26,12 @@ xyz.heylana.app
 │   ├── HeylanaApp           the screen state, glass mode, permission prompts
 │   ├── AppScreens           Home and everything it opens; the menu over it
 │   ├── HomeScreen           orb, greeting or answer strip, chips, message bar, mic
-│   ├── HomeChips            the six chips: five send a message, one starts the buddy
+│   ├── HomeChips            seven chips: five send a message, one starts the buddy, one opens Learn
 │   ├── AppChat              in-app conversation: chat or quick action, never a screen read
 │   ├── VoiceSession         the app's ears: the buddy's two, raced the same way
 │   ├── VoiceScreen          the aurora wave, timer, state, big mic, pause, close
+│   ├── LearnScreen          Learn Solana: the topics in Build and Infrastructure; a tap starts one
+│   ├── MemoryScreen         Menu → Memory: the switch, each kept line with delete, Wipe all
 │   ├── MenuSheet            Start buddy, plan, advanced, privacy, settings
 │   ├── SkillMarketScreen    the skill market (roadmap: behind Features.SKILL_MARKET, off)
 │   ├── AdvancedScreen       the own key (Anthropic; OpenAI and Gemini "soon"), Privacy
@@ -250,7 +252,7 @@ Permissions; once Home has been reached (`HeylanaSettings.firstRunDone`) the app
 Home. The screens' contents follow design/refs "Heylana App Screens.html" (copy, order),
 with two corrections: Home says "Hi, <name>. What do you need?", and the Advanced note is
 "Held in the phone's keystore. It never leaves the device." (never Seed Vault there).
-Debug builds open any screen with `-e screen home|sign_in|permissions|voice|skills|advanced|privacy|settings`.
+Debug builds open any screen with `-e screen home|sign_in|permissions|voice|skills|advanced|privacy|settings|learn|memory`.
 
 **Colours live in `ui/theme/HeylanaTheme` and nowhere else; the type is Outfit only.**
 `HeylanaPalette` has Dark (the default: pure black) and Light (white); Settings →
@@ -290,6 +292,11 @@ resume (`PermissionsModel.refresh`, `app: permissions …`). Screen reading is t
 when the service is bound. A tap opens the right system page, or the runtime prompt first.
 After the first run it is reached from Settings → Permissions and goes back there.
 
+**Learn Solana** is the second chip on Home: it opens the topic list (`home/LearnScreen`,
+Build then Infrastructure) and a tap goes back to Home and starts the lesson there, in the
+strip ("Lesson · PDAs, 2 of 5" above the words) and Heylana's voice; answers are typed or
+said with the mic, and `AppChat` hands every word to the lesson until it ends.
+
 **Home talks in the app** (`home/AppChat`): a typed message, a chip or the mic's words go
 as chat (`why=chat`, `app: ask chars=N screen=not_read`), with the Solana lookups when
 they have Solana words, and quick actions ("set a timer") the buddy's way through
@@ -312,7 +319,7 @@ while listening and with Heylana's voice while she speaks.
 **The menu** slides in from the left over a dimmed Home: Start buddy (its switch starts and
 stops the overlay service), the plan from `/me` in `PlanText.summary`'s words — Free "30
 talks a month" with a usage bar and Go Pro (which opens the old Settings screen on the Go
-Pro sheet), Pro "Unlimited talks", Judge "Unlimited until Nov 9" — Advanced, Privacy,
+Pro sheet), Pro "Unlimited talks", Judge "Unlimited until Nov 9" — Memory, Advanced, Privacy,
 Settings, and the name with the short wallet. No plan copy mentions skills.
 
 **The Skill market is retired to the roadmap.** `Features.SKILL_MARKET` is false: the menu
@@ -582,7 +589,10 @@ call): "remember that…" (`MemoryWords.explicit`; not "do you remember", "remem
 "shorter answers please", "slow down", "stop explaining" is offered once per phone ("Sure.
 Want me to remember that?") and kept only on yes within a minute. Opt-in is one switch on
 the first-run name card (`FirstRunText.MEMORY_OPT_IN`), wallet only;
-`HeylanaSettings.memoryOn` mirrors it. Menu, Memory lists, deletes and wipes.
+`HeylanaSettings.memoryOn` mirrors it. Menu → Memory (`home/MemoryScreen`) reads the list
+from the worker on open: the on switch (off deletes everything kept), each line with its
+kind and day ("Lesson · 2026-09-18") and a delete, and Wipe all, which asks for a second
+tap. Nothing but the switch is kept on the phone. With no wallet it says so.
 
 **Lessons (phase 4): Heylana as the Solana tutor.** The curriculum is
 `skills/lessons/<id>.md`, 21 hand-written notes in two tracks — Build (the account model,

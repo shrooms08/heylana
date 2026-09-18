@@ -80,7 +80,7 @@ object MenuText {
 
 /**
  * The menu: a full-height drawer from the left over a dimmed Home, a flat list in three
- * sections — Buddy (Start buddy), Account (Plan), More (Advanced, Privacy,
+ * sections — Buddy (Start buddy), Account (Plan), More (Memory, Advanced, Privacy,
  * Settings) — and the profile row at the bottom.
  */
 @Composable
@@ -142,6 +142,7 @@ fun MenuSheet(
                     }
 
                     MenuSection("More")
+                    FlatRow("Memory", glyph = Glyph.LAYERS, card = false, onClick = { onScreen(Screen.MEMORY) })
                     FlatRow("Advanced", glyph = Glyph.SLIDERS, card = false, onClick = { onScreen(Screen.ADVANCED) })
                     FlatRow("Privacy", glyph = Glyph.SHIELD, card = false, onClick = { onScreen(Screen.PRIVACY) })
                     FlatRow("Settings", glyph = Glyph.GEAR, card = false, onClick = { onScreen(Screen.SETTINGS) })

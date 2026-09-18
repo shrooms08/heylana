@@ -10,17 +10,20 @@ sealed interface ChipAction {
     data class Send(val message: String) : ChipAction
     /** "Ask about this screen": screen questions belong to the buddy over the app, not here. */
     data object StartBuddy : ChipAction
+    /** "Learn Solana": the topic list, Build and Infrastructure. */
+    data object Learn : ChipAction
 }
 
 /**
- * The export's chips (frame 1), in its order, in two rows. Every one but the first sends
- * its own words as a message; "Ask about this screen" starts the buddy, since the app never
- * reads a screen itself.
+ * The export's chips (frame 1), in its order, in two rows, with "Learn Solana" second. Every
+ * one but those two sends its own words as a message; "Ask about this screen" starts the
+ * buddy, since the app never reads a screen itself, and "Learn Solana" opens the topics.
  */
 object HomeChips {
 
     val FIRST_ROW = listOf(
         HomeChip("Ask about this screen", Glyph.DOC, ChipAction.StartBuddy),
+        HomeChip("Learn Solana", Glyph.BOOK, ChipAction.Learn),
         HomeChip("Teach me to swap", Glyph.SWAP, ChipAction.Send("Teach me to swap")),
         HomeChip("Check my balance", Glyph.BALANCE, ChipAction.Send("Check my balance"))
     )
@@ -33,10 +36,11 @@ object HomeChips {
 
     val ALL: List<HomeChip> get() = FIRST_ROW + SECOND_ROW
 
-    /** What a tap does: [send] a message, or [startBuddy]. */
-    fun tap(chip: HomeChip, send: (String) -> Unit, startBuddy: () -> Unit) = when (val action = chip.action) {
+    /** What a tap does: [send] a message, [startBuddy], or open the topics to [learn]. */
+    fun tap(chip: HomeChip, send: (String) -> Unit, startBuddy: () -> Unit, learn: () -> Unit = {}) = when (val action = chip.action) {
         is ChipAction.Send -> send(action.message)
         ChipAction.StartBuddy -> startBuddy()
+        ChipAction.Learn -> learn()
     }
 
     /** What "Ask about this screen" says, running or started. */

@@ -77,7 +77,8 @@ fun HomeScreen(
     micLevel: Float,
     onMicDown: () -> Boolean,
     onMicUp: (heldMs: Long, started: Boolean) -> Unit,
-    onAskAboutScreen: () -> Unit
+    onAskAboutScreen: () -> Unit,
+    onLearn: () -> Unit = {}
 ) {
     val palette = LocalHeylana.current
     var message by remember { mutableStateOf("") }
@@ -133,8 +134,8 @@ fun HomeScreen(
             if (!typing) Box(Modifier.fillMaxWidth().height(102.dp)) {
                 androidx.compose.animation.AnimatedVisibility(!thinking, Modifier.fillMaxSize(), enter = fadeIn(), exit = fadeOut()) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ChipRow(HomeChips.FIRST_ROW, { chat.send(it) }, onAskAboutScreen)
-                        ChipRow(HomeChips.SECOND_ROW, { chat.send(it) }, onAskAboutScreen)
+                        ChipRow(HomeChips.FIRST_ROW, { chat.send(it) }, onAskAboutScreen, onLearn)
+                        ChipRow(HomeChips.SECOND_ROW, { chat.send(it) }, onAskAboutScreen, onLearn)
                     }
                 }
                 androidx.compose.animation.AnimatedVisibility(thinking, Modifier.fillMaxSize().padding(horizontal = 20.dp), enter = fadeIn(), exit = fadeOut()) {
@@ -208,13 +209,13 @@ fun HomeScreen(
 private const val ORB_DP = 200
 
 @Composable
-private fun ChipRow(chips: List<HomeChip>, send: (String) -> Unit, startBuddy: () -> Unit) {
+private fun ChipRow(chips: List<HomeChip>, send: (String) -> Unit, startBuddy: () -> Unit, learn: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         chips.forEach { chip ->
-            FlatChip(chip.glyph, chip.label, onClick = { HomeChips.tap(chip, send, startBuddy) })
+            FlatChip(chip.glyph, chip.label, onClick = { HomeChips.tap(chip, send, startBuddy, learn) })
         }
     }
 }
@@ -226,6 +227,8 @@ fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
     val shown = if (history) chat.exchanges.toList() else listOfNotNull(chat.exchanges.lastOrNull())
     FlatSurface(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 14.dp)) {
+            // While a lesson runs: which one, and how far along.
+            chat.lessonProgress?.let { Text("Lesson · $it", Modifier.padding(bottom = 6.dp), style = HeylanaType.label, color = palette.inkSecondary) }
             Column(
                 Modifier.heightIn(max = if (history) 260.dp else 22.dp * 6).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)

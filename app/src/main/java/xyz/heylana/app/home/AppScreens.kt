@@ -101,7 +101,8 @@ fun AppScreens(
                 homeHeld = false
                 if (started && MicPress.onRelease(held, true) == MicPress.OnRelease.FINISH) voice.finish()
             },
-            onAskAboutScreen = { askAboutScreen(activity, chat) }
+            onAskAboutScreen = { askAboutScreen(activity, chat) },
+            onLearn = { onScreen(Screen.LEARN) }
         )
     when (screen) {
         Screen.VOICE -> VoiceScreen(
@@ -124,6 +125,16 @@ fun AppScreens(
             LaunchedEffect(Unit) { onScreen(Screen.HOME) }
         }
         Screen.ADVANCED -> AdvancedScreen(settings, onBack = { onScreen(Screen.HOME) })
+        Screen.LEARN -> LearnScreen(
+            notes = chat.lessons.notes,
+            onPick = { note ->
+                HeylanaLog.state("app: lesson picked topic=${note.id}")
+                onScreen(Screen.HOME)
+                chat.startLesson(note)
+            },
+            onBack = { onScreen(Screen.HOME) }
+        )
+        Screen.MEMORY -> MemoryScreen(settings, onBack = { onScreen(Screen.HOME) })
         Screen.PRIVACY -> PrivacyScreen(settings.voiceProvider, onBack = { onScreen(Screen.HOME) })
         Screen.SETTINGS -> AppSettingsScreen(
             settings = settings,

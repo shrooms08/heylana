@@ -406,8 +406,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     }
 
     /** Shows the step counter with next and done while a task is running. */
-    fun showSession(stepNumber: Int, ofSteps: Int) {
-        panel.showSession(stepNumber, ofSteps)
+    fun showSession(stepNumber: Int, ofSteps: Int, withNext: Boolean = true) {
+        panel.showSession(stepNumber, ofSteps, withNext)
         // A task hands the keyboard back to the app the user is about to operate.
         if (mode == Mode.COMPOSE) enterMode(Mode.HUD)
         applyPosition()
@@ -575,6 +575,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         val previous = mode
         mode = next
         // Every close lands here: the box is emptied for the next time it opens.
+        // Docked again: a teaching flight's remembered home is spent.
+        if (next == Mode.DOCKED) teachHome = null
         if (PanelReset.resetsOn(previous.name, next.name)) {
             panel.resetToCompose()
             HeylanaLog.state("panel: reset to empty compose")
@@ -1173,7 +1175,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     private var teachingFlight: android.animation.ValueAnimator? = null
     private val flightPoint = FloatArray(2)
-    private val standAt = IntArray(2)
+    private val standAt = IntArray(3)
 
     /**
      * One hop of a teaching answer: the disc flies to [target] (screen coordinates) along
@@ -1183,6 +1185,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      */
     fun teachTo(target: Rect, text: String, onArrived: () -> Unit) {
         refreshMetrics()
+        // Where the flight ends up: the edge the disc was docked on, remembered before the
+        // first hop overwrites where it stands.
+        if (teachHome == null) teachHome = homeEdge()
         if (mode != Mode.HUD) enterMode(Mode.HUD)
         panel.setVoiceMode(voice = false, showsText = true)
         showAnswer(text)
@@ -1194,23 +1199,40 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             dp(HeylanaTokens.SPACE_4_DP),
             usableWidth,
             usableHeight,
-            standAt
+            standAt,
+            stripWidth = panel.hudWidth
         )
-        // The strip goes on the far side of the disc from the element, so it covers nothing.
-        panelOnLeft = standAt[0] + discSize / 2 < target.centerX() - usableLeft
+        // The strip goes where the placement put it: the far side from the element, with room.
+        panelOnLeft = standAt[2] == 1
         reorderBeside()
         flyArc(standAt[0], standAt[1], onArrived)
     }
 
     /** The disc's flight home at the end of a teaching answer: the same arc, then the strip melts. */
     fun endTeaching(onHome: () -> Unit = {}) {
-        val home = PointF(dockedLeft(spriteLeft).toFloat(), dockedTop(spriteTop).toFloat())
+        refreshMetrics()
+        // The dock it left from; failing that, the nearer edge. Clamping where it stands
+        // now left the disc mid-screen beside the last element.
+        val home = teachHome ?: homeEdge()
+        teachHome = null
+        HeylanaLog.state("teach: flying home x=${home[0]} y=${home[1]}")
         panel.meltStreak()
-        flyArc(home.x.toInt(), home.y.toInt()) {
+        flyArc(home[0], home[1]) {
             enterMode(Mode.DOCKED)
             onPanelClosed?.invoke()
             onHome()
         }
+    }
+
+    /** The dock a teaching flight returns to; null until the first hop. */
+    private var teachHome: IntArray? = null
+
+    /** The edge nearer the disc, at its height, as a docked position. */
+    private fun homeEdge(): IntArray {
+        val onLeft = spriteLeft + discSize / 2 < usableWidth / 2
+        val left = dockedLeft(if (onLeft) dockInset else usableWidth - discSize - dockInset)
+        val top = dockedTop(clamp(spriteTop, dockInset, (usableHeight - discSize - dockInset).coerceAtLeast(dockInset)))
+        return intArrayOf(left, top)
     }
 
     /** Moves the window itself along the arc, frame by frame, and hands the disc back its size. */

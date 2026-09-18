@@ -57,6 +57,26 @@ class TeachingFlightTest {
     }
 
     @Test
+    fun `the strip never lands back on the element - the pair needs room, else it goes under`() {
+        val out = IntArray(3)
+        val disc = 100
+        val gap = 20
+        val strip = 500
+        // Room for the disc on the right but not the disc and its strip: not beside on the right.
+        TeachingFlight.standBeside(100, 300, 500, 400, disc, gap, 1080, 2400, out, stripWidth = strip)
+        assertTrue("disc at ${out[0]}", out[0] + disc <= 100 || out[1] >= 400 || out[1] + disc <= 300)
+        // Plenty of room on the left: beside it on the left, strip further left.
+        TeachingFlight.standBeside(700, 300, 1000, 400, disc, gap, 1080, 2400, out, stripWidth = strip)
+        assertEquals(580, out[0])
+        assertEquals(1, out[2])
+        assertTrue(out[0] - strip >= 0)
+        // Under a wide element: disc and strip both on screen.
+        TeachingFlight.standBeside(0, 300, 1080, 400, disc, gap, 1080, 2400, out, stripWidth = strip)
+        assertEquals(420, out[1])
+        if (out[2] == 1) assertTrue(out[0] - strip >= 0) else assertTrue(out[0] + disc + strip <= 1080)
+    }
+
+    @Test
     fun `it stands beside the element, on the side with room, else under or over it`() {
         val out = IntArray(2)
         val disc = 100

@@ -172,6 +172,39 @@ sealed interface QuickAction {
             }
         }
 
+        /**
+         * The one question to ask when the model named an action but left out a part it
+         * needs — "Who should I text?" — instead of refusing. Null when nothing is missing
+         * or the intent is not one of ours.
+         */
+        fun clarify(fields: Map<String, Any?>): String? {
+            if (fields["type"] != TYPE) return null
+            fun has(key: String) = (fields[key] as? String)?.trim()?.let { it.isNotEmpty() && it != "null" } == true ||
+                fields[key] is Number
+            return when (fields["intent"]) {
+                MESSAGE -> when {
+                    !has("number") && !has("name") && !has("to") -> "Who should I text?"
+                    !has("text") -> "What should the message say?"
+                    else -> null
+                }
+                REMINDER -> when {
+                    !has("text") -> "What should I remind you about?"
+                    !has("hour") -> "What time should I remind you?"
+                    else -> null
+                }
+                ALARM -> if (!has("hour")) "What time should the alarm be?" else null
+                TIMER -> if (!has("seconds")) "How long should the timer be?" else null
+                DIAL -> if (!has("number") && !has("name")) "Who should I call?" else null
+                OPEN_APP -> if (!has("app")) "Which app should I open?" else null
+                NAVIGATE -> if (!has("query")) "Where do you want to go?" else null
+                YOUTUBE_SEARCH, WEB_SEARCH -> if (!has("query")) "What should I search for?" else null
+                SPOTIFY_PLAY -> if (!has("query")) "What should I play?" else null
+                FLASHLIGHT -> if (!has("state")) "On or off?" else null
+                SETTINGS -> if (!has("page")) "Which settings should I open?" else null
+                else -> null
+            }
+        }
+
         /** Android's timer takes at most a day. */
         const val MAX_TIMER_SECONDS = 24 * 60 * 60
     }

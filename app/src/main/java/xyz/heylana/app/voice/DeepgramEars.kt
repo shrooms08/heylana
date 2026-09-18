@@ -273,6 +273,7 @@ class DeepgramEars(
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 stopRecording()
                 if (abandoned) return
+                if (released && !finalized) HeylanaLog.state("deepgram: socket closed code=$code before the final")
                 stage = Stage.IDLE
                 listening = false
                 finish()
@@ -283,6 +284,8 @@ class DeepgramEars(
     /** Deepgram sends a message per guess; only the settled ones are kept. */
     private fun handle(message: String) {
         val json = runCatching { JSONObject(message) }.getOrNull() ?: return
+        // The answer to Finalize: whatever Deepgram still held is in it, even when empty.
+        if (json.optBoolean("from_finalize")) finalized = true
         val alternative = json.optJSONObject("channel")
             ?.optJSONArray("alternatives")
             ?.optJSONObject(0)
@@ -411,6 +414,14 @@ class DeepgramEars(
         return min(1f, peak / LOUD_ENOUGH)
     }
 
+    /**
+     * The user let go. The last word is usually still being said as the finger lifts,
+     * so the microphone keeps streaming for [TRAILING_MS] first. Then Deepgram is told to
+     * finalize — to hand back everything it is still holding — and given up to
+     * [FINAL_WAIT_MS] to answer before the words are handed over, or nothing is.
+     * Stopping the moment the finger lifted and closing after a fixed pause threw away
+     * words the phone's own recogniser had heard fine.
+     */
     override fun release(): Boolean {
         released = true
         val heldBack = nothingHeard.releasedNow()
@@ -418,11 +429,34 @@ class DeepgramEars(
             if (heldBack && !abandoned) callbacks.onNothingHeard()
             return false
         }
-        // Tell Deepgram there is no more audio; the last words arrive after it.
-        stopRecording()
-        socket?.send(CLOSE_STREAM)
-        scope.launch {
-            withContext(Dispatchers.IO) { Thread.sleep(FLUSH_MS) }
+        finalized = false
+        scope.launch(Dispatchers.IO) {
+            Thread.sleep(TRAILING_MS)
+            stopRecording()
+            val live = socket
+            if (live == null || abandoned) {
+                noFinal(REASON_SOCKET_CLOSED_EARLY, 0L)
+                return@launch
+            }
+            live.send(FINALIZE)
+            val sentAt = SystemClock.elapsedRealtime()
+            HeylanaLog.state("deepgram: finalize sent trailing_ms=$TRAILING_MS")
+            while (!finalized && socket != null && !abandoned &&
+                SystemClock.elapsedRealtime() - sentAt < FINAL_WAIT_MS
+            ) {
+                Thread.sleep(FINAL_POLL_MS)
+            }
+            val waited = SystemClock.elapsedRealtime() - sentAt
+            when {
+                abandoned -> return@launch
+                finalized && heard.isNotEmpty() ->
+                    HeylanaLog.state("deepgram: final after_ms=$waited words=${wordCount()}")
+                finalized -> noFinal(REASON_NO_SPEECH, waited)
+                socket == null -> noFinal(REASON_SOCKET_CLOSED_EARLY, waited)
+                else -> noFinal(REASON_FINAL_TIMEOUT, waited)
+            }
+            // Only now is the stream closed: CloseStream first would end it before the final.
+            socket?.send(CLOSE_STREAM)
             if (listening) {
                 listening = false
                 finish()
@@ -430,6 +464,17 @@ class DeepgramEars(
         }
         return true
     }
+
+    /** Why Deepgram had no words to give, for the log; the race decides what happens. */
+    private fun noFinal(reason: String, waited: Long) {
+        HeylanaLog.state("deepgram: no final reason=$reason after_ms=$waited words=${wordCount()}")
+    }
+
+    private fun wordCount(): Int = heard.toString().split(Regex("\\s+")).count { it.isNotBlank() }
+
+    /** Set when Deepgram answers the Finalize message. */
+    @Volatile
+    private var finalized = false
 
     /** One place where the words are handed over, however the socket ended. */
     private fun finish() {
@@ -482,12 +527,20 @@ class DeepgramEars(
         /** Where a normal speaking voice sits, as a 16-bit peak. */
         const val LOUD_ENOUGH = 12_000f
 
-        /** How long to wait for the last words after the audio stops. */
-        const val FLUSH_MS = 900L
+        /** How long the microphone keeps streaming after the finger lifts. */
+        const val TRAILING_MS = 400L
+
+        /** How long Deepgram gets to answer Finalize before nothing is declared. */
+        const val FINAL_WAIT_MS = 1_500L
+
+        const val FINAL_POLL_MS = 20L
 
         const val NORMAL_CLOSE = 1000
 
         val CLOSE_STREAM: String = JSONObject().put("type", "CloseStream").toString()
+
+        /** Deepgram's "hand back everything you are holding" message. */
+        val FINALIZE: String = JSONObject().put("type", "Finalize").toString()
 
         /** 16-bit audio at 16kHz: two bytes a sample, sixteen samples a millisecond. */
         const val BYTES_PER_MS = SAMPLE_RATE * 2 / 1000
@@ -513,6 +566,11 @@ class DeepgramEars(
         const val REASON_NOT_SET_UP = "not_set_up"
         const val REASON_SOCKET_ERROR = "socket_error"
         const val REASON_NO_MICROPHONE = "no_microphone"
+
+        /** Why Deepgram had no final words after the release. */
+        const val REASON_NO_SPEECH = "no_speech_detected"
+        const val REASON_SOCKET_CLOSED_EARLY = "socket_closed_early"
+        const val REASON_FINAL_TIMEOUT = "timeout"
     }
 }
 

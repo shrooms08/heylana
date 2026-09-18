@@ -86,16 +86,27 @@ object HeylanaPrompt {
         question: String,
         history: String? = null,
         greeting: String? = null,
-        teaching: Boolean = false
+        teaching: Boolean = false,
+        walkThrough: Boolean = false
     ): String =
         buildString {
             greeting?.let { append(it).append("\n\n") }
             history?.let { append(it).append("\n\n") }
             append("Screen now:\n")
             append(screenText)
-            if (teaching) append("\n\n").append(TEACH_LINE)
+            if (walkThrough) append("\n\n").append(WALK_THROUGH_LINE)
+            else if (teaching) append("\n\n").append(TEACH_LINE)
             append("\n\nUser asks: ").append(question)
         }
+
+    /**
+     * "Teach me how to…", "help me…": a walk-through. If it takes more than one tap, it is a
+     * task — the first step only, with one short reason — and Heylana stays for the rest.
+     */
+    const val WALK_THROUGH_LINE: String =
+        "They want to be walked through doing this. If it takes more than one tap, reply with a task " +
+            "(goal set, done false): say is the first step only, starting with one short reason, under 25 " +
+            "words, and point_at is its element. If it needs no taps, answer in say pieces."
 
     /** Goes with the first question of a teaching task and with every one of its steps. */
     const val TEACH_LINE: String =

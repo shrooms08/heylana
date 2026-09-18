@@ -12,7 +12,7 @@ package xyz.heylana.app.voice
  * The rule, once the user lets go:
  *
  *  - Deepgram's words win if they arrive within [PREFER_DEEPGRAM_MS] of the
- *    release.
+ *    release (its trailing audio and its finalize wait fit inside it).
  *  - Otherwise the phone's words are used — as soon as Deepgram is known to have
  *    nothing, or once that window has passed.
  *  - If neither heard a word, it was nothing heard; if the phone's recogniser
@@ -138,8 +138,12 @@ class EarsRace(
     }
 
     companion object {
-        /** How long after the release Deepgram's words are still preferred. */
-        const val PREFER_DEEPGRAM_MS = 1_500L
+        /**
+         * How long after the release Deepgram's words are still preferred: the 400ms of
+         * trailing audio plus the 1500ms Deepgram gets to answer Finalize, and a little
+         * room for the answer to travel.
+         */
+        const val PREFER_DEEPGRAM_MS = 2_000L
 
         /** How long after the release anything is waited for at all. */
         const val GIVE_UP_MS = 4_000L

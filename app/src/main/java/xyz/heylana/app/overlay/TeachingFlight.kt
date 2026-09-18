@@ -60,8 +60,11 @@ object TeachingFlight {
 
     /**
      * Where the disc stands while it talks about the element at [left], [top], [right],
-     * [bottom]: beside it if there is room — the side with more of it — else under it, else
-     * over it, and always on screen. [out] gets the disc's left and top, in the same space.
+     * [bottom], with its strip ([stripWidth] wide) beside it: next to the element on the side
+     * with room for the disc and the strip, the strip on the far side — else under it, else
+     * over it — always on screen, and never with the strip pushed back over the element.
+     * [out] gets the disc's left and top, and (if it has a third slot) 1 when the strip goes
+     * on the disc's left, 0 on its right.
      */
     fun standBeside(
         left: Int,
@@ -72,29 +75,37 @@ object TeachingFlight {
         gap: Int,
         screenWidth: Int,
         screenHeight: Int,
-        out: IntArray
+        out: IntArray,
+        stripWidth: Int = 0
     ) {
-        val middleY = (top + bottom) / 2 - discSize / 2
-        val besideRight = right + gap
-        val besideLeft = left - gap - discSize
-        val x = when {
-            screenWidth - right >= gap + discSize && screenWidth - right >= left -> besideRight
-            left >= gap + discSize -> besideLeft
-            else -> Int.MIN_VALUE
+        val middleY = ((top + bottom) / 2 - discSize / 2).coerceIn(0, (screenHeight - discSize).coerceAtLeast(0))
+        val roomRight = screenWidth - right
+        val roomLeft = left
+        val need = gap + discSize + stripWidth
+        fun put(x: Int, y: Int, stripOnLeft: Boolean) {
+            out[0] = x
+            out[1] = y
+            if (out.size > 2) out[2] = if (stripOnLeft) 1 else 0
         }
-        if (x != Int.MIN_VALUE) {
-            out[0] = x.coerceIn(0, (screenWidth - discSize).coerceAtLeast(0))
-            out[1] = middleY.coerceIn(0, (screenHeight - discSize).coerceAtLeast(0))
-            return
+        // Beside it, on whichever side has room for the disc and its strip; the more room first.
+        val sides = if (roomRight >= roomLeft) listOf(true, false) else listOf(false, true)
+        for (onRight in sides) {
+            if (onRight && roomRight >= need) return put(right + gap, middleY, stripOnLeft = false)
+            if (!onRight && roomLeft >= need) return put(left - gap - discSize, middleY, stripOnLeft = true)
         }
-        val centreX = ((left + right) / 2 - discSize / 2).coerceIn(0, (screenWidth - discSize).coerceAtLeast(0))
+        // Under it, else over it: the disc near the element's middle, the strip on the side with
+        // more room, and the pair slid along so both are on screen.
         val below = bottom + gap
         val above = top - gap - discSize
-        out[0] = centreX
-        out[1] = when {
+        val y = when {
             below + discSize <= screenHeight -> below
             above >= 0 -> above
-            else -> middleY.coerceIn(0, (screenHeight - discSize).coerceAtLeast(0))
+            else -> middleY
         }
+        val centre = (left + right) / 2 - discSize / 2
+        val stripOnLeft = centre + discSize / 2 > screenWidth / 2
+        val minX = if (stripOnLeft) stripWidth else 0
+        val maxX = screenWidth - discSize - (if (stripOnLeft) 0 else stripWidth)
+        put(centre.coerceIn(minX.coerceAtMost(maxX.coerceAtLeast(0)), maxX.coerceAtLeast(0)), y, stripOnLeft)
     }
 }

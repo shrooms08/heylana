@@ -39,7 +39,9 @@ sealed interface BrainReply {
          * How it is spoken: one piece, or up to four with an element each, so the disc can
          * walk the screen while it explains. Always says the same words as [text].
          */
-        val segments: List<SaySegment> = emptyList()
+        val segments: List<SaySegment> = emptyList(),
+        /** The model named a quick action but left a part out: the one question to ask for it. */
+        val clarify: String? = null
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -84,7 +86,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         route: Routing.Route = Routing.PLAIN,
         knownAddresses: List<String> = emptyList(),
         skill: Skill? = null,
-        teaching: Boolean = false
+        teaching: Boolean = false,
+        walkThrough: Boolean = false
     ): BrainReply {
         val tools = route.toolsWanted && !settings.useOwnKey
         val quickAction = route.why == Routing.Why.QUICK_ACTION
@@ -122,9 +125,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
         } else if (route.skipsScreen) {
             HeylanaPrompt.chatMessage(question, history, if (route.allowsGreeting) greeting else null)
         } else {
-            HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching)
+            HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching, walkThrough)
         }
-        if (teaching) HeylanaLog.state("teach: first step asked with reasons")
+        if (walkThrough) HeylanaLog.state("teach: walk-through asked, a task if it takes taps")
+        else if (teaching) HeylanaLog.state("teach: first step asked with reasons")
         // A send is never left to prose: the worker asks the model for the send only.
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
         // Nor is an alarm, a timer, an app, a page, a place or a number.
@@ -461,7 +465,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
             ?: return Attempt.Unreadable("json", text)
 
         val action = readAction(json)
+        lastClarify = null
         val quick = readQuick(json)
+        val clarify = lastClarify
         val task = readTask(json)
         val extraChars = text.length - parsed.objectText.length
         if (extraChars > 0) HeylanaLog.state("reply: text outside the json chars=$extraChars dropped")
@@ -473,7 +479,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val segments = parsed.segments.map { it.copy(text = AddressText.shorten(it.text)) }
         // One piece keeps point_at as it always did; segments carry their own.
         val pointAt = if (parsed.segments.size <= 1) parsed.segments.firstOrNull()?.pointAt ?: readPointAt(json) else null
-        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments))
+        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments, clarify))
     }
 
     /**
@@ -503,9 +509,15 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 "minutes=${action.opt("minutes")} seconds=${action.opt("seconds")}"
         )
         return QuickAction.of(fields).also {
-            if (it == null) HeylanaLog.state("action: raw action rejected as malformed")
+            if (it == null) {
+                lastClarify = QuickAction.clarify(fields)
+                HeylanaLog.state("action: raw action incomplete clarify=${lastClarify != null}")
+            }
         }
     }
+
+    /** Set by [readQuick] for the reply being read: the question for a part the action is missing. */
+    private var lastClarify: String? = null
 
     private fun readAction(json: JSONObject): SendAction? {
         val action = json.optJSONObject("action") ?: return null

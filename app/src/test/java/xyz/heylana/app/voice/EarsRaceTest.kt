@@ -136,7 +136,8 @@ class EarsRaceTest {
 
     @Test
     fun `the windows are a second and a half and four seconds`() {
-        assertEquals(1_500L, EarsRace.PREFER_DEEPGRAM_MS)
+        // Trailing audio (400ms) plus the finalize wait (1500ms), with room to travel.
+        assertEquals(2_000L, EarsRace.PREFER_DEEPGRAM_MS)
         assertEquals(4_000L, EarsRace.GIVE_UP_MS)
     }
 }

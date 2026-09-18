@@ -37,7 +37,29 @@ object Teaching {
     /** How long after a task ends "what did I just do" still means it. */
     const val RECAP_WINDOW_MS = 10 * 60 * 1_000L
 
-    fun wantsTeaching(question: String): Boolean = TEACH.containsMatchIn(question)
+    /**
+     * Being walked through doing something: "teach me how to swap", "show me how to
+     * stake", "help me send", "walk me through…". Heylana stays with the user through
+     * the taps. "Help me understand" is an explanation, not a walk-through.
+     */
+    private val SESSION = Regex(
+        "\\b(teach me (how )?to|show me how to|walk me through|take me through|" +
+            "help me (to )?(?!understand\\b|learn\\b|with\\b|out\\b)[\\p{L}]+)",
+        OPTIONS
+    )
+
+    /** "Stop", "cancel", "that's enough", "never mind": end a running task. Short, on its own. */
+    private val STOP = Regex(
+        "^\\s*(ok(ay)?,?\\s+|please\\s+)?(stop|cancel|quit|end( it| this)?|exit|that'?s enough|enough|never ?mind|forget it|i'?m done)" +
+            "(\\s+(it|now|please|the task|teaching|here))*[\\s.!]*$",
+        OPTIONS
+    )
+
+    fun wantsTeaching(question: String): Boolean = TEACH.containsMatchIn(question) || wantsSession(question)
+
+    fun wantsSession(question: String): Boolean = SESSION.containsMatchIn(question)
+
+    fun isStop(question: String): Boolean = STOP.containsMatchIn(question)
 
     fun isWhy(question: String): Boolean =
         WHY.containsMatchIn(question) && AnswerLength.words(question) <= WHY_MAX_WORDS

@@ -11,13 +11,21 @@ import java.io.File
 class GeminiVoiceTest {
 
     @Test
-    fun `a refused or failed voice is named, never handed to another voice`() {
+    fun `a refused voice is named by the worker's status and reason, never handed to another voice`() {
         assertEquals("429 daily_cap", VoiceFailure.reasonFor(429, "daily_cap"))
-        assertEquals("quota", VoiceFailure.reasonFor(429, "quota"))
-        assertEquals("quota", VoiceFailure.reasonFor(429, null))
-        assertEquals("timeout", VoiceFailure.reasonFor(504, "upstream"))
-        assertEquals("error", VoiceFailure.reasonFor(502, "upstream"))
-        assertEquals("error", VoiceFailure.reasonFor(503, "voice_not_configured"))
+        assertEquals("429 quota", VoiceFailure.reasonFor(429, "quota"))
+        assertEquals("429 none", VoiceFailure.reasonFor(429, null))
+        assertEquals("502 upstream", VoiceFailure.reasonFor(502, "upstream"))
+        assertEquals("503 voice_not_configured", VoiceFailure.reasonFor(503, "voice_not_configured"))
+        assertEquals(VoiceFailure.QUOTA, VoiceFailure.reasonFor(429, "quota"))
+    }
+
+    @Test
+    fun `only the daily cap says so under the words`() {
+        assertTrue(VoiceFailure.isDailyCap(VoiceFailure.reasonFor(429, "daily_cap")))
+        assertFalse(VoiceFailure.isDailyCap(VoiceFailure.reasonFor(429, "quota")))
+        assertFalse(VoiceFailure.isDailyCap(VoiceFailure.TIMEOUT))
+        assertEquals("Voice is over its daily limit; text only until tomorrow.", VoiceFailure.DAILY_CAP_LINE)
     }
 
     @Test

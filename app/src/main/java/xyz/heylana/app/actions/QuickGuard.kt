@@ -104,7 +104,7 @@ object QuickGuard {
         if (action.number != null) {
             val number = normalNumber(action.number)
             val digits = number.filter(Char::isDigit)
-            if (digits.length !in 3..15 || digits !in text.filter(Char::isDigit)) {
+            if (digits.length !in 3..15 || !digitsSaid(digits, text)) {
                 return Verdict.Refused(RECIPIENT_NOT_SAID, "number_not_said digits=${digits.length}")
             }
             return Verdict.Allowed(QuickAction.Message(number, null, action.text))
@@ -193,14 +193,17 @@ object QuickGuard {
         val number = action.number?.let { normalNumber(it) }
         if (action.number != null) {
             val digits = number?.filter(Char::isDigit).orEmpty()
-            val saidDigits = text.filter(Char::isDigit)
-            if (digits.length !in 3..15 || digits !in saidDigits) return Verdict.Refused(NUMBER_NOT_SAID, "number_not_said")
+            if (digits.length !in 3..15 || !digitsSaid(digits, text)) return Verdict.Refused(NUMBER_NOT_SAID, "number_not_said")
             return Verdict.Allowed(QuickAction.Dial(number, null))
         }
         val name = action.name ?: return Verdict.Refused(NUMBER_NOT_SAID, "nothing_to_dial")
         return if (wordsSaid(name, text)) Verdict.Allowed(QuickAction.Dial(null, name))
         else Verdict.Refused(NUMBER_NOT_SAID, "name_not_said")
     }
+
+    /** The digits were said: typed, spoken ("oh eight hundred"), or a mix of the two. */
+    fun digitsSaid(digits: String, text: String): Boolean =
+        digits in text.filter(Char::isDigit) || digits in SpokenNumbers.digits(text)
 
     /** Digits, with a leading + kept for an international number. */
     fun normalNumber(given: String): String {

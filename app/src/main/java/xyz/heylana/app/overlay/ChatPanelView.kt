@@ -723,8 +723,12 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         note.visibility = View.VISIBLE
     }
 
-    /** Shows the step counter, the rail and the buttons for a running task. */
-    fun showSession(stepNumber: Int, ofSteps: Int) {
+    /**
+     * Shows the step counter, the rail and the buttons for a running task. A teaching
+     * session has no Next — the step moves on when the user does it — and keeps Done.
+     */
+    fun showSession(stepNumber: Int, ofSteps: Int, withNext: Boolean = true) {
+        next.visibility = if (withNext) View.VISIBLE else View.GONE
         val firstStep = shape != Shape.HUD
         stepChip.text = context.getString(R.string.step_label, stepNumber)
         rail.progress = if (ofSteps > 0) stepNumber.toFloat() / ofSteps else 0f

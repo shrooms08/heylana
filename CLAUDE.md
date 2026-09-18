@@ -464,6 +464,15 @@ any signature or reading any chain — and `--talks-cap` makes `/chat` answer
 would send a real transaction to the stub's made-up treasury. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 
+**Deepgram gets the last word.** On release the microphone keeps streaming for 400ms
+(`TRAILING_MS`, the last word is usually still being said as the finger lifts), then the
+socket is sent Deepgram's `Finalize` and given up to 1500ms (`FINAL_WAIT_MS`) for the answer
+marked `from_finalize`; only then `CloseStream`. Stopping at the release and closing after a
+fixed 900ms had Deepgram reporting nothing on holds the phone's recogniser heard fine. The
+trace says `deepgram: finalize sent`, then `deepgram: final after_ms=… words=…` or
+`deepgram: no final reason=no_speech_detected|socket_closed_early|timeout`. `EarsRace`
+prefers Deepgram's words for 2000ms after the release to fit that.
+
 **Both ears listen, every time.** At the long press the phone's own recogniser
 starts, and so does Deepgram — whose key and socket were already being fetched
 from the first touch of the disc, and whose microphone buffers until the socket
@@ -478,9 +487,11 @@ work is simply out of the race — never a reason to hear nothing. The trace say
 **No phone voice: a voice that cannot speak stays silent.** If `/tts` is refused (the
 day's cap, the provider's quota), fails, returns no audio, or no audio arrives within
 `VoiceFailure.FIRST_AUDIO_MS` (6 seconds, also the stall limit mid-stream), `HeylanaVoice`
-logs `voice_failed reason=429 daily_cap|quota|timeout|error` and hands the words back:
+logs `voice_failed reason=<status> <reason>` as the worker gave them ("429 daily_cap",
+"429 quota", "502 upstream"), or `timeout` / `error`, and hands the words back:
 the answer is shown as text in the strip (in a task, in the HUD) and stays up long enough
-to read (350ms a word, 4 to 12 seconds) before settling. Nothing else reads it out. The
+to read (350ms a word, 4 to 12 seconds) before settling. Over the day's cap, the strip also
+says "Voice is over its daily limit; text only until tomorrow.", so the silence has a reason. Nothing else reads it out. The
 phone's own text-to-speech, the "Phone voice" choice and the "Force phone voice" debug
 switch are gone. The ears race is unchanged.
 
@@ -555,6 +566,15 @@ tested per action in `QuickCatalogueTest`):
 - `web_search(query)`: the Google search page with `ACTION_VIEW`, in the default browser.
   `ACTION_WEB_SEARCH` put up a chooser on the Seeker (Chrome and the Google app both take it).
 - `settings(wifi|bluetooth|display|sound|battery|accessibility)`: that page's Settings action.
+
+**Forgiving, then asking.** Numbers count as said when spoken: `SpokenNumbers` turns "oh
+eight hundred one two three" into 0800123 ("double four", "twenty one", and typed digits in
+the same run), for a call and a text. "Message" works as well as "text", and a reminder's time
+can come before or after what it is about ("remind me at 6 to call my dad"). When the model
+names an action but leaves out a part it needs, Heylana asks one question instead of refusing
+(`QuickAction.clarify`: "Who should I text?", "What time should I remind you?", …), and the
+answer, within a minute, is put with the original question (`action: clarify asked`,
+`action: clarify answered`).
 
 Every argument is checked as before: queries, message words, reminder text and contact
 names word by word (contractions spelled out on both sides, since the model writes "I am"
@@ -755,6 +775,20 @@ steps are held under 25 words (`AnswerLength.STEP_WORDS`: a reply that starts a 
 every next step and a why); a finished task's confirmation keeps 60. The system prompt
 carries the same rule in one line.
 
+**Teaching sessions: Heylana stays for the taps.** "Teach me how to…", "show me how
+to…", "help me…" (not "help me understand") and "walk me through…" (`Teaching.wantsSession`)
+send `HeylanaPrompt.WALK_THROUGH_LINE`: if it takes more than one tap, the model replies with
+a task whose say is the first step only, one short reason first. The session is a teaching
+one (`GuidanceSession.teaching`): each step the disc flies to the step's element and stays
+beside it with the ring, the strip beside it; there is no Next — `ChatPanelView.showSession(…,
+withNext = false)` — because doing the step moves it on: the tap watch acknowledging the tap
+(or the screen moving) books the next step after the usual 900ms settle, and a screen change
+does as before; each step re-reads the screen. Done stays, and "stop", "cancel", "that's
+enough", "never mind" said on their own (`Teaching.isStop`) end it the same way. The session
+ends on `done`, Done, stop or the 8-step cap; its last line is spoken and then the disc flies
+home (`closeTask`, `flyHomeAfterSpeech`). A walk-through is never added to a send, a quick
+action or chat. Explanations that need no taps stay one-shot segmented answers.
+
 **The recap.** When a task ends (done, Done, the panel closing, an error, the cap, or a new
 question), its goal and one-line steps are kept in memory as a `FinishedTask` for ten
 minutes. "What did I just do" in that window is answered from it with no screen read
@@ -803,7 +837,14 @@ last the disc flies home and the strip melts. A segment with no element is spoke
 where the disc stands. The shape of the motion is a port of Clicky's (MIT, `design/refs/
 clicky`, `OverlayWindow.swift`'s `animateBezierFlightArc`): arc height a fifth of the
 distance up to 80dp, smoothstep easing, a swell of 0.22 at the apex. The pace is Heylana's:
-`TeachingFlight.PACE_MS` 600ms for a 420dp hop, never under 380ms or over 900ms. The window
+`TeachingFlight.PACE_MS` 600ms for a 420dp hop, never under 380ms or over 900ms. Home is the
+dock the disc left from, remembered at the first hop (`teachHome`, else the nearer edge):
+clamping where it stood left it mid-screen beside the last element. `standBeside` places the
+disc and its strip together — beside the element only where both fit, the strip on the far
+side; else under or over it — since a strip with no room pushed the whole window back over
+the element. `adb shell am broadcast -a xyz.heylana.app.debug.PANEL --ez teach true` plays a
+silent teaching flight on the real overlay across three made-up elements (no model, no
+voice: each piece dwells as long as it takes to read). The window
 itself moves frame by frame, as a drag does. Where the disc stands is `standBeside`: beside
 the element on the side with more room, else under it, else over it, always on screen, with
 the strip on the far side from the element. With no voice, each sentence is left up long

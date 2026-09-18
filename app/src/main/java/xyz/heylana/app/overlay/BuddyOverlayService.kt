@@ -132,6 +132,7 @@ class BuddyOverlayService : Service() {
     private data class PendingSend(val quote: SendQuote, val at: Long)
 
     private val walletApi by lazy { WalletApi(settings) }
+    private val memoryDesk by lazy { xyz.heylana.app.memory.memoryDeskFor(settings, walletApi, source = "buddy") }
 
     /** Addresses typed since the buddy started, to recognise them shortened on a wallet screen. Memory only. */
     private val typedAddresses = TypedAddresses()
@@ -474,6 +475,17 @@ class BuddyOverlayService : Service() {
         HeylanaLog.state("ask: sending")
         val view = overlayView ?: return
         if (inFlight?.isActive == true) return
+
+        // "Remember that…", a preference, or the yes that keeps it: no question to the model.
+        if (memoryDesk.claims(question)) {
+            exchange.asking()
+            inFlight = scope.launch {
+                val line = memoryDesk.handle(question)
+                exchange.over()
+                if (line != null) sayLine(line)
+            }
+            return
+        }
         exchange.asking()
 
         // "Why?" on a step is about the step, not a new question: the task, its box and

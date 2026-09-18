@@ -92,6 +92,53 @@ class WalletApi(private val settings: HeylanaSettings) {
     /** What the connected wallet is called, and what Heylana calls its owner. */
     suspend fun profile(): Answer<Profile> = call(proxy.get("profile")) { profileOf(it) }
 
+    // ------------------------------------------------------------------ memory
+
+    /** Whether memory is on for this wallet, and what it keeps. */
+    suspend fun memory(): Answer<xyz.heylana.app.memory.MemoryState> = call(proxy.get("memory")) { memoryOf(it) }
+
+    /**
+     * Keeps one record. [said] is the user's own words for an explicit one: the worker keeps
+     * it only if the line is in them, and never one with an address or an amount in it.
+     */
+    suspend fun remember(
+        category: String,
+        content: String,
+        consent: String,
+        said: String?,
+        source: String
+    ): Answer<Unit> =
+        post(
+            "memory",
+            JSONObject().put("category", category).put("content", content).put("consent", consent)
+                .put("source_turn", source).apply { if (said != null) put("said", said) }
+        ) { }
+
+    suspend fun forget(id: String): Answer<xyz.heylana.app.memory.MemoryState> =
+        post("memory/delete", JSONObject().put("id", id)) { memoryOf(it) }
+
+    suspend fun wipeMemory(): Answer<xyz.heylana.app.memory.MemoryState> =
+        post("memory/wipe", JSONObject()) { memoryOf(it) }
+
+    /** Turns memory on or off for this wallet; off keeps nothing. */
+    suspend fun memoryConsent(on: Boolean): Answer<xyz.heylana.app.memory.MemoryState> =
+        post("memory/consent", JSONObject().put("on", on)) { memoryOf(it) }
+
+    private fun memoryOf(json: JSONObject): xyz.heylana.app.memory.MemoryState {
+        val list = json.optJSONArray("records")
+        val records = List(list?.length() ?: 0) { i ->
+            val r = list!!.getJSONObject(i)
+            xyz.heylana.app.memory.MemoryRecord(
+                id = r.optString("id"),
+                category = r.optString("category"),
+                content = r.optString("content"),
+                consent = r.optString("consent"),
+                created = r.optString("created")
+            )
+        }
+        return xyz.heylana.app.memory.MemoryState(on = json.optBoolean("on"), records = records)
+    }
+
     suspend fun saveProfile(callMe: String): Answer<Profile> =
         call(proxy.put("profile", JSONObject().put("call_me", cleanName(callMe)).toString())) { profileOf(it) }
 

@@ -19,6 +19,7 @@ import {
 } from './session.ts'
 import { R3_INTENTS, actionRisk, entry, type Decision } from './registry.ts'
 import { inUserWords, withoutActions } from './policy.ts'
+import { aboutBlock, newRecord, parseMemory, refusal, relevant, withRecord, type Memory } from './memory.ts'
 import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
@@ -135,6 +136,10 @@ const DAILY_CAPS: Record<string, number> = {
   'send/build': 150,
   // One per confirmed send, payment, message or reminder.
   confirm: 200,
+  memory: 300,
+  'memory/delete': 200,
+  'memory/wipe': 20,
+  'memory/consent': 20,
 }
 
 /** Pro and Judge questions and spoken answers: unlimited in practice, with an abuse ceiling. */
@@ -166,6 +171,10 @@ const ROUTES: Record<string, readonly string[]> = {
   'send/confirm': ['POST'],
   'send/build': ['POST'],
   confirm: ['POST'],
+  memory: ['GET', 'POST'],
+  'memory/delete': ['POST'],
+  'memory/wipe': ['POST'],
+  'memory/consent': ['POST'],
 }
 
 /** Who is asking: always a device, and a wallet once one has been connected. */
@@ -272,6 +281,7 @@ export default {
       if (route === 'send/confirm') return await sendConfirm(request, env, who)
       if (route === 'send/build') return await sendBuild(request, env, who)
       if (route === 'confirm') return await confirm(request, env, who)
+      if (route === 'memory' || route.startsWith('memory/')) return await memory(route, request, env, who)
       return await me(env, who)
     } catch (error) {
       // Whatever went wrong, the reply is a shape the app understands and
@@ -320,6 +330,16 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     max_tokens: clampTokens(body.max_tokens),
     system: typeof body.system === 'string' ? body.system : undefined,
     messages: body.messages,
+  }
+  // What the user chose to have remembered, on every question but a quick action.
+  let memoryRecords = 0
+  if (who.wallet && body.intent !== 'quick_action') {
+    const kept = await loadMemory(env, who.wallet)
+    const block = kept.on ? aboutBlock(kept.records) : null
+    if (block) {
+      base.system = base.system ? `${base.system}\n\n${block}` : block
+      memoryRecords = relevant(kept.records).length
+    }
   }
   const callModel = (payload: unknown) =>
     fetch(ANTHROPIC_URL, {
@@ -478,6 +498,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       : {}),
     ...(quickAction ? { action_class: actionRisk(quickAction.intent) } : {}),
     ...(actionsRemoved > 0 ? { actions_removed: actionsRemoved } : {}),
+    ...(memoryRecords > 0 ? { memory_records: memoryRecords } : {}),
     ...(saySegments > 1 ? { say_segments: saySegments } : {}),
     status,
     tokens_in: tokensIn,
@@ -810,6 +831,62 @@ async function profile(request: Request, env: Env, who: Who): Promise<Response> 
   await saveProfile(env, who.wallet, updated)
   log({ route: 'profile', device: who.device, wallet: who.wallet.slice(0, 8), saved: true })
   return json(200, updated)
+}
+
+// -------------------------------------------------------------------- memory
+
+const memoryKey = (wallet: string) => `memory:${wallet}`
+
+async function loadMemory(env: Env, wallet: string): Promise<Memory> {
+  return parseMemory(await env.CAPS.get(memoryKey(wallet)))
+}
+
+/**
+ * The user's memory, per wallet: read it, add to it, delete a line, wipe it, or turn it
+ * on or off (off wipes it). Nothing is kept until it is on. Logged by counts and
+ * categories only, never a word of what is kept.
+ */
+async function memory(route: string, request: Request, env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet to use memory.')
+  const current = await loadMemory(env, who.wallet)
+  const save = (next: Memory) => env.CAPS.put(memoryKey(who.wallet!), JSON.stringify(next))
+  const wallet = who.wallet.slice(0, 4)
+
+  if (route === 'memory' && request.method === 'GET') return json(200, current)
+  const body = await readJson(request)
+
+  if (route === 'memory/consent') {
+    const on = body.on === true
+    // Turning it off keeps nothing.
+    await save({ on, records: on ? current.records : [] })
+    log({ route, device: who.device, wallet, on })
+    return json(200, { on, records: on ? current.records : [] })
+  }
+  if (route === 'memory/wipe') {
+    await save({ on: current.on, records: [] })
+    log({ route, device: who.device, wallet, wiped: current.records.length })
+    return json(200, { on: current.on, records: [] })
+  }
+  if (route === 'memory/delete') {
+    const records = current.records.filter((r) => r.id !== String(body.id ?? ''))
+    await save({ on: current.on, records })
+    log({ route, device: who.device, wallet, deleted: current.records.length - records.length })
+    return json(200, { on: current.on, records })
+  }
+  if (route === 'memory' && request.method === 'POST') {
+    if (!current.on) return json(403, { reason: 'memory_off', detail: 'Memory is off. Turn it on in Menu, Memory.' })
+    const why = refusal(body)
+    if (why) {
+      log({ route, device: who.device, wallet, category: String(body.category ?? ''), refused: why })
+      return json(422, { reason: why, detail: "That isn't something I keep." })
+    }
+    const record = newRecord(body, newReference().slice(0, 12), clock.now())
+    const records = withRecord(current.records, record)
+    await save({ on: true, records })
+    log({ route, device: who.device, wallet, category: record.category, consent: record.consent, count: records.length })
+    return json(200, { record, count: records.length })
+  }
+  return fail(404, 'unknown_route', 'No such memory route.')
 }
 
 /** Where this wallet (or this bare device) stands right now. */

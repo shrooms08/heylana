@@ -46,6 +46,7 @@ class AppChat(
     private val memory = Conversation()
     private val runner = QuickActionRunner(context)
     private val wallet = xyz.heylana.app.wallet.WalletApi(settings)
+    private val memoryDesk = xyz.heylana.app.memory.memoryDeskFor(settings, wallet, source = "app")
 
     val exchanges = mutableStateListOf<Exchange>()
     var thinking by mutableStateOf(false)
@@ -83,7 +84,12 @@ class AppChat(
         thinking = true
         HeylanaLog.state("app: ask chars=${question.length} screen=not_read")
         inFlight = scope.launch {
-            val answer = if (QuickActions.isQuickAction(question)) action(question) else chat(question)
+            val answer = when {
+                // "Remember that…", a preference, or the yes that keeps it: no question to the model.
+                memoryDesk.claims(question) -> memoryDesk.handle(question)
+                QuickActions.isQuickAction(question) -> action(question)
+                else -> chat(question)
+            }
             thinking = false
             asked = null
             if (answer != null) {

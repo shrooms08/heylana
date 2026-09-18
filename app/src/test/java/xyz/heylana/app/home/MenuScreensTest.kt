@@ -67,7 +67,7 @@ class MenuScreensTest {
     @Test
     fun `the privacy list has the seven items and names the voice in use`() {
         val gemini = PrivacyCopy.items(VoiceCopy.GEMINI)
-        assertEquals(7, gemini.size)
+        assertEquals(8, gemini.size)
         assertTrue(gemini[2].detail.contains("Google (Gemini)"))
         assertTrue(PrivacyCopy.items(VoiceCopy.DEEPGRAM)[2].detail.contains("Deepgram"))
         assertTrue(PrivacyCopy.PIXELS.contains("never captures pixels"))

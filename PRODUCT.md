@@ -143,6 +143,13 @@ yet (it never sends a second copy); or not found — check your wallet.
 
 8. **Skills** — nothing. The public list of more skills is on the roadmap and is
    never downloaded; the built-in ones are text inside the app.
+9. **Memory, only if you turn it on** — to Heylana's server, kept against your wallet:
+   short notes you asked it to keep ("remember that I'm new to Solana"), preferences you
+   said yes to, and lessons you finished — at most 60 lines. Never what's on your screen,
+   never an address or an amount: the server refuses both. Up to 12 of them go with your
+   questions (to Anthropic, as "About the user"), not with your quick actions. See, delete
+   or wipe them in Menu, Memory; turning it off keeps nothing. You're asked once, when you
+   first sign in.
 
 9. **Crash reports, if turned on in the build** — when the app or Heylana's server
    crashes, what went wrong goes to **Sentry**: the error, the app version and the

@@ -236,6 +236,20 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_FIRST_RUN_DONE, value).apply()
         }
 
+    /** A copy of whether memory is on for this wallet (the worker holds the truth), so the buddy need not ask. */
+    var memoryOn: Boolean
+        get() = prefs.getBoolean(KEY_MEMORY_ON, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_MEMORY_ON, value).apply()
+        }
+
+    /** The preferences already offered to be remembered on this phone: each is offered once. */
+    var memoryOffered: Set<String>
+        get() = prefs.getStringSet(KEY_MEMORY_OFFERED, null)?.toSet().orEmpty()
+        set(value) {
+            prefs.edit().putStringSet(KEY_MEMORY_OFFERED, value.toSet()).apply()
+        }
+
     /** Set once the user has confirmed a send on this phone: the Seed Vault trust hint is shown until then. */
     var sendConfirmedOnce: Boolean
         get() = prefs.getBoolean(KEY_SEND_CONFIRMED_ONCE, false)
@@ -298,6 +312,8 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_GLASS_MODE = "glass_mode"
         private const val KEY_FIRST_RUN_DONE = "first_run_done"
         private const val KEY_SEND_CONFIRMED_ONCE = "send_confirmed_once"
+        private const val KEY_MEMORY_ON = "memory_on"
+        private const val KEY_MEMORY_OFFERED = "memory_offered"
         const val GLASS_DARK = "dark"
         const val GLASS_LIGHT = "light"
 

@@ -38,6 +38,7 @@ import xyz.heylana.app.ui.app.FlatField
 import xyz.heylana.app.ui.app.FlatPage
 import xyz.heylana.app.ui.app.FlatRow
 import xyz.heylana.app.ui.app.FlatSurface
+import xyz.heylana.app.ui.app.FlatSwitch
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.Icon
 import xyz.heylana.app.ui.app.LibraryOrb
@@ -151,6 +152,15 @@ fun SignInScreen(
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SectionHead("What should I call you?")
                         FlatField(name, { name = it.take(MAX_NAME) }, "Your name", onAction = {})
+                        // Opt-in, off until switched on: memory lives with the wallet, so only with one.
+                        var keepNotes by remember { mutableStateOf(false) }
+                        if (settings.walletSession != null) {
+                            FlatRow(
+                                "Remember what I tell you",
+                                subtitle = FirstRunText.MEMORY_OPT_IN,
+                                card = false
+                            ) { FlatSwitch(keepNotes, { keepNotes = it }) }
+                        }
                         var saving by remember { mutableStateOf(false) }
                         AccentButton(if (saving) "Saving…" else "Continue", enabled = !saving && cleanName(name).isNotEmpty(), onClick = {
                             saving = true
@@ -161,6 +171,9 @@ fun SignInScreen(
                                         is Answer.Ok -> settings.callMe = saved.value.callMe
                                         else -> settings.callMe = clean
                                     }
+                                    val consent = api.memoryConsent(keepNotes)
+                                    settings.memoryOn = consent is Answer.Ok && consent.value.on
+                                    xyz.heylana.app.HeylanaLog.state("memory: first run on=${settings.memoryOn}")
                                 } else {
                                     settings.callMe = clean
                                 }
@@ -187,6 +200,12 @@ fun SignInScreen(
 }
 
 private const val MAX_NAME = 40
+
+object FirstRunText {
+    /** The one sentence memory is asked for with. */
+    const val MEMORY_OPT_IN =
+        "Heylana keeps short notes you ask it to, for this wallet only, and never what's on your screen."
+}
 
 /**
  * The four things Heylana asks for, each with its one-line why and the system's live

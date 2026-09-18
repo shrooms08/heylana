@@ -121,7 +121,11 @@ Exactly what leaves the phone, and where it goes:
    public resolver. Nothing else from the screen goes to them.
 
 **Heylana prepares, you sign. Always.** Heylana never signs and never sends: every
-transfer is shown in Seed Vault, and only you can approve it there. A recipient only
+transfer is shown in Seed Vault, and only you can approve it there. Every send needs your
+approval in Seed Vault, unless you marked Heylana as trusted there. We recommend you
+don't: the first send's strip says so ("Don't tick 'trust this app'"), and if Seed Vault
+ever signs within a second and a half of opening, Heylana tells you it signed
+automatically and how to undo that in the Wallet's connected apps. A recipient only
 ever comes from your own words, never from the screen, and more than a quarter of a
 balance has to be asked for twice.
 

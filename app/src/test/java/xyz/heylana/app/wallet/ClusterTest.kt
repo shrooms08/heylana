@@ -57,7 +57,7 @@ class ClusterTest {
             },
             signAndSend = { _, cluster ->
                 asked += "wallet:${cluster.id}"
-                SeedVault.Trip.Done("signature")
+                SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000))
             },
             confirm = { _, _ -> Answer.Ok(pro) },
             log = {}
@@ -74,7 +74,7 @@ class ClusterTest {
         var walletAsked = false
         val payment = ProPayment(
             build = { _, _ -> Answer.Refused(409, "wrong_cluster", "This is for mainnet-beta, but Heylana is on devnet. I stopped before building it.") },
-            signAndSend = { _, _ -> walletAsked = true; SeedVault.Trip.Done("signature") },
+            signAndSend = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
             confirm = { _, _ -> Answer.Ok(pro) },
             log = {}
         )

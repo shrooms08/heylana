@@ -72,4 +72,31 @@ class WindowMergeTest {
         assertTrue(merged.nodes.isEmpty())
         assertNull(merged.signingWordsFrom)
     }
+
+    /** The notification shade over the app: a System UI window with someone else's words on it. */
+    private val shade = WindowMerge.Window(
+        "com.android.systemui", layer = 2_000_000,
+        nodes = listOf(raw(text = "Ada: see you at 6"), raw(text = "Quick settings"), raw(text = "Wi-Fi"))
+    )
+
+    @Test
+    fun `the notification shade, quick settings and lock screen are never read`() {
+        val merged = WindowMerge.merge(listOf(shade, sheet, heylana), ownPackage = own)
+        assertEquals(wallet, merged.packageName)
+        assertTrue(merged.nodes.none { it.text == "Ada: see you at 6" || it.text == "Wi-Fi" })
+        assertEquals(listOf(wallet), merged.windows.map { it.packageName })
+        // Logged by package and layer only, never read.
+        assertEquals(listOf(WindowMerge.WindowCount("com.android.systemui", 2_000_000, 0, 0)), merged.skipped)
+    }
+
+    @Test
+    fun `with only the shade in front there is nothing to read`() {
+        val merged = WindowMerge.merge(listOf(shade), ownPackage = own)
+        assertNull(merged.packageName)
+        assertTrue(merged.nodes.isEmpty())
+        assertTrue(WindowMerge.isSkipped("com.android.systemui", own))
+        assertTrue(WindowMerge.isSkipped(own, own))
+        assertTrue(WindowMerge.isSkipped(null, own))
+        assertEquals(false, WindowMerge.isSkipped(wallet, own))
+    }
 }

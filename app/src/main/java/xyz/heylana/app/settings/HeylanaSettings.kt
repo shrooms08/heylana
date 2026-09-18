@@ -236,6 +236,13 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_FIRST_RUN_DONE, value).apply()
         }
 
+    /** Set once the user has confirmed a send on this phone: the Seed Vault trust hint is shown until then. */
+    var sendConfirmedOnce: Boolean
+        get() = prefs.getBoolean(KEY_SEND_CONFIRMED_ONCE, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SEND_CONFIRMED_ONCE, value).apply()
+        }
+
     var darkerGlass: Boolean
         get() = prefs.getBoolean(KEY_DARKER_GLASS, false)
         set(value) {
@@ -290,6 +297,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_DARKER_GLASS = "darker_glass"
         private const val KEY_GLASS_MODE = "glass_mode"
         private const val KEY_FIRST_RUN_DONE = "first_run_done"
+        private const val KEY_SEND_CONFIRMED_ONCE = "send_confirmed_once"
         const val GLASS_DARK = "dark"
         const val GLASS_LIGHT = "light"
 

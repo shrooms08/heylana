@@ -28,7 +28,7 @@ class ProPaymentTest {
         val handed = mutableListOf<ByteArray>()
         val payment = ProPayment(
             build = builds,
-            signAndSend = { bytes, _ -> handed += bytes; SeedVault.Trip.Done("signature") },
+            signAndSend = { bytes, _ -> handed += bytes; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
             confirm = { _, _ -> Answer.Ok(pro) },
             log = {}
         )
@@ -41,7 +41,7 @@ class ProPaymentTest {
         var walletAsked = false
         val payment = ProPayment(
             build = { _, _ -> Answer.Ok(BuiltFixtures.built(null, SimulationResult.Failed("not_enough_token", "Not enough USDC. You have 0.05."))) },
-            signAndSend = { _, _ -> walletAsked = true; SeedVault.Trip.Done("signature") },
+            signAndSend = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
             confirm = { _, _ -> Answer.Ok(pro) },
             log = {}
         )
@@ -55,7 +55,7 @@ class ProPaymentTest {
         var walletAsked = false
         val payment = ProPayment(
             build = { _, _ -> Answer.Ok(BuiltFixtures.built(BuiltFixtures.TOKEN)) },
-            signAndSend = { _, _ -> walletAsked = true; SeedVault.Trip.Done("signature") },
+            signAndSend = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
             confirm = { _, _ -> Answer.Ok(pro) },
             log = {}
         )

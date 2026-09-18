@@ -200,6 +200,9 @@ class HeylanaAccessibilityService : AccessibilityService() {
         for (window in merged.windows) {
             HeylanaLog.state("screen: window pkg=${window.packageName} layer=${window.layer} nodes=${window.read} kept=${window.kept}")
         }
+        for (window in merged.skipped) {
+            HeylanaLog.state("screen: skipped pkg=${window.packageName} layer=${window.layer} why=system_ui")
+        }
         HeylanaLog.state(
             "screen: signing words from " +
                 (merged.signingWordsFrom?.let { "pkg=${it.packageName} layer=${it.layer}" } ?: "none")
@@ -242,8 +245,15 @@ class HeylanaAccessibilityService : AccessibilityService() {
                 val truncated = collect(root, depth = 0, out = nodes)
                 WindowMerge.Window(root.packageName?.toString() ?: "unknown", window.layer, nodes, truncated)
             }
-        if (found.any { it.packageName != packageName }) return found
-        val root = rootInActiveWindow?.takeIf { it.packageName?.toString() != packageName } ?: return found
+        if (found.any { !WindowMerge.isSkipped(it.packageName, packageName) }) return found
+        val root = rootInActiveWindow ?: return found
+        val active = root.packageName?.toString()
+        if (active == packageName) return found
+        // With the shade open the active window is System UI's: passed on unread, so the
+        // merge skips it and logs that it did. Its tree is never walked.
+        if (WindowMerge.isSkipped(active, packageName)) {
+            return found + WindowMerge.Window(active ?: "unknown", Int.MIN_VALUE, emptyList())
+        }
         val nodes = ArrayList<WindowMerge.Raw>()
         val truncated = collect(root, depth = 0, out = nodes)
         return found + WindowMerge.Window(root.packageName?.toString() ?: "unknown", Int.MIN_VALUE, nodes, truncated)

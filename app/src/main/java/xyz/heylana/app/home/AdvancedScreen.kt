@@ -162,7 +162,10 @@ object PrivacyCopy {
     const val LEAD = "Nothing is read unless you ask."
     const val PIXELS = "Heylana never captures pixels: no screenshots and no recordings. When you ask, " +
         "the screen is turned into a short text list of the labels on it, used for that one answer and dropped."
-    const val SIGN = "Heylana prepares, you sign. Always. Nothing is signed or sent without you in Seed Vault."
+    const val SIGN = "Heylana prepares, you sign. Heylana never signs or sends anything itself."
+
+    /** The honest caveat: a wallet told to trust Heylana signs without asking. */
+    const val TRUSTED = "Every send needs your approval in Seed Vault, unless you marked Heylana as trusted there. We recommend you don't."
 
     data class Item(val title: String, val detail: String)
 
@@ -231,6 +234,7 @@ fun PrivacyScreen(provider: String, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(6.dp))
                 FlatRow("You sign", subtitle = PrivacyCopy.SIGN, glyph = Glyph.LOCK)
+                FlatRow("Approve each send", subtitle = PrivacyCopy.TRUSTED, glyph = Glyph.SHIELD)
                 Spacer(Modifier.height(24.dp))
             }
         }

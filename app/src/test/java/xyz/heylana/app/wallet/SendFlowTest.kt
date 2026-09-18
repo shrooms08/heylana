@@ -25,7 +25,7 @@ class SendFlowTest {
 
     private fun flow(
         build: suspend (String, Cluster) -> Answer<BuiltTransfer> = passes,
-        wallet: suspend (ByteArray, Cluster) -> SeedVault.Trip<String> = { _, _ -> SeedVault.Trip.Done("signature") },
+        wallet: suspend (ByteArray, Cluster) -> SeedVault.Trip<SeedVault.Signed> = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
         confirm: suspend (String, String?) -> Answer<String> = { _, _ -> Answer.Ok("5555…5555") },
         log: (String) -> Unit = {},
         clock: LongArray = longArrayOf(0L),
@@ -40,7 +40,7 @@ class SendFlowTest {
         val stages = mutableListOf<SendStage>()
         val result = flow(
             build = { id, cluster -> asked += "build:$id:${cluster.id}"; Answer.Ok(BuiltFixtures.built(BuiltFixtures.TOKEN)) },
-            wallet = { bytes, cluster -> asked += "wallet:${cluster.id}"; handed += bytes; SeedVault.Trip.Done("signature") },
+            wallet = { bytes, cluster -> asked += "wallet:${cluster.id}"; handed += bytes; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
             log = { logged += it },
             stages = stages
         ).run(request, PAYER)
@@ -58,7 +58,7 @@ class SendFlowTest {
         val failed = SimulationResult.Failed("not_enough_token", "Not enough USDC. You have 0.03.")
         val result = flow(
             build = { _, _ -> Answer.Ok(BuiltFixtures.built(null, failed)) },
-            wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done("signature") }
+            wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) }
         ).run(request, PAYER)
         assertFalse(walletAsked)
         assertEquals(
@@ -73,7 +73,7 @@ class SendFlowTest {
         val line = "This is for mainnet-beta, but Heylana is on devnet. I stopped before building it."
         val result = flow(
             build = { _, _ -> Answer.Refused(409, "wrong_cluster", line) },
-            wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done("signature") }
+            wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) }
         ).run(request, PAYER)
         assertFalse(walletAsked)
         assertEquals(SendResult.Stopped(line), result)
@@ -85,7 +85,7 @@ class SendFlowTest {
         // The worker hands back a SOL transfer for a USDC send.
         val result = flow(
             build = { _, _ -> Answer.Ok(BuiltFixtures.built(BuiltFixtures.SOL)) },
-            wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done("signature") }
+            wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) }
         ).run(request, PAYER)
         assertFalse(walletAsked)
         assertEquals(SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED), result)
@@ -165,5 +165,14 @@ class SendFlowTest {
         assertEquals(5_000L, clock[0])
         assertEquals(3, logged.count { it.startsWith("send: check #") })
         assertTrue(logged.any { it.contains("check #1") && it.contains("result=409 not_confirmed") })
+    }
+
+    @Test
+    fun `a signature back within 1500ms of Seed Vault opening was signed automatically, and is said so`() = runBlocking {
+        val fast = flow(wallet = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 400)) }).run(request, PAYER)
+        assertEquals(SendResult.Sent("5555…5555", autoSigned = true), fast)
+        val read = flow(wallet = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 1_500)) }).run(request, PAYER)
+        assertEquals(SendResult.Sent("5555…5555", autoSigned = false), read)
+        assertTrue(BuildText.AUTO_SIGNED.startsWith("Seed Vault signed that automatically because Heylana is marked trusted there."))
     }
 }

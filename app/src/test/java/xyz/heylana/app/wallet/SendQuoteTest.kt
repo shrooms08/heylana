@@ -1,6 +1,7 @@
 package xyz.heylana.app.wallet
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SendQuoteTest {
@@ -41,5 +42,12 @@ class SendQuoteTest {
     @Test(expected = ArithmeticException::class)
     fun `an amount finer than the token allows is refused, never rounded`() {
         quote(amount = "0.0000001").units
+    }
+
+    @Test
+    fun `the first send's strip asks the user not to trust Heylana in Seed Vault, before Confirm`() {
+        val first = SendText.previewed(BuiltFixtures.preview, firstSend = true)
+        assertTrue(first.endsWith("Nothing has been signed. ${BuildText.TRUST_HINT} Confirm?"))
+        assertTrue(!SendText.previewed(BuiltFixtures.preview).contains("trust this app"))
     }
 }

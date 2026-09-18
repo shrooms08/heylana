@@ -85,13 +85,24 @@ class SeedVault(activity: ComponentActivity) {
         return finish(result)
     }
 
+    /**
+     * What the wallet handed back: the signature, and how long it took from the moment the
+     * wallet session was open (Seed Vault on screen) to the signature — a person reading
+     * and approving takes seconds; a wallet that trusts Heylana signs at once.
+     */
+    data class Signed(val signature: String, val afterOpenMs: Long)
+
     /** Hands the unsigned payment to the wallet to sign and send; returns its signature. */
-    suspend fun pay(unsignedTransaction: ByteArray, cluster: Cluster): Trip<String> {
+    suspend fun pay(unsignedTransaction: ByteArray, cluster: Cluster): Trip<Signed> {
         HeylanaLog.state("wallet: asking to sign and send the payment on ${cluster.id}")
         adapter.blockchain = cluster.blockchain
         val result = adapter.transact(sender) {
+            // This block runs once the wallet session is open, with Seed Vault in front.
+            val opened = android.os.SystemClock.elapsedRealtime()
             val sent = signAndSendTransactions(arrayOf(unsignedTransaction))
-            Base58.encode(sent.signatures.first())
+            val ms = android.os.SystemClock.elapsedRealtime() - opened
+            HeylanaLog.state("wallet: signed after_open_ms=$ms")
+            Signed(Base58.encode(sent.signatures.first()), ms)
         }
         return finish(result)
     }

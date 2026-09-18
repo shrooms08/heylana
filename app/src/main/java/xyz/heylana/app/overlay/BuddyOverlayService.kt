@@ -949,7 +949,8 @@ class BuddyOverlayService : Service() {
             val preview = (built as Answer.Ok).value.preview
             simulationPassed = true
             HeylanaLog.state("send: simulation passed fee=${preview.feeSol} new_account=${preview.createsAccount} cluster=${preview.cluster}")
-            val text = SendText.previewed(preview)
+            // The first send on this phone also says: approve it yourself, don't trust Heylana there.
+            val text = SendText.previewed(preview, firstSend = !settings.sendConfirmedOnce)
             overlayView?.showSimulationPassed(text)
             speak(text)
         }
@@ -966,6 +967,7 @@ class BuddyOverlayService : Service() {
         }
         awaitingConfirm = null
         simulationPassed = false
+        settings.sendConfirmedOnce = true
         mouth?.stop()
         overlayView?.hideSendConfirm()
         overlayView?.showNotice("Approve it in Seed Vault.")
@@ -997,8 +999,10 @@ class BuddyOverlayService : Service() {
         mode(if (result is SendResult.Sent) BuddyMode.SENT else null)
         when (result) {
             is SendResult.Sent -> {
-                HeylanaLog.state("send: landed")
-                sayLine(SendText.sent(result.shortSignature))
+                HeylanaLog.state("send: landed auto_signed=${result.autoSigned}")
+                // Signed faster than anyone could have approved it: say so, and how to undo it.
+                val trusted = if (result.autoSigned) " ${BuildText.AUTO_SIGNED}" else ""
+                sayLine(SendText.sent(result.shortSignature) + trusted)
             }
             is SendResult.Stopped -> {
                 HeylanaLog.state("send: stopped")

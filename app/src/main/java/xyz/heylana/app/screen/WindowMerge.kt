@@ -48,8 +48,21 @@ object WindowMerge {
         val truncated: Boolean,
         val windows: List<WindowCount>,
         /** The topmost window that says sending, network fee, approve and the like. */
-        val signingWordsFrom: WindowCount?
+        val signingWordsFrom: WindowCount?,
+        /** Windows never read: the system's own (the shade, quick settings, the lock screen). */
+        val skipped: List<WindowCount> = emptyList()
     )
+
+    /**
+     * The system's own windows: the notification shade, quick settings and the lock
+     * screen all belong to System UI. They are skipped exactly as Heylana's own are:
+     * notifications carry other people's words, and none of it is the app in front.
+     */
+    val SYSTEM_PACKAGES = setOf("com.android.systemui")
+
+    /** Whether a window from [packageName] is never read. */
+    fun isSkipped(packageName: String?, ownPackage: String): Boolean =
+        packageName == null || packageName == ownPackage || packageName in SYSTEM_PACKAGES
 
     private val PRIORITY_WORDS = Regex(
         "(?<![\\p{L}])(to|from|fee|network fee|send|sending|approve|confirm|sign|signature|review|recipient|amount)(?![\\p{L}])",
@@ -69,7 +82,11 @@ object WindowMerge {
     }
 
     fun merge(windows: List<Window>, ownPackage: String, cap: Int = ScreenSnapshot.MAX_NODES): Merged {
-        val readable = windows.filter { it.packageName != ownPackage }.sortedByDescending { it.layer }
+        val readable = windows.filterNot { isSkipped(it.packageName, ownPackage) }.sortedByDescending { it.layer }
+        // Counted for the log (package and layer only), never read.
+        val skipped = windows
+            .filter { it.packageName != ownPackage && it.packageName in SYSTEM_PACKAGES }
+            .map { WindowCount(it.packageName, it.layer, read = 0, kept = 0) }
 
         data class Placed(val window: Int, val index: Int, val node: Raw, val priority: Boolean)
         val all = readable.flatMapIndexed { w, window ->
@@ -91,7 +108,8 @@ object WindowMerge {
             nodes = kept.map { it.node },
             truncated = all.size > cap || readable.any { it.truncated },
             windows = counts,
-            signingWordsFrom = counts.getOrNull(signingWindow)
+            signingWordsFrom = counts.getOrNull(signingWindow),
+            skipped = skipped
         )
     }
 }

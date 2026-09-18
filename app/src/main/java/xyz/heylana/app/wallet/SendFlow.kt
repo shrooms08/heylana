@@ -5,7 +5,8 @@ import xyz.heylana.app.HeylanaLog
 
 /** How a confirmed send ended, told back to the buddy. */
 sealed interface SendResult {
-    data class Sent(val shortSignature: String) : SendResult
+    /** [autoSigned]: the wallet signed too fast for anyone to have approved it (it trusts Heylana). */
+    data class Sent(val shortSignature: String, val autoSigned: Boolean = false) : SendResult
     data class Stopped(val line: String) : SendResult
 }
 
@@ -35,7 +36,7 @@ object SendRelay {
 class SendFlow(
     /** The final build: fresh blockhash, fresh simulation, bytes only if it passed. */
     private val build: suspend (id: String, cluster: Cluster) -> Answer<BuiltTransfer>,
-    private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<String>,
+    private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<SeedVault.Signed>,
     /** [signature] is null when the wallet gave none: the worker then looks for the transfer itself. */
     private val confirm: suspend (id: String, signature: String?) -> Answer<String>,
     private val log: (String) -> Unit = { HeylanaLog.state(it) },
@@ -103,7 +104,7 @@ class SendFlow(
 
         stage(SendStage.APPROVE_IN_WALLET)
         log("send: simulation passed, opening Seed Vault cluster=${request.cluster.id}")
-        val signature = when (val trip = signAndSend(bytes, request.cluster)) {
+        val signed = when (val trip = signAndSend(bytes, request.cluster)) {
             is SeedVault.Trip.Done -> trip.value
             SeedVault.Trip.NoWallet -> return SendResult.Stopped(WalletProblem.NO_WALLET.words)
             is SeedVault.Trip.Stopped -> {
@@ -120,8 +121,10 @@ class SendFlow(
             }
         }
         stage(SendStage.CHECKING)
-        log("send: signed in Seed Vault, waiting for it to land cluster=${request.cluster.id}")
-        return awaitLanded(request.id, signature)
+        val automatic = BuildText.signedAutomatically(signed.afterOpenMs)
+        log("send: signed in Seed Vault after_open_ms=${signed.afterOpenMs} automatic=$automatic, waiting for it to land cluster=${request.cluster.id}")
+        val landed = awaitLanded(request.id, signed.signature)
+        return if (landed is SendResult.Sent && automatic) landed.copy(autoSigned = true) else landed
     }
 
     /**

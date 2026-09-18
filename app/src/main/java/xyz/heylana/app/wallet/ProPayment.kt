@@ -20,7 +20,7 @@ sealed interface PayOutcome {
  */
 class ProPayment(
     private val build: suspend (reference: String, cluster: Cluster) -> Answer<BuiltTransfer>,
-    private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<String>,
+    private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<SeedVault.Signed>,
     /** [signature] is null when the wallet gave none: the worker then looks the payment up by its reference. */
     private val confirm: suspend (reference: String, signature: String?) -> Answer<Standing>,
     private val log: (String) -> Unit = { HeylanaLog.state(it) }
@@ -72,7 +72,7 @@ class ProPayment(
 
         log("pay: simulation passed, opening Seed Vault cluster=${cluster.id}")
         val signature = when (val trip = signAndSend(bytes, cluster)) {
-            is SeedVault.Trip.Done -> trip.value
+            is SeedVault.Trip.Done -> trip.value.signature
             SeedVault.Trip.NoWallet -> return PayOutcome.Stopped(WalletProblem.NO_WALLET)
             is SeedVault.Trip.Stopped -> {
                 if (trip.problem == WalletProblem.CANCELLED) {

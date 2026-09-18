@@ -50,10 +50,11 @@ object SendText {
      * (9WzD…AWWM) to your Heylana treasury (7c2y…SxSv). Fee 0.000005 SOL, on devnet.
      * Nothing has been signed. Confirm?"
      */
-    fun previewed(p: TransferPreview): String {
+    fun previewed(p: TransferPreview, firstSend: Boolean = false): String {
         val opens = if (p.createsAccount) " It opens their ${p.token} account for ${p.accountRentSol} SOL." else ""
+        val hint = if (firstSend) " ${BuildText.TRUST_HINT}" else ""
         return "Send ${p.amount} ${p.token} from ${p.fromLabel} (${p.from}) to ${p.toLabel} (${p.to}). " +
-            "Fee ${p.feeSol} SOL, on ${p.cluster}.$opens Nothing has been signed. Confirm?"
+            "Fee ${p.feeSol} SOL, on ${p.cluster}.$opens Nothing has been signed.$hint Confirm?"
     }
 
     fun sent(shortSignature: String): String = "Sent. Signature $shortSignature."

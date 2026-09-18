@@ -64,6 +64,19 @@ object BuildText {
         "The prepared transfer didn't match what you confirmed, so I didn't open the wallet."
 
     const val REJECTED = "The wallet rejected the request. No transaction was submitted."
+
+    /** On the strip of the first confirmed send on this phone. */
+    const val TRUST_HINT = "Seed Vault will ask you to approve. Don't tick 'trust this app', so every send stays yours."
+
+    /** Said after a send the wallet signed too fast for a person to have approved it. */
+    const val AUTO_SIGNED =
+        "Seed Vault signed that automatically because Heylana is marked trusted there. " +
+            "You can remove that in the Wallet's connected apps."
+
+    /** Faster than this after Seed Vault opens, no one read and approved it: the wallet trusts Heylana. */
+    const val AUTO_SIGN_MS = 1_500L
+
+    fun signedAutomatically(afterOpenMs: Long): Boolean = afterOpenMs < AUTO_SIGN_MS
     const val EXPIRED = "The prepared transaction expired before signing. Ask again and I'll rebuild and simulate a fresh copy."
     const val UNKNOWN_SIGNED =
         "The wallet returned a signature, but the network hasn't confirmed it yet. " +

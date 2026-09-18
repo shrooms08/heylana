@@ -542,6 +542,18 @@ once; the worker counts a reference or a signature once. `scripts/stub-proxy.py`
 `/send/build` with a preview only (`--sim-fail` for a failed one), so the wallet never
 opens from the stub.
 
+**Trust in Seed Vault, said honestly.** Seed Vault can be told to trust an app, and then
+it signs without asking. Until the user has confirmed a send on this phone
+(`HeylanaSettings.sendConfirmedOnce`), the strip adds "Seed Vault will ask you to approve.
+Don't tick 'trust this app', so every send stays yours." `SeedVault.pay` times the
+signature from the moment the wallet session is open (`wallet: signed after_open_ms=…`);
+under 1500ms (`BuildText.AUTO_SIGN_MS`) no one read and approved it, so after "Sent" Heylana
+says "Seed Vault signed that automatically because Heylana is marked trusted there. You can
+remove that in the Wallet's connected apps." The Privacy screen says "Every send needs your
+approval in Seed Vault, unless you marked Heylana as trusted there. We recommend you
+don't." (On Sept 18 a devnet send was signed with no one approving it: that is what this
+is for.)
+
 **The tool registry (phase 4).** `worker/src/registry.ts` holds every tool and action:
 name, version, JSON schema (`additionalProperties: false`), risk class — R0 public reads
 (get_price, explain_address, resolve_name), R1 the user's data (get_balances,
@@ -1233,7 +1245,10 @@ it until someone switches it off and on again.
 **Every window is read, topmost first.** A wallet's send sheet, a dialog or a
 prompt is its own window above the activity behind it, so reading one window
 missed the one that mattered. The service reads every application window (the
-keyboard is not one), drops Heylana's own, and `screen/WindowMerge` orders them by
+keyboard is not one), drops Heylana's own and System UI's (`com.android.systemui`: the
+notification shade, quick settings, the lock screen — other people's words, and never the
+app in front; `WindowMerge.isSkipped`, logged as `screen: skipped pkg=… why=system_ui`,
+also when the shade is the active window), and `screen/WindowMerge` orders them by
 layer, top first. The model still gets 120 elements at most; when there are more,
 amounts, addresses short or full, .skr/.sol names and to/from/fee/send/approve
 words are kept first. Each read logs the windows with package, layer and element

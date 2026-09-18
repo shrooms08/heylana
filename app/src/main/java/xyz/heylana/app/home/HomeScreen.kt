@@ -30,6 +30,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import android.os.SystemClock
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,7 +74,10 @@ fun HomeScreen(
     muted: Boolean,
     onMenu: () -> Unit,
     onMute: (Boolean) -> Unit,
-    onMic: () -> Unit,
+    listening: Boolean,
+    micLevel: Float,
+    onMicDown: () -> Boolean,
+    onMicUp: (heldMs: Long, started: Boolean) -> Unit,
     onAskAboutScreen: () -> Unit
 ) {
     val palette = LocalHeylana.current
@@ -79,6 +85,7 @@ fun HomeScreen(
     var history by remember { mutableStateOf(false) }
     val thinking = chat.thinking
     val orbMode = when {
+        listening -> OrbMode.LISTENING
         thinking -> OrbMode.THINKING
         chat.speaking -> OrbMode.SPEAKING
         else -> OrbMode.IDLE
@@ -86,7 +93,7 @@ fun HomeScreen(
     val last = chat.exchanges.lastOrNull()
 
     GlassPage(backdrop, background = {
-        HomeOrb(orbMode, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 128.dp), level = chat.level)
+        HomeOrb(orbMode, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 128.dp), level = if (listening) micLevel else chat.level)
     }) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
             // Top bar: menu, the pill, the speaker.
@@ -180,7 +187,15 @@ fun HomeScreen(
                             ),
                             radius = size.minDimension * 0.9f
                         )
-                    }.clip(CircleShape).background(palette.accent).tap(onClick = onMic),
+                    }.clip(CircleShape).background(palette.accent).pointerInput(Unit) {
+                        // Tap opens the voice screen listening; hold talks here and sends on release.
+                        detectTapGestures(onPress = {
+                            val down = SystemClock.uptimeMillis()
+                            val started = onMicDown()
+                            tryAwaitRelease()
+                            onMicUp(SystemClock.uptimeMillis() - down, started)
+                        })
+                    },
                     contentAlignment = Alignment.Center
                 ) { Icon(if (thinking) Glyph.PAUSE else Glyph.MIC, palette.onAccent, size = 22.dp) }
             }
@@ -202,7 +217,7 @@ private fun ChipRow(backdrop: Backdrop, chips: List<HomeChip>, send: (String) ->
 
 /** The answer, up to six lines and scrolling past that; the chevron opens the last three exchanges. */
 @Composable
-private fun AnswerStrip(backdrop: Backdrop, chat: AppChat, history: Boolean, onHistory: () -> Unit) {
+fun AnswerStrip(backdrop: Backdrop, chat: AppChat, history: Boolean, onHistory: () -> Unit) {
     val palette = LocalHeylana.current
     val shown = if (history) chat.exchanges.toList() else listOfNotNull(chat.exchanges.lastOrNull())
     GlassSurface(backdrop, Modifier.fillMaxWidth().beam(if (chat.speaking) 0.35f + 0.65f * chat.level else 0f, 24.dp), radius = 24.dp) {

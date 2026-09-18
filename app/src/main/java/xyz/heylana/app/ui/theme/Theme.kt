@@ -29,6 +29,8 @@ data class HeylanaPalette(
     /** Heylana purple, and the lighter purple the export uses for icons and labels. */
     val accent: Color,
     val accentSoft: Color,
+    /** The accent's shaded side: the far edge of the voice screen's mic. */
+    val accentDeep: Color,
     /** Words on the accent. */
     val onAccent: Color,
     /** The glass: its fill, its 1px hairline, the light along its top edge, its shadow. */
@@ -71,6 +73,7 @@ val DarkGlass = HeylanaPalette(
     inkTertiary = Color(0x80FFFFFF),
     accent = c(HeylanaTokens.accent),
     accentSoft = Color(0xFFC9B2FF),
+    accentDeep = Color(0xFF5B2BC9),
     onAccent = Color(0xFFFFFFFF),
     glassFill = Color(0x12FFFFFF),
     glassHairline = Color(0x21FFFFFF),
@@ -98,6 +101,7 @@ val LightGlass = HeylanaPalette(
     inkTertiary = Color(0x8C14121C),
     accent = c(HeylanaTokens.accent),
     accentSoft = Color(0xFF6B3BFF),
+    accentDeep = Color(0xFF5B2BC9),
     onAccent = Color(0xFFFFFFFF),
     glassFill = Color(0x99FFFFFF),
     glassHairline = Color(0x1F14121C),

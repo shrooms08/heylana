@@ -47,7 +47,7 @@ fun Icon(glyph: Glyph, tint: Color, modifier: Modifier = Modifier, size: Dp = 20
                     line(16f, 10f, 20f, 14f); line(20f, 10f, 16f, 14f)
                 }
             }
-            Glyph.MIC -> { rect(9f, 3f, 6f, 11f, 3f); arc(5f, 6f, 14f, 20f, 140f); line(12f, 17f, 12f, 21f) }
+            Glyph.MIC -> { rect(9f, 3f, 6f, 11f, 3f); arc(5.5f, 5f, 13f, 0f, 180f); line(12f, 18f, 12f, 21f) }
             Glyph.BACK -> line(15f, 5f, 8f, 12f, 15f, 19f)
             Glyph.CHEVRON -> line(10f, 7f, 15f, 12f, 10f, 17f)
             Glyph.CHEVRON_UP -> line(7f, 14f, 12f, 9f, 17f, 14f)

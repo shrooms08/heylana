@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.overlay.BuddyOverlayService
 import xyz.heylana.app.settings.HeylanaSettings
-import xyz.heylana.app.ui.app.Backdrop
 import xyz.heylana.app.ui.theme.GlassMode
 import xyz.heylana.app.wallet.SeedVault
 
@@ -33,7 +32,6 @@ import xyz.heylana.app.wallet.SeedVault
 @Composable
 fun AppScreens(
     screen: Screen,
-    backdrop: Backdrop,
     settings: HeylanaSettings,
     activity: ComponentActivity,
     seedVault: SeedVault,
@@ -76,7 +74,6 @@ fun AppScreens(
 
     Box(Modifier.fillMaxSize()) {
     if (screen == Screen.HOME || homeHeld) HomeScreen(
-            backdrop = backdrop,
             name = settings.callMe,
             chat = chat,
             muted = muted,
@@ -107,7 +104,6 @@ fun AppScreens(
         )
     when (screen) {
         Screen.VOICE -> VoiceScreen(
-            backdrop = backdrop,
             voice = voice,
             chat = chat,
             startOnOpen = voiceStartOnOpen,
@@ -121,11 +117,10 @@ fun AppScreens(
                 onScreen(Screen.HOME)
             }
         )
-        Screen.SKILLS -> SkillMarketScreen(backdrop, settings, onBack = { onScreen(Screen.HOME) }, onChanged = { skillsVersion++ })
-        Screen.ADVANCED -> AdvancedScreen(backdrop, settings, onBack = { onScreen(Screen.HOME) })
-        Screen.PRIVACY -> PrivacyScreen(backdrop, settings.voiceProvider, onBack = { onScreen(Screen.HOME) })
+        Screen.SKILLS -> SkillMarketScreen(settings, onBack = { onScreen(Screen.HOME) }, onChanged = { skillsVersion++ })
+        Screen.ADVANCED -> AdvancedScreen(settings, onBack = { onScreen(Screen.HOME) })
+        Screen.PRIVACY -> PrivacyScreen(settings.voiceProvider, onBack = { onScreen(Screen.HOME) })
         Screen.SETTINGS -> AppSettingsScreen(
-            backdrop = backdrop,
             settings = settings,
             buddyOn = buddyOn,
             onGlassMode = onGlassMode,
@@ -148,7 +143,6 @@ fun AppScreens(
             SkillStore(activity, settings).rows().count { it.state == SkillCap.State.ACTIVE }
         }
         MenuSheet(
-            backdrop = backdrop,
             open = menuOpen,
             buddyOn = buddyOn,
             standing = standing,

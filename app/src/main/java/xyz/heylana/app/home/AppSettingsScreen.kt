@@ -40,12 +40,11 @@ import xyz.heylana.app.settings.DEBUG_STATES_ACTIVITY
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.ui.GlassSpec
 import xyz.heylana.app.ui.app.AccentButton
-import xyz.heylana.app.ui.app.Backdrop
-import xyz.heylana.app.ui.app.GlassField
-import xyz.heylana.app.ui.app.GlassPage
-import xyz.heylana.app.ui.app.GlassRow
-import xyz.heylana.app.ui.app.GlassSurface
-import xyz.heylana.app.ui.app.GlassSwitch
+import xyz.heylana.app.ui.app.FlatField
+import xyz.heylana.app.ui.app.FlatPage
+import xyz.heylana.app.ui.app.FlatRow
+import xyz.heylana.app.ui.app.FlatSurface
+import xyz.heylana.app.ui.app.FlatSwitch
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.Icon
 import xyz.heylana.app.ui.app.InnerTopBar
@@ -64,10 +63,10 @@ object SettingsText {
     const val SKYLAR_DETAIL = "Warm and clear. Heylana's own voice."
     const val ARCHIE_DETAIL = "Warm and friendly."
     const val SAMPLE_LINE = "Hi, I'm Heylana."
-    const val DARK = "Dark glass"
-    const val DARK_DETAIL = "Clear glass on black, as designed."
-    const val LIGHT = "Light glass"
-    const val LIGHT_DETAIL = "The same glass on a light page."
+    const val DARK = "Dark"
+    const val DARK_DETAIL = "Flat and black, as designed."
+    const val LIGHT = "Light"
+    const val LIGHT_DETAIL = "The same screens on white."
     const val SPOKEN_TEXT = "Show spoken answers as text"
     const val SPOKEN_TEXT_DETAIL = "When you ask by holding the buddy, the words stay on screen too."
     const val DARKER = "Darker buddy glass"
@@ -84,12 +83,11 @@ object SettingsText {
 }
 
 /**
- * Settings: the voice, the glass, how the buddy behaves, a judge code, Stop buddy and the
+ * Settings: the voice, the appearance, how the buddy behaves, a judge code, Stop buddy and the
  * version. Debug builds add their switches and Debug states.
  */
 @Composable
 fun AppSettingsScreen(
-    backdrop: Backdrop,
     settings: HeylanaSettings,
     buddyOn: Boolean,
     onGlassMode: (GlassMode) -> Unit,
@@ -109,9 +107,9 @@ fun AppSettingsScreen(
     var codeLine by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
 
-    GlassPage(backdrop, background = {}) {
+    FlatPage {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            Box(Modifier.padding(vertical = 14.dp)) { InnerTopBar(backdrop, onBack) }
+            Box(Modifier.padding(vertical = 14.dp)) { InnerTopBar(onBack) }
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -126,8 +124,7 @@ fun AppSettingsScreen(
                     HeylanaSettings.VOICE_ARCHIE to SettingsText.ARCHIE_DETAIL
                 ).forEach { (slot, detail) ->
                     val name = settings.voiceName(slot)
-                    GlassRow(
-                        backdrop, name, subtitle = detail, letter = name.take(1), lit = voice == slot,
+                    FlatRow(name, subtitle = detail, letter = name.take(1), selected = voice == slot,
                         onClick = {
                             voice = slot
                             settings.voice = slot
@@ -137,37 +134,37 @@ fun AppSettingsScreen(
                 }
 
                 Spacer(Modifier.height(6.dp))
-                SectionHead("Glass")
+                SectionHead("Appearance")
                 val mode = palette.mode
-                GlassRow(backdrop, SettingsText.DARK, subtitle = SettingsText.DARK_DETAIL, glyph = Glyph.LAYERS,
-                    lit = mode == GlassMode.DARK, onClick = { onGlassMode(GlassMode.DARK) }) { if (mode == GlassMode.DARK) Tick() }
-                GlassRow(backdrop, SettingsText.LIGHT, subtitle = SettingsText.LIGHT_DETAIL, glyph = Glyph.LAYERS,
-                    lit = mode == GlassMode.LIGHT, onClick = { onGlassMode(GlassMode.LIGHT) }) { if (mode == GlassMode.LIGHT) Tick() }
+                FlatRow(SettingsText.DARK, subtitle = SettingsText.DARK_DETAIL, glyph = Glyph.LAYERS,
+                    selected = mode == GlassMode.DARK, onClick = { onGlassMode(GlassMode.DARK) }) { if (mode == GlassMode.DARK) Tick() }
+                FlatRow(SettingsText.LIGHT, subtitle = SettingsText.LIGHT_DETAIL, glyph = Glyph.LAYERS,
+                    selected = mode == GlassMode.LIGHT, onClick = { onGlassMode(GlassMode.LIGHT) }) { if (mode == GlassMode.LIGHT) Tick() }
 
                 Spacer(Modifier.height(6.dp))
                 SectionHead("Buddy")
-                GlassRow(backdrop, SettingsText.SPOKEN_TEXT, subtitle = SettingsText.SPOKEN_TEXT_DETAIL) {
-                    GlassSwitch(spokenText, {
+                FlatRow(SettingsText.SPOKEN_TEXT, subtitle = SettingsText.SPOKEN_TEXT_DETAIL) {
+                    FlatSwitch(spokenText, {
                         spokenText = it
                         settings.showTextForVoice = it
                     })
                 }
-                GlassRow(backdrop, SettingsText.DARKER, subtitle = SettingsText.DARKER_DETAIL) {
-                    GlassSwitch(darker, {
+                FlatRow(SettingsText.DARKER, subtitle = SettingsText.DARKER_DETAIL) {
+                    FlatSwitch(darker, {
                         darker = it
                         settings.darkerGlass = it
                         GlassSpec.darkerGlass = it
                     })
                 }
-                GlassRow(backdrop, SettingsText.PERMISSIONS, subtitle = SettingsText.PERMISSIONS_DETAIL, glyph = Glyph.SHIELD,
+                FlatRow(SettingsText.PERMISSIONS, subtitle = SettingsText.PERMISSIONS_DETAIL, glyph = Glyph.SHIELD,
                     onClick = { onScreen(Screen.PERMISSIONS) }) { Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp) }
 
                 Spacer(Modifier.height(6.dp))
                 SectionHead("Judge code")
-                GlassSurface(backdrop, Modifier.fillMaxWidth(), radius = 24.dp) {
+                FlatSurface(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text(SettingsText.JUDGE_HINT, style = HeylanaType.small, color = palette.inkSecondary)
-                        GlassField(code, { code = it }, placeholder = "Code")
+                        FlatField(code, { code = it }, placeholder = "Code")
                         AccentButton(if (busy) "Checking…" else "Use code", {
                             busy = true
                             codeLine = ""
@@ -191,13 +188,12 @@ fun AppSettingsScreen(
                 }
 
                 Spacer(Modifier.height(6.dp))
-                GlassRow(
-                    backdrop, SettingsText.STOP_BUDDY,
+                FlatRow(SettingsText.STOP_BUDDY,
                     subtitle = if (buddyOn) SettingsText.STOP_DETAIL_ON else SettingsText.STOP_DETAIL_OFF,
                     glyph = Glyph.POWER, enabled = buddyOn, onClick = onStopBuddy
                 )
 
-                if (BuildConfig.DEBUG) DebugRows(backdrop, settings) {
+                if (BuildConfig.DEBUG) DebugRows(settings) {
                     context.startActivity(Intent().setComponent(ComponentName(context, DEBUG_STATES_ACTIVITY)))
                 }
 
@@ -219,7 +215,7 @@ private fun Tick() {
 
 /** Debug builds only: the switches that make a fallback happen on purpose, and Debug states. */
 @Composable
-private fun DebugRows(backdrop: Backdrop, settings: HeylanaSettings, onDebugStates: () -> Unit) {
+private fun DebugRows(settings: HeylanaSettings, onDebugStates: () -> Unit) {
     val palette = LocalHeylana.current
     var simulateFree by remember { mutableStateOf(settings.simulateFreePlan) }
     var saveTts by remember { mutableStateOf(settings.saveTtsStream) }
@@ -227,19 +223,19 @@ private fun DebugRows(backdrop: Backdrop, settings: HeylanaSettings, onDebugStat
     var warmUp by remember { mutableStateOf(settings.warmUpConnection) }
     Spacer(Modifier.height(6.dp))
     SectionHead("Debug")
-    GlassRow(backdrop, "Simulate Free plan", subtitle = "Skills count against Free's 3.") {
-        GlassSwitch(simulateFree, { simulateFree = it; settings.simulateFreePlan = it })
+    FlatRow("Simulate Free plan", subtitle = "Skills count against Free's 3.") {
+        FlatSwitch(simulateFree, { simulateFree = it; settings.simulateFreePlan = it })
     }
-    GlassRow(backdrop, "Save last tts stream", subtitle = "Keeps the last answer's audio as tts_capture.pcm.") {
-        GlassSwitch(saveTts, { saveTts = it; settings.saveTtsStream = it })
+    FlatRow("Save last tts stream", subtitle = "Keeps the last answer's audio as tts_capture.pcm.") {
+        FlatSwitch(saveTts, { saveTts = it; settings.saveTtsStream = it })
     }
-    GlassRow(backdrop, "Force phone ears", subtitle = "Skips Deepgram.") {
-        GlassSwitch(phoneEars, { phoneEars = it; settings.forcePhoneEars = it })
+    FlatRow("Force phone ears", subtitle = "Skips Deepgram.") {
+        FlatSwitch(phoneEars, { phoneEars = it; settings.forcePhoneEars = it })
     }
-    GlassRow(backdrop, "Warm up the connection", subtitle = "Opens the connection at the first touch.") {
-        GlassSwitch(warmUp, { warmUp = it; settings.warmUpConnection = it })
+    FlatRow("Warm up the connection", subtitle = "Opens the connection at the first touch.") {
+        FlatSwitch(warmUp, { warmUp = it; settings.warmUpConnection = it })
     }
-    GlassRow(backdrop, "Debug states", glyph = Glyph.LAYERS, onClick = onDebugStates) {
+    FlatRow("Debug states", glyph = Glyph.LAYERS, onClick = onDebugStates) {
         Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp)
     }
 }

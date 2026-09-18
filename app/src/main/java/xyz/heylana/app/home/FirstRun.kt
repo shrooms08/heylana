@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -31,15 +34,13 @@ import kotlinx.coroutines.launch
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.overlay.BuddyOverlayService
 import xyz.heylana.app.ui.app.AccentButton
-import xyz.heylana.app.ui.app.Backdrop
-import xyz.heylana.app.ui.app.GlassField
-import xyz.heylana.app.ui.app.GlassPage
-import xyz.heylana.app.ui.app.GlassRow
-import xyz.heylana.app.ui.app.GlassSurface
+import xyz.heylana.app.ui.app.FlatField
+import xyz.heylana.app.ui.app.FlatPage
+import xyz.heylana.app.ui.app.FlatRow
+import xyz.heylana.app.ui.app.FlatSurface
 import xyz.heylana.app.ui.app.Glyph
-import xyz.heylana.app.ui.app.GooeyReveal
-import xyz.heylana.app.ui.app.HomeOrb
 import xyz.heylana.app.ui.app.Icon
+import xyz.heylana.app.ui.app.LibraryOrb
 import xyz.heylana.app.ui.app.OrbMode
 import xyz.heylana.app.ui.app.SectionHead
 import xyz.heylana.app.ui.app.tap
@@ -59,7 +60,6 @@ import xyz.heylana.app.wallet.cleanName
  */
 @Composable
 fun SignInScreen(
-    backdrop: Backdrop,
     settings: HeylanaSettings,
     seedVault: SeedVault,
     onNamed: () -> Unit
@@ -83,14 +83,14 @@ fun SignInScreen(
         if (signedIn && name.isBlank()) (api.profile() as? Answer.Ok)?.let { name = it.value.suggestion }
     }
 
-    GlassPage(backdrop, background = {}) {
+    FlatPage {
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().verticalScroll(rememberScrollState())
                 .padding(horizontal = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(Modifier.height(70.dp))
-            HomeOrb(OrbMode.IDLE, diameter = 150.dp)
+            LibraryOrb(OrbMode.IDLE, diameter = 150.dp)
             Spacer(Modifier.height(40.dp))
             Text("Let's get you set up", style = HeylanaType.display.copy(fontSize = HeylanaType.display.fontSize * 0.9f), color = palette.ink, textAlign = TextAlign.Center)
             Spacer(Modifier.height(8.dp))
@@ -99,9 +99,7 @@ fun SignInScreen(
                 color = palette.inkSecondary, textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(24.dp))
-            GlassSurface(
-                backdrop,
-                Modifier.fillMaxWidth().height(60.dp).tap(enabled = !working && !signedIn) {
+            FlatSurface(Modifier.fillMaxWidth().height(60.dp).tap(enabled = !working && !signedIn) {
                     working = true
                     line = ""
                     scope.launch {
@@ -119,7 +117,7 @@ fun SignInScreen(
                     }
                 },
                 radius = 30.dp,
-                brighterRim = true
+                fill = palette.surfaceHigh
             ) {
                 Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
                     Icon(if (signedIn) Glyph.CHECK else Glyph.WALLET, if (signedIn) palette.good else palette.ink, size = 22.dp)
@@ -148,11 +146,11 @@ fun SignInScreen(
                 )
             }
             Spacer(Modifier.height(14.dp))
-            GooeyReveal(signedIn || withoutWallet, Modifier.fillMaxWidth().height(196.dp), seedY = 0f) {
-                GlassSurface(backdrop, Modifier.fillMaxSize(), radius = 24.dp) {
+            AnimatedVisibility(signedIn || withoutWallet, enter = fadeIn(), exit = fadeOut()) {
+                FlatSurface(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SectionHead("What should I call you?")
-                        GlassField(name, { name = it.take(MAX_NAME) }, "Your name", onAction = {})
+                        FlatField(name, { name = it.take(MAX_NAME) }, "Your name", onAction = {})
                         var saving by remember { mutableStateOf(false) }
                         AccentButton(if (saving) "Saving…" else "Continue", enabled = !saving && cleanName(name).isNotEmpty(), onClick = {
                             saving = true
@@ -195,9 +193,9 @@ private const val MAX_NAME = 40
  * answer. A row opens the right system page; the screen re-checks every time it resumes.
  */
 @Composable
-fun PermissionsScreen(backdrop: Backdrop, rows: List<PermissionRow>, required: Boolean, onRow: (PermissionTarget) -> Unit, onDone: () -> Unit) {
+fun PermissionsScreen(rows: List<PermissionRow>, required: Boolean, onRow: (PermissionTarget) -> Unit, onDone: () -> Unit) {
     val palette = LocalHeylana.current
-    GlassPage(backdrop, background = {}) {
+    FlatPage {
         Column(
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -207,8 +205,7 @@ fun PermissionsScreen(backdrop: Backdrop, rows: List<PermissionRow>, required: B
             Text("Heylana asks for these once. Each opens the right page in Settings.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
             Spacer(Modifier.height(12.dp))
             rows.forEach { row ->
-                GlassRow(
-                    backdrop, row.title, subtitle = row.why,
+                FlatRow(row.title, subtitle = row.why,
                     glyph = when (row.target) {
                         PermissionTarget.OVERLAY -> Glyph.LAYERS
                         PermissionTarget.SCREEN_READING -> Glyph.EYE

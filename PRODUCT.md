@@ -34,14 +34,14 @@ Open Heylana and it is a place to talk, not a settings page. The first time: sig
 your wallet (Seed Vault signs one message; no transaction), say what to call you, and
 switch on four things — showing over other apps, screen reading, notifications and,
 if you like, the microphone — each with one line on why. After that it opens on Home: a
-glowing orb, "Hi, <name>. What do you need?", a few suggestions, and a message bar with a
+slowly breathing ring of dots, "Hi, <name>. What do you need?", a few suggestions, and a message bar with a
 mic. Ask anything; Heylana answers in her voice and in a strip under the orb. Tap or hold
 the mic to talk. Setting a timer or opening an app works from here too. Nothing in the
 app reads your screen; to ask about another app, start the buddy and tap it there.
 
 The menu holds the buddy's on switch, your plan, the Skill market, your own API key
 (Advanced), exactly what leaves the phone (Privacy), and Settings: the voice, Dark or
-Light glass, and Stop buddy.
+Light, and Stop buddy.
 
 ## Plans
 
@@ -133,7 +133,7 @@ one exception to (1): questions go straight to Anthropic on a key you typed in.
 
 ## Architecture in ten lines
 
-1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; the app itself (sign in, Home with the orb and chat, voice, menu, skill market, settings) is Compose in the same clear glass, with real refraction.
+1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; the app itself (sign in, Home with the orb and chat, voice, menu, skill market, settings) is Compose, flat and dark, with thinking-orbs as its character.
 2. An accessibility service reads the screen only on request and turns it into a numbered text listing.
 3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model, holds every key, and for Solana questions runs lookups first (balances, prices, addresses, activity, names, send checks).
 4. The model replies with strict JSON: what to say, which element to point at, and whether this is a multi-step task.

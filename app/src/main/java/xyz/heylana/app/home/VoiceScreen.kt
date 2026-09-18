@@ -47,12 +47,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import xyz.heylana.app.HeylanaLog
-import xyz.heylana.app.ui.app.Backdrop
-import xyz.heylana.app.ui.app.GlassPage
-import xyz.heylana.app.ui.app.GlassSurface
+import xyz.heylana.app.ui.app.BarButton
+import xyz.heylana.app.ui.app.FlatPage
+import xyz.heylana.app.ui.app.FlatSurface
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.Icon
-import xyz.heylana.app.ui.app.RoundGlassButton
+import xyz.heylana.app.ui.app.LibraryOrb
+import xyz.heylana.app.ui.app.OrbMode
 import xyz.heylana.app.ui.app.tap
 import xyz.heylana.app.ui.theme.HeylanaType
 import xyz.heylana.app.ui.theme.LocalHeylana
@@ -86,7 +87,6 @@ enum class VoiceLabel(val words: String) {
  */
 @Composable
 fun VoiceScreen(
-    backdrop: Backdrop,
     voice: VoiceSession,
     chat: AppChat,
     startOnOpen: Boolean,
@@ -125,7 +125,7 @@ fun VoiceScreen(
     }
     val smooth by animateFloatAsState(level, tween(120), label = "level")
 
-    GlassPage(backdrop, background = {
+    FlatPage(background = {
         // The purple that rises from the bottom edge.
         Box(Modifier.fillMaxSize().drawBehind {
             val w = size.width
@@ -152,10 +152,22 @@ fun VoiceScreen(
         AuroraWave(smooth, label, Modifier.fillMaxWidth().statusBarsPadding().padding(top = 116.dp).height(210.dp))
     }) {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp)) {
-                RoundGlassButton(backdrop, Glyph.BACK, "Back", onBack)
+            // Back, and the orb in the header: listening, thinking or speaking with the voice.
+            Box(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+                BarButton(Glyph.BACK, "Back", onBack)
+                LibraryOrb(
+                    when (label) {
+                        VoiceLabel.LISTENING -> OrbMode.LISTENING
+                        VoiceLabel.THINKING -> OrbMode.THINKING
+                        VoiceLabel.SPEAKING -> OrbMode.SPEAKING
+                        else -> OrbMode.IDLE
+                    },
+                    Modifier.align(Alignment.Center),
+                    diameter = HEADER_ORB_DP.dp,
+                    level = smooth
+                )
             }
-            Spacer(Modifier.height(116.dp + 210.dp - 74.dp + 40.dp))
+            Spacer(Modifier.height(116.dp + 210.dp - 64.dp + 40.dp))
             Text(
                 MicPress.clock(shownMs),
                 Modifier.fillMaxWidth(),
@@ -183,7 +195,7 @@ fun VoiceScreen(
                     note != null -> Text(note, style = HeylanaType.bodyLight, color = palette.inkSecondary, textAlign = TextAlign.Center)
                     chat.exchanges.isNotEmpty() -> {
                         var history by remember { androidx.compose.runtime.mutableStateOf(false) }
-                        AnswerStrip(backdrop, chat, history, onHistory = { history = !history })
+                        AnswerStrip(chat, history, onHistory = { history = !history })
                     }
                 }
             }
@@ -194,23 +206,23 @@ fun VoiceScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SideButton(backdrop, if (voice.phase == VoiceSession.Phase.PAUSED) Glyph.PLAY else Glyph.PAUSE, "Pause") {
+                SideButton(if (voice.phase == VoiceSession.Phase.PAUSED) Glyph.PLAY else Glyph.PAUSE, "Pause") {
                     if (voice.phase == VoiceSession.Phase.LISTENING) voice.pause()
                     else if (voice.phase == VoiceSession.Phase.PAUSED && !voice.start()) askMic.launch(Manifest.permission.RECORD_AUDIO)
                 }
                 Spacer(Modifier.size(44.dp))
                 BigMic(voice, smooth, label, onNeedMic = { askMic.launch(Manifest.permission.RECORD_AUDIO) })
                 Spacer(Modifier.size(44.dp))
-                SideButton(backdrop, Glyph.CLOSE, "Close", onClose)
+                SideButton(Glyph.CLOSE, "Close", onClose)
             }
         }
     }
 }
 
 @Composable
-private fun SideButton(backdrop: Backdrop, glyph: Glyph, description: String, onClick: () -> Unit) {
+private fun SideButton(glyph: Glyph, description: String, onClick: () -> Unit) {
     val palette = LocalHeylana.current
-    GlassSurface(backdrop, Modifier.size(52.dp).tap(onClick = onClick), radius = 26.dp, brighterRim = true) {
+    FlatSurface(Modifier.size(52.dp).tap(onClick = onClick), radius = 26.dp, fill = palette.surfaceHigh) {
         Icon(glyph, palette.ink, Modifier.align(Alignment.Center), size = 20.dp)
     }
 }
@@ -313,6 +325,9 @@ private fun AuroraWave(level: Float, label: VoiceLabel, modifier: Modifier) {
         }
     }
 }
+
+/** The orb in the header. */
+private const val HEADER_ORB_DP = 48
 
 private const val STRANDS = 13
 private const val WAVE_FLOAT_MS = 7_000

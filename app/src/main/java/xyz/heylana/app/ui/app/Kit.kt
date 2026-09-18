@@ -2,7 +2,6 @@ package xyz.heylana.app.ui.app
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -29,8 +28,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
@@ -44,51 +41,49 @@ import xyz.heylana.app.R
 import xyz.heylana.app.ui.theme.HeylanaType
 import xyz.heylana.app.ui.theme.LocalHeylana
 
-/** A tap with no ripple: the glass itself is the feedback. */
+/** A tap with no ripple. */
 @Composable
 fun Modifier.tap(enabled: Boolean = true, onClick: () -> Unit): Modifier =
     clickable(remember { MutableInteractionSource() }, indication = null, enabled = enabled, onClick = onClick)
 
-/** The 46dp round glass button of the top bars: menu, speaker, back. */
+/** A top-bar button: a 24dp icon on nothing, with a 48dp place to tap. */
 @Composable
-fun RoundGlassButton(backdrop: Backdrop?, glyph: Glyph, description: String, onClick: () -> Unit, size: Dp = 46.dp) {
+fun BarButton(glyph: Glyph, description: String, onClick: () -> Unit) {
     val palette = LocalHeylana.current
-    GlassSurface(backdrop, Modifier.size(size).tap(onClick = onClick), radius = size / 2) {
-        Icon(glyph, palette.ink, Modifier.align(Alignment.Center), size = 20.dp)
+    Box(Modifier.size(48.dp).clip(CircleShape).tap(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(glyph, palette.ink, size = 24.dp)
         Text(description, Modifier.size(0.dp))
     }
 }
 
-/** The pill at the top of home: the mark, "Heylana", and a line under it. */
+/** The name at the top of home: the mark, "Heylana", and a line under it. Flat, no pill. */
 @Composable
-fun MarkPill(backdrop: Backdrop?, subtitle: String, subtitleAccent: Boolean = false) {
+fun MarkPill(subtitle: String, subtitleAccent: Boolean = false) {
     val palette = LocalHeylana.current
-    GlassSurface(backdrop, Modifier.height(46.dp), radius = 23.dp) {
-        Row(Modifier.padding(start = 12.dp, end = 18.dp).align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(R.drawable.ic_heylana_mark), null, Modifier.size(24.dp), colorFilter = ColorFilter.tint(palette.ink))
-            Spacer(Modifier.width(10.dp))
-            Column {
-                Text("Heylana", style = HeylanaType.label, color = palette.ink)
-                Text(subtitle, style = HeylanaType.tiny, color = if (subtitleAccent) palette.accentSoft else palette.inkSecondary)
-            }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.ic_heylana_mark), null, Modifier.size(22.dp), colorFilter = ColorFilter.tint(palette.ink))
+        Spacer(Modifier.width(10.dp))
+        Column {
+            Text("Heylana", style = HeylanaType.label, color = palette.ink)
+            Text(subtitle, style = HeylanaType.tiny, color = if (subtitleAccent) palette.accentSoft else palette.inkSecondary)
         }
     }
 }
 
-/** A suggestion chip: 44dp, an icon in soft purple, a 13sp label. */
+/** A suggestion chip: a flat pill, white 8%, white words. */
 @Composable
-fun GlassChip(backdrop: Backdrop?, glyph: Glyph, label: String, onClick: () -> Unit) {
+fun FlatChip(glyph: Glyph, label: String, onClick: () -> Unit) {
     val palette = LocalHeylana.current
-    GlassSurface(backdrop, Modifier.height(44.dp).tap(onClick = onClick), radius = 22.dp) {
-        Row(Modifier.padding(horizontal = 18.dp).align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
-            Icon(glyph, palette.accentSoft, size = 17.dp)
-            Spacer(Modifier.width(9.dp))
+    FlatSurface(Modifier.height(44.dp).tap(onClick = onClick), radius = 22.dp, fill = palette.surfaceHigh) {
+        Row(Modifier.padding(horizontal = 16.dp).align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
+            Icon(glyph, palette.ink, size = 18.dp)
+            Spacer(Modifier.width(8.dp))
             Text(label, style = HeylanaType.label, color = palette.ink, maxLines = 1)
         }
     }
 }
 
-/** The accent button: "Go Pro", "Save key", "Continue". A solid purple pill with a glow under it. */
+/** The accent button: "Go Pro", "Save key", "Continue". A solid purple pill. */
 @Composable
 fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, height: Dp = 48.dp) {
     val palette = LocalHeylana.current
@@ -97,13 +92,6 @@ fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
             .fillMaxWidth()
             .height(height)
             .alpha(if (enabled) 1f else 0.45f)
-            .drawBehind {
-                drawRoundRect(
-                    Brush.radialGradient(listOf(palette.accent.copy(alpha = 0.45f), palette.accent.copy(alpha = 0f)), center, size.width * 0.6f),
-                    topLeft = androidx.compose.ui.geometry.Offset(0f, 6.dp.toPx()), size = size,
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2)
-                )
-            }
             .clip(RoundedCornerShape(height / 2))
             .background(palette.accent)
             .tap(enabled, onClick),
@@ -113,43 +101,45 @@ fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifie
     }
 }
 
-/** A row of glass: an icon tile, a title and a line under it, and whatever sits at the end. */
+/**
+ * A row: a 24dp icon (or a letter), a 16sp title and a line under it, and whatever sits at
+ * the end. On a flat surface when [card] (the default), or bare in a list (the menu).
+ * [selected] tints it with the accent.
+ */
 @Composable
-fun GlassRow(
-    backdrop: Backdrop?,
+fun FlatRow(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     glyph: Glyph? = null,
     letter: String? = null,
-    lit: Boolean = false,
+    selected: Boolean = false,
     enabled: Boolean = true,
+    card: Boolean = true,
     onClick: (() -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {}
 ) {
     val palette = LocalHeylana.current
-    GlassSurface(
-        backdrop,
-        modifier.fillMaxWidth().heightIn(min = 64.dp).then(if (onClick != null) Modifier.tap(enabled, onClick) else Modifier),
-        radius = 24.dp,
-        lit = lit
+    val fill = when {
+        selected -> palette.accent.copy(alpha = SELECTED_ALPHA)
+        card -> palette.surface
+        else -> palette.ground.copy(alpha = 0f)
+    }
+    FlatSurface(
+        modifier.fillMaxWidth().heightIn(min = 56.dp).then(if (onClick != null) Modifier.tap(enabled, onClick) else Modifier),
+        fill = fill
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 15.dp).alpha(if (enabled) 1f else 0.5f),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp).alpha(if (enabled) 1f else 0.5f),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (glyph != null || letter != null) {
-                Box(
-                    Modifier.size(42.dp).clip(RoundedCornerShape(14.dp)).background(palette.tileFill)
-                        .border(1.dp, palette.tileHairline, RoundedCornerShape(14.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (glyph != null) Icon(glyph, palette.accentSoft, size = 20.dp)
-                    else Text(letter ?: "", style = HeylanaType.bodyMedium, color = palette.ink)
-                }
-            }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            if (glyph != null) Icon(glyph, palette.ink, size = 24.dp)
+            else if (letter != null) Box(
+                Modifier.size(28.dp).clip(CircleShape).background(palette.surfaceHigh),
+                contentAlignment = Alignment.Center
+            ) { Text(letter, style = HeylanaType.label, color = palette.ink) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = HeylanaType.body, color = palette.ink)
                 if (subtitle != null) Text(subtitle, style = HeylanaType.small, color = palette.inkSecondary)
             }
@@ -158,9 +148,12 @@ fun GlassRow(
     }
 }
 
-/** The export's switch: 46 × 27, accent when on. */
+/** How strongly a selected row takes the accent. */
+private const val SELECTED_ALPHA = 0.16f
+
+/** A switch: 46 × 27, accent when on. */
 @Composable
-fun GlassSwitch(on: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+fun FlatSwitch(on: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
     val palette = LocalHeylana.current
     Box(
         Modifier.size(46.dp, 27.dp).clip(CircleShape).background(if (on) palette.accent else palette.switchOff)
@@ -172,15 +165,15 @@ fun GlassSwitch(on: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = tru
     }
 }
 
-/** A small caps heading over a section: "PROVIDER", "API KEY". */
+/** A small heading over a section: "Buddy", "Account", "Provider". */
 @Composable
 fun SectionHead(text: String, modifier: Modifier = Modifier) {
-    Text(text.uppercase(), modifier, style = HeylanaType.caps, color = LocalHeylana.current.inkTertiary)
+    Text(text, modifier, style = HeylanaType.label, color = LocalHeylana.current.inkSecondary)
 }
 
-/** A field inside glass: 52dp, 16dp corners. */
+/** A field: 52dp, 16dp corners, white 8%, no border. */
 @Composable
-fun GlassField(
+fun FlatField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -192,8 +185,8 @@ fun GlassField(
 ) {
     val palette = LocalHeylana.current
     Box(
-        modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp)).background(palette.fieldFill)
-            .border(1.dp, palette.glassHairline, RoundedCornerShape(16.dp)).padding(horizontal = 16.dp),
+        modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(SURFACE_RADIUS)).background(palette.surfaceHigh)
+            .padding(horizontal = 16.dp),
         contentAlignment = Alignment.CenterStart
     ) {
         if (value.isEmpty()) Text(placeholder, style = style, color = palette.inkTertiary)
@@ -222,10 +215,10 @@ private val SecretTransformation = VisualTransformation { text ->
 
 /** The top bar of an inner screen: back on the left, something on the right. */
 @Composable
-fun InnerTopBar(backdrop: Backdrop?, onBack: () -> Unit, trailing: @Composable () -> Unit = {}) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        RoundGlassButton(backdrop, Glyph.BACK, "Back", onBack)
+fun InnerTopBar(onBack: () -> Unit, trailing: @Composable () -> Unit = {}) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        BarButton(Glyph.BACK, "Back", onBack)
         Spacer(Modifier.weight(1f))
-        trailing()
+        Box(Modifier.padding(end = 12.dp)) { trailing() }
     }
 }

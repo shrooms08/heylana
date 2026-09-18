@@ -1,156 +1,202 @@
 package xyz.heylana.app.ui.app
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import xyz.heylana.app.R
+import xyz.heylana.app.orbs.Dot
+import xyz.heylana.app.orbs.OrbEngine
+import xyz.heylana.app.orbs.OrbState
+import xyz.heylana.app.ui.HeylanaTokens
+import xyz.heylana.app.ui.theme.GlassMode
 import xyz.heylana.app.ui.theme.LocalHeylana
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.floor
 
-/** What the home orb is doing. */
+/** What the app's orb is doing. */
 enum class OrbMode { IDLE, THINKING, LISTENING, SPEAKING }
 
 /**
- * The home orb, after the export's frame 1: an aurora of the four Heylana colours drifting
- * inside a sphere, seen through a fine grid of particles (the 2c orbs' dots, at the size of
- * a hero), a specular up and to the left, the mark faint in the middle.
- *
- * Idle breathes on a 4.4s cycle ([OrbMotion.BREATH_MS]); thinking spins the aurora every
- * 3.4s and runs the gapped ring round it every 1.2s (frame 1b); listening and speaking
- * swell with [level].
+ * Debug builds only (`-e orb_t 3.3 --ez orb_mono true -e orb_mode thinking` on launch): pins
+ * every orb's clock to one engine instant, drops the tint and forces Home's state, so a
+ * frame on the phone can be compared with the library's own render of the same instant.
  */
-@Composable
-fun HomeOrb(mode: OrbMode, modifier: Modifier = Modifier, diameter: Dp = 236.dp, level: Float = 0f) {
-    val palette = LocalHeylana.current
-    val motion = rememberInfiniteTransition(label = "orb")
-    val breath by motion.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(OrbMotion.BREATH_MS / 2, easing = LinearEasing), RepeatMode.Reverse), label = "breath"
-    )
-    val drift by motion.animateFloat(
-        0f, 1f, infiniteRepeatable(tween(if (mode == OrbMode.THINKING) OrbMotion.THINKING_SPIN_MS else OrbMotion.DRIFT_MS, easing = LinearEasing)),
-        label = "drift"
-    )
-    val ring by motion.animateFloat(
-        0f, 360f, infiniteRepeatable(tween(OrbMotion.RING_MS, easing = LinearEasing)), label = "ring"
-    )
-    val swell = OrbMotion.scale(breath, if (mode == OrbMode.LISTENING || mode == OrbMode.SPEAKING) level else 0f)
-    Box(modifier.size(diameter), contentAlignment = Alignment.Center) {
-        Canvas(
-            Modifier
-                .size(diameter)
-                .scale(swell)
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        ) {
-            drawAurora(drift, palette.aurora)
-            drawParticles()
-            drawSphereShading(palette.orbSpecular, palette.orbShade)
-        }
-        Image(
-            painter = painterResource(R.drawable.ic_heylana_mark),
-            contentDescription = null,
-            colorFilter = ColorFilter.tint(palette.orbMark),
-            modifier = Modifier.size(diameter * 0.35f).scale(swell)
-        )
-        if (mode == OrbMode.THINKING) {
-            Canvas(Modifier.size(diameter + 12.dp)) {
-                rotate(ring) {
-                    drawArc(
-                        palette.orbSpecular.copy(alpha = 0.85f), startAngle = 0f, sweepAngle = OrbMotion.RING_SWEEP_DEG,
-                        useCenter = false, style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-            }
-        }
+object OrbDebug {
+    @Volatile var frozenT: Double? = null
+    @Volatile var mono: Boolean = false
+    @Volatile var forcedMode: OrbMode? = null
+}
+
+/**
+ * How the app draws a thinking-orbs frame, the library's way (its SwiftUI port's
+ * `displaySize`): the frame is computed at the 64px tuning by the ported engine
+ * ([OrbEngine], held to the library's golden vectors) and scaled inside the canvas, so
+ * density, dot sizes, depth and alpha are the library's at any size. Each dot's colour is
+ * the library's ink ramp: grey quantised to 8 bits and mirrored on a dark page, or, with a
+ * tint, the tint faded toward the page with depth (`inkColor` in core.ts). The app's tint
+ * is the aurora, by the dot's angle around the centre, turning slowly.
+ */
+object AppOrb {
+
+    /** The engine's tuning the geometry is computed at. */
+    const val GEOMETRY_SIZE = 64
+
+    /** Idle is the library's breathing ring, at half its preset pace: at rest, not busy. */
+    const val IDLE_SPEED = 0.5
+
+    /** How far a loud voice swells the orb, and speeds it up. */
+    const val LEVEL_SWELL = 0.12f
+    const val LEVEL_SPEED = 0.8
+
+    /** One turn of the aurora around the orb. */
+    const val AURORA_TURN_S = 12.0
+
+    fun stateFor(mode: OrbMode): OrbState = when (mode) {
+        OrbMode.IDLE -> OrbState.BREATHING
+        OrbMode.THINKING -> OrbState.WORKING
+        OrbMode.LISTENING -> OrbState.LISTENING
+        OrbMode.SPEAKING -> OrbState.COMPOSING
     }
-}
 
-/** The numbers that move the orb. */
-object OrbMotion {
-    const val BREATH_MS = 4_400
-    const val DRIFT_MS = 14_000
-    const val THINKING_SPIN_MS = 3_400
-    const val RING_MS = 1_200
-    /** The gapped ring: most of the way round, a gap left. */
-    const val RING_SWEEP_DEG = 300f
-    const val BREATH_SCALE = 0.035f
-    const val LEVEL_SCALE = 0.10f
+    fun speedFor(mode: OrbMode): Double = if (mode == OrbMode.IDLE) IDLE_SPEED else 1.0
 
-    /** Breath (0 to 1 and back) and a voice level on top of it. */
-    fun scale(breath: Float, level: Float): Float = 1f + BREATH_SCALE * breath + LEVEL_SCALE * level.coerceIn(0f, 1f)
-}
+    /** JavaScript's Math.round, as the library quantises with. */
+    private fun jsRound(x: Double): Int = floor(x + 0.5).toInt()
 
-/** Four soft blobs of colour, one per aurora stop, circling slowly inside the sphere. */
-private fun DrawScope.drawAurora(turn: Float, colours: List<androidx.compose.ui.graphics.Color>) {
-    val r = size.minDimension / 2f
-    val centre = Offset(size.width / 2f, size.height / 2f)
-    val sphere = Path().apply { addOval(androidx.compose.ui.geometry.Rect(centre, r)) }
-    clipPath(sphere) {
-        drawCircle(colours[0].copy(alpha = 0.30f), r, centre)
-        colours.forEachIndexed { i, colour ->
-            val a = (turn + i / colours.size.toFloat()) * 2f * Math.PI.toFloat()
-            val at = Offset(centre.x + cos(a) * r * 0.48f, centre.y + sin(a) * r * 0.48f)
-            drawCircle(Brush.radialGradient(listOf(colour.copy(alpha = 0.72f), colour.copy(alpha = 0f)), at, r * 0.78f), r, centre)
-        }
+    /** The library's grey ink: 0 is darkest on paper, mirrored on a dark page. */
+    fun grey(white: Double, dark: Boolean): Int {
+        val w = white.coerceIn(0.0, 1.0)
+        return jsRound((if (dark) 1 - w else w) * 255)
+    }
+
+    /** The library's tinted ink for one channel [c] (0–255). */
+    fun tinted(c: Int, white: Double, dark: Boolean): Int {
+        val w = white.coerceIn(0.0, 1.0)
+        return jsRound(if (dark) c * (1 - w) else c + (255 - c) * w)
+    }
+
+    /** The aurora stops around the circle, blended and wrapping; [turn] in turns. */
+    fun auroraAt(stops: List<Color>, turn: Double): Color {
+        val position = ((turn % 1.0) + 1.0) % 1.0 * stops.size
+        val index = position.toInt() % stops.size
+        val f = (position - position.toInt()).toFloat()
+        val a = stops[index]
+        val b = stops[(index + 1) % stops.size]
+        return Color(a.red + (b.red - a.red) * f, a.green + (b.green - a.green) * f, a.blue + (b.blue - a.blue) * f)
     }
 }
 
 /**
- * The particles: the aurora is kept only where the dots are. A tile holding one dot is
- * repeated across the whole sphere and drawn with DstIn, which clears everything between
- * the dots (drawing the dots alone would leave the gaps untouched).
+ * The orb, the character on Home (200dp) and in the voice screen's header (48dp). No mark
+ * inside it. [level] is the playback or microphone level, 0 to 1. [frozenT] pins the
+ * engine clock (raw engine time, as the library's parity harness uses) and [mono] drops
+ * the tint, so a frame can be compared with the library's own render.
  */
-private fun DrawScope.drawParticles() {
-    val step = 2.8.dp.toPx()
-    val tileSize = step.toInt().coerceAtLeast(2)
-    val tile = androidx.compose.ui.graphics.ImageBitmap(tileSize, tileSize)
-    val canvas = androidx.compose.ui.graphics.Canvas(tile)
-    val paint = androidx.compose.ui.graphics.Paint().apply { color = androidx.compose.ui.graphics.Color.Black; isAntiAlias = true }
-    canvas.drawCircle(Offset(tileSize / 2f, tileSize / 2f), tileSize * 0.42f, paint)
-    val shader = androidx.compose.ui.graphics.ImageShader(
-        tile, androidx.compose.ui.graphics.TileMode.Repeated, androidx.compose.ui.graphics.TileMode.Repeated
-    )
-    drawRect(androidx.compose.ui.graphics.ShaderBrush(shader), blendMode = BlendMode.DstIn)
+@Composable
+fun LibraryOrb(
+    mode: OrbMode,
+    modifier: Modifier = Modifier,
+    diameter: Dp = 200.dp,
+    level: Float = 0f,
+    frozenT: Double? = null,
+    mono: Boolean = false
+) {
+    val palette = LocalHeylana.current
+    val dark = palette.mode == GlassMode.DARK
+    val pinnedT = frozenT ?: OrbDebug.frozenT
+    val plain = mono || OrbDebug.mono
+    val currentLevel by rememberUpdatedState(level)
+
+    // Each state keeps its own clock, advanced by real frame time at its preset speed, so
+    // a loud voice can speed it up without a jump.
+    val clocks = remember { DoubleArray(OrbMode.entries.size) }
+    var tick by remember { mutableDoubleStateOf(0.0) }
+    var shown by remember { mutableStateOf(mode) }
+    var leaving by remember { mutableStateOf<OrbMode?>(null) }
+    val fade = remember { Animatable(1f) }
+
+    LaunchedEffect(mode) {
+        if (mode == shown) return@LaunchedEffect
+        leaving = shown
+        shown = mode
+        fade.snapTo(0f)
+        fade.animateTo(1f, tween(HeylanaTokens.ORB_DISSOLVE_MS.toInt(), easing = LinearEasing))
+        leaving = null
+    }
+    LaunchedEffect(pinnedT) {
+        if (pinnedT != null) return@LaunchedEffect
+        var last = 0L
+        while (true) {
+            withFrameNanos { now ->
+                if (last != 0L) {
+                    val dt = (now - last) / 1e9
+                    for (m in OrbMode.entries) {
+                        val preset = OrbEngine.resolve(AppOrb.stateFor(m), AppOrb.GEOMETRY_SIZE)
+                        clocks[m.ordinal] += dt * preset.speed * AppOrb.speedFor(m) * (1 + AppOrb.LEVEL_SPEED * currentLevel)
+                    }
+                    tick += dt
+                }
+                last = now
+            }
+        }
+    }
+
+    Canvas(modifier.size(diameter)) {
+        val seconds = tick
+        val swell = 1f + AppOrb.LEVEL_SWELL * level
+        val t = { m: OrbMode -> pinnedT ?: clocks[m.ordinal] }
+        leaving?.let { drawOrb(OrbEngine.frame(AppOrb.stateFor(it), AppOrb.GEOMETRY_SIZE, t(it)), 1f - fade.value, swell, dark, plain, palette.aurora, seconds) }
+        drawOrb(OrbEngine.frame(AppOrb.stateFor(shown), AppOrb.GEOMETRY_SIZE, t(shown)), fade.value, swell, dark, plain, palette.aurora, seconds)
+    }
 }
 
-/** A specular up and to the left, and a shade toward the rim, so the grid reads as a sphere. */
-private fun DrawScope.drawSphereShading(specular: androidx.compose.ui.graphics.Color, shade: androidx.compose.ui.graphics.Color) {
-    val r = size.minDimension / 2f
-    val centre = Offset(size.width / 2f, size.height / 2f)
-    drawCircle(
-        Brush.radialGradient(listOf(specular, specular.copy(alpha = 0f)), Offset(centre.x - r * 0.32f, centre.y - r * 0.44f), r * 0.84f),
-        r, centre, blendMode = BlendMode.SrcAtop
-    )
-    drawCircle(
-        Brush.radialGradient(listOf(shade.copy(alpha = 0f), shade.copy(alpha = 0f), shade), centre, r),
-        r, centre, blendMode = BlendMode.SrcAtop
-    )
+private fun DrawScope.drawOrb(
+    frame: List<Dot>,
+    alpha: Float,
+    swell: Float,
+    dark: Boolean,
+    mono: Boolean,
+    aurora: List<Color>,
+    seconds: Double
+) {
+    if (alpha <= 0.01f) return
+    val zoom = size.minDimension / AppOrb.GEOMETRY_SIZE * swell
+    val half = AppOrb.GEOMETRY_SIZE / 2.0
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val turn = seconds / AppOrb.AURORA_TURN_S
+    for (d in frame) {
+        val dx = (d.x - half).toFloat()
+        val dy = (d.y - half).toFloat()
+        val a = (d.a * alpha).toFloat().coerceIn(0f, 1f)
+        val colour = if (mono) {
+            val g = AppOrb.grey(d.white, dark)
+            Color(g, g, g)
+        } else {
+            val tint = AppOrb.auroraAt(aurora, atan2(dy, dx) / (2 * PI) + turn)
+            Color(
+                AppOrb.tinted((tint.red * 255).toInt(), d.white, dark),
+                AppOrb.tinted((tint.green * 255).toInt(), d.white, dark),
+                AppOrb.tinted((tint.blue * 255).toInt(), d.white, dark)
+            )
+        }
+        drawCircle(colour.copy(alpha = a), radius = d.r.toFloat() * zoom, center = Offset(cx + dx * zoom, cy + dy * zoom))
+    }
 }

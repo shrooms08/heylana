@@ -10,7 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import xyz.heylana.app.ui.HeylanaTokens
 
-/** Clear glass on black (the design export), or on a light ground. Settings → Glass mode. */
+/** Flat and dark (the default), or the same flat screens on white. Settings → Appearance. */
 enum class GlassMode { DARK, LIGHT }
 
 /**
@@ -33,25 +33,14 @@ data class HeylanaPalette(
     val accentDeep: Color,
     /** Words on the accent. */
     val onAccent: Color,
-    /** The glass: its fill, its 1px hairline, the light along its top edge, its shadow. */
-    val glassFill: Color,
-    val glassHairline: Color,
-    val glassHighlight: Color,
-    val glassShadow: Color,
-    /** A lit rim, for the selected provider row and the wallet button. */
-    val glassRimLit: Color,
-    /** Fields inside glass, and the small icon tiles. */
-    val fieldFill: Color,
-    val tileFill: Color,
-    val tileHairline: Color,
+    /** Flat surfaces: cards and rows (6%), chips and the message bar (8%), the menu drawer. */
+    val surface: Color,
+    val surfaceHigh: Color,
+    val drawer: Color,
     /** The menu's dim over home. */
     val dim: Color,
-    /** The orb's aurora, and the glow that rises behind the voice screen. */
+    /** The orb's aurora tint, and the glow that rises behind the voice screen. */
     val aurora: List<Color>,
-    /** The orb's specular, and the faint mark inside it. */
-    val orbSpecular: Color,
-    val orbMark: Color,
-    val orbShade: Color,
     /** A switch that is off. */
     val switchOff: Color,
     /** A row that is done, and one that is not. */
@@ -75,19 +64,11 @@ val DarkGlass = HeylanaPalette(
     accentSoft = Color(0xFFC9B2FF),
     accentDeep = Color(0xFF5B2BC9),
     onAccent = Color(0xFFFFFFFF),
-    glassFill = Color(0x12FFFFFF),
-    glassHairline = Color(0x21FFFFFF),
-    glassHighlight = Color(0x38FFFFFF),
-    glassShadow = Color(0x8C000000),
-    glassRimLit = Color(0x8C8F5BFF),
-    fieldFill = Color(0x0FFFFFFF),
-    tileFill = Color(0x14FFFFFF),
-    tileHairline = Color(0x24FFFFFF),
+    surface = Color(0x0FFFFFFF),
+    surfaceHigh = Color(0x14FFFFFF),
+    drawer = Color(0xFF131315),
     dim = Color(0x99000000),
     aurora = auroraColours,
-    orbSpecular = Color(0x47FFFFFF),
-    orbMark = Color(0x38FFFFFF),
-    orbShade = Color(0x66000000),
     switchOff = Color(0x33FFFFFF),
     good = c(HeylanaTokens.ack),
     warn = Color(0xFFFFB86B)
@@ -95,7 +76,7 @@ val DarkGlass = HeylanaPalette(
 
 val LightGlass = HeylanaPalette(
     mode = GlassMode.LIGHT,
-    ground = Color(0xFFF3F1F8),
+    ground = Color(0xFFFFFFFF),
     ink = Color(0xFF14121C),
     inkSecondary = Color(0xB314121C),
     inkTertiary = Color(0x8C14121C),
@@ -103,19 +84,11 @@ val LightGlass = HeylanaPalette(
     accentSoft = Color(0xFF6B3BFF),
     accentDeep = Color(0xFF5B2BC9),
     onAccent = Color(0xFFFFFFFF),
-    glassFill = Color(0x99FFFFFF),
-    glassHairline = Color(0x1F14121C),
-    glassHighlight = Color(0xE6FFFFFF),
-    glassShadow = Color(0x2414121C),
-    glassRimLit = Color(0xA68F5BFF),
-    fieldFill = Color(0x0D14121C),
-    tileFill = Color(0x0F14121C),
-    tileHairline = Color(0x1A14121C),
+    surface = Color(0x0F14121C),
+    surfaceHigh = Color(0x1414121C),
+    drawer = Color(0xFFF4F4F7),
     dim = Color(0x6614121C),
     aurora = auroraColours,
-    orbSpecular = Color(0x59FFFFFF),
-    orbMark = Color(0x47FFFFFF),
-    orbShade = Color(0x33000000),
     switchOff = Color(0x2914121C),
     good = Color(0xFF15A77A),
     warn = Color(0xFFC96A00)

@@ -19,7 +19,7 @@ after each step.
 ```
 xyz.heylana.app
 ├── MainActivity.kt          the one activity: first run or Home (home/AppRoute)
-├── home/                    the app itself, all Compose, all clear glass
+├── home/                    the app itself, all Compose, flat and dark
 │   ├── AppRoute             sign in → name → permissions → Home; where back goes
 │   ├── FirstRun             the sign-in screen (wallet, name card) and Permissions
 │   ├── Permissions          the four rows and their live state, re-read on resume
@@ -104,9 +104,9 @@ xyz.heylana.app
 │   ├── HeylanaSettings      EncryptedSharedPreferences: device id, voice, advanced bits
 │   ├── DeviceId             the random id the proxy counts a phone's day by
 │   └── SettingsActivity     the old settings: kept for Go Pro (opened on it by the menu)
-├── ui/app/                  the app's glass kit: Glass (real refraction), Orb, Beam,
-│                            Gooey, Kit (buttons, rows, switch, field), Icons
-└── ui/theme/                HeylanaTheme: the Dark and Light glass palettes, Outfit
+├── ui/app/                  the app's flat kit: Surface, Orb (thinking-orbs drawn the
+│                            library's way), Kit (buttons, rows, switch, field), Icons
+└── ui/theme/                HeylanaTheme: the Dark and Light palettes, Outfit
 ```
 
 ## Look and feel
@@ -236,25 +236,42 @@ not and the surface has to carry itself. Never hardcode one or the other.
 (`MainActivity`) routes (`home/AppRoute`): a first run is Sign in with wallet (the existing
 Mobile Wallet Adapter flow, or "Continue without a wallet"), the name card, then
 Permissions; once Home has been reached (`HeylanaSettings.firstRunDone`) the app opens on
-Home. The screens follow design/refs "Heylana App Screens.html" (layout, spacing, copy),
+Home. The screens' contents follow design/refs "Heylana App Screens.html" (copy, order),
 with two corrections: Home says "Hi, <name>. What do you need?", and the Advanced note is
 "Held in the phone's keystore. It never leaves the device." (never Seed Vault there).
 Debug builds open any screen with `-e screen home|sign_in|permissions|voice|skills|advanced|privacy|settings`.
 
 **Colours live in `ui/theme/HeylanaTheme` and nowhere else; the type is Outfit only.**
-`HeylanaPalette` has a Dark glass (the export: black ground, white 7% glass, 13% hairline)
-and a Light glass (#F3F1F8 ground, white 60% glass); Settings → Glass switches them
-(`HeylanaSettings.glassMode`), and the status and navigation icons follow. Every screen
-is checked in both.
+`HeylanaPalette` has Dark (the default: pure black) and Light (white); Settings →
+Appearance switches them (`HeylanaSettings.glassMode`), and the status and navigation icons
+follow.
 
-**Real refraction.** Each page records what is behind its glass into one GraphicsLayer
-(`ui/app/Glass`, `backdropSource`); every `GlassSurface` draws that layer, offset to its
-own place, through the ClearGlass AGSL (the `GlassSpec` panel numbers, edge and strength
-capped at 40% of the short side) over an 8dp blur, then the fill, hairline, top highlight
-and outside shadow. Below API 33 the refraction is left out. The border beam
-(`ui/app/Beam`, the BeamShader) laps the message bar while thinking and the answer strip
-while speaking; the chips and the "You asked" card, and the menu, come and go through
-`GooeyReveal` (GooeySpec's blur and alpha contrast).
+**The app is flat, in the style of the Gemini Android app; the liquid glass is the
+overlay's alone.** Every in-app surface is `ui/app/FlatSurface`: white 6% on black, 16dp
+corners, and no border, blur, rim, shadow, streak, beam or goo. Rows are a 24dp icon and a
+16sp label; chips and the message bar are flat pills at white 8%; the accent mic is
+unchanged. The greeting is "Hi, <name>." small above "What do you need?" at 32/300. The menu
+is a full-height drawer from the left, a flat list in three sections — Buddy (Start buddy),
+Account (Plan, Skill market), More (Advanced, Privacy, Settings) — with the profile row at
+the bottom. Nothing in `home/` or `ui/app/` uses `GlassSpec`, a RenderEffect, the beam or
+the goo; the one `GlassSpec` line in Settings is the overlay's "Darker buddy glass" switch.
+
+**The orb is thinking-orbs, drawn the library's way.** `ui/app/LibraryOrb` draws frames from
+`orbs/OrbEngine` (the port held to the library's golden vectors) exactly as the library's
+SwiftUI port draws a `displaySize`: the 64px tuning's frame, scaled inside the canvas, every
+dot a filled circle in the engine's z-order with its radius and alpha, coloured by the
+library's ink ramp (`inkColor` in core.ts: 8-bit grey mirrored on a dark page, or a tint
+faded toward the page with depth). The app's tint is the aurora, by each dot's angle,
+turning once every 12 seconds. States: idle is `breathing` at half its preset pace,
+thinking is `working`, speaking is `composing`, listening is `listening`; each keeps its own
+clock, speeded and swelled by the playback or microphone level, and a change of state
+cross-fades over 300ms. It is 200dp on Home and 48dp in the voice screen's header; no mark
+is drawn in it. Debug builds pin it for comparison: `-e orb_t 3.3 --ez orb_mono true -e
+orb_mode idle|thinking` on launch. Checked against the library itself: its own
+`MODE_FRAMES` and `paintFrame`, bundled and drawn in headless Chrome at the phone's 510px,
+against the Seeker at the same frozen instant — mean difference 0.19/255 over the canvas,
+about 1% of lit pixels differing by more than 32/255, all at dot edges (anti-aliasing).
+`AppOrbTest` holds the ink ramp to core.ts.
 
 **Permissions** has four rows — over other apps, screen reading, notifications,
 microphone (optional) — each with a one-line why and a live tick, read again on every
@@ -270,9 +287,7 @@ reply. The chat message carries the phone's time and UTC (`HeylanaPrompt.nowLine
 "what's the time in Tokyo" is worked out, not guessed. Answers are spoken unless the
 speaker is off and shown in the strip under the orb (six lines, scrolling); the chevron
 reaches the last three exchanges, kept in memory only. "Ask about this screen" starts the
-buddy and says where to ask; the app itself never reads a screen. The orb is idle
-(breathing 4.4s, the mark faint inside), thinking (drift at 3.4s, the gapped ring at
-1.2s), listening or speaking (swelling with the level).
+buddy and says where to ask; the app itself never reads a screen.
 
 **The voice screen** (`home/VoiceSession`, `VoiceScreen`) uses the buddy's two ears
 (`DeepgramEars` and `Listener`, raced by `EarsRace`). A tap on the mic — here or on Home —
@@ -283,7 +298,7 @@ recogniser showed are kept if it then ends with no final (it often does in tap-t
 Deepgram's are not revived once it hears no speech. The wave moves with the mic level
 while listening and with Heylana's voice while she speaks.
 
-**The menu** grows in from the left over a dimmed Home: Start buddy (its switch starts and
+**The menu** slides in from the left over a dimmed Home: Start buddy (its switch starts and
 stops the overlay service), the plan from `/me` (Free: "n of 30 talks" and Go Pro, which
 opens the old Settings screen on the Go Pro sheet; Pro or Judge: the end date), Skill
 market with its active count, Advanced, Privacy, Settings, and the name with the short

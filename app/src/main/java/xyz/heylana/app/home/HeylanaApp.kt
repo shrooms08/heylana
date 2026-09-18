@@ -28,7 +28,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.screen.HeylanaAccessibilityService
 import xyz.heylana.app.settings.HeylanaSettings
-import xyz.heylana.app.ui.app.rememberBackdrop
 import xyz.heylana.app.ui.theme.GlassMode
 import xyz.heylana.app.ui.theme.HeylanaTheme
 import xyz.heylana.app.wallet.SeedVault
@@ -47,7 +46,6 @@ fun HeylanaApp(activity: ComponentActivity, seedVault: SeedVault, forcedScreen: 
                 ?: AppRoute.start(settings.firstRunDone, settings.callMe.isNotBlank())
         )
     }
-    val backdrop = rememberBackdrop()
 
     // The system's answer, read again every time the app comes back to the front.
     val permissions = remember { PermissionsModel { checkPermissions(activity) } }
@@ -83,9 +81,8 @@ fun HeylanaApp(activity: ComponentActivity, seedVault: SeedVault, forcedScreen: 
 
     HeylanaTheme(mode) {
         when (screen) {
-            Screen.SIGN_IN -> SignInScreen(backdrop, settings, seedVault) { screen = AppRoute.afterName() }
+            Screen.SIGN_IN -> SignInScreen(settings, seedVault) { screen = AppRoute.afterName() }
             Screen.PERMISSIONS -> PermissionsScreen(
-                backdrop,
                 PermissionsModel.rowsFor(permissionState),
                 permissions.required,
                 onRow = { target -> openPermission(activity, target, permissionState) { askPermission.launch(it) } },
@@ -96,7 +93,6 @@ fun HeylanaApp(activity: ComponentActivity, seedVault: SeedVault, forcedScreen: 
             )
             else -> AppScreens(
                 screen = screen,
-                backdrop = backdrop,
                 settings = settings,
                 activity = activity,
                 seedVault = seedVault,

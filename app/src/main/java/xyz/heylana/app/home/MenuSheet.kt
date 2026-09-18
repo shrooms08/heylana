@@ -22,7 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,15 +35,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import xyz.heylana.app.R
-import xyz.heylana.app.ui.HeylanaTokens
 import xyz.heylana.app.ui.app.AccentButton
-import xyz.heylana.app.ui.app.Backdrop
-import xyz.heylana.app.ui.app.GlassRow
-import xyz.heylana.app.ui.app.GlassSurface
-import xyz.heylana.app.ui.app.GlassSwitch
-import xyz.heylana.app.ui.app.GooeyReveal
+import xyz.heylana.app.ui.app.FlatRow
+import xyz.heylana.app.ui.app.FlatSwitch
 import xyz.heylana.app.ui.app.Glyph
-import xyz.heylana.app.ui.app.Icon
+import xyz.heylana.app.ui.app.SectionHead
 import xyz.heylana.app.ui.app.tap
 import xyz.heylana.app.ui.theme.HeylanaType
 import xyz.heylana.app.ui.theme.LocalHeylana
@@ -86,13 +82,12 @@ object MenuText {
 }
 
 /**
- * The menu, frame 3 of the export: a glass sheet that grows in from the left edge like
- * liquid over a dimmed home. Start buddy, the plan, and the ways into the inner screens;
- * the name and the short wallet at the bottom.
+ * The menu: a full-height drawer from the left over a dimmed Home, a flat list in three
+ * sections — Buddy (Start buddy), Account (Plan, Skill market), More (Advanced, Privacy,
+ * Settings) — and the profile row at the bottom.
  */
 @Composable
 fun MenuSheet(
-    backdrop: Backdrop,
     open: Boolean,
     buddyOn: Boolean,
     standing: Standing?,
@@ -105,103 +100,66 @@ fun MenuSheet(
     onClose: () -> Unit
 ) {
     val palette = LocalHeylana.current
-    val shown by animateFloatAsState(
-        if (open) 1f else 0f,
-        spring(dampingRatio = HeylanaTokens.SPRING_DAMPING, stiffness = HeylanaTokens.SPRING_STIFFNESS * 0.6f),
-        label = "menu"
-    )
+    val shown by animateFloatAsState(if (open) 1f else 0f, tween(DRAWER_MS), label = "menu")
     if (shown <= 0.001f && !open) return
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val width = maxWidth * MENU_WIDTH
         // The dim over home; a tap on it closes the menu.
         Box(Modifier.fillMaxSize().alpha(shown).background(palette.dim).tap(onClick = onClose))
-        GooeyReveal(
-            open,
-            Modifier.width(width).fillMaxHeight().graphicsLayer { translationX = -(1f - shown) * 40.dp.toPx() },
-            seedX = 0f,
-            seedY = 0.5f,
-            radius = 28.dp
+        Box(
+            Modifier.width(width).fillMaxHeight()
+                .graphicsLayer { translationX = -(1f - shown) * size.width }
+                .background(palette.drawer)
+                .tap { }
         ) {
-            GlassSurface(backdrop, Modifier.fillMaxSize().tap { }, radius = 28.dp) {
-                Column(
-                    Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()
-                        .padding(horizontal = 16.dp, vertical = 18.dp)
-                ) {
-                    Row(Modifier.padding(start = 8.dp, bottom = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Image(painterResource(R.drawable.ic_heylana_mark), null, Modifier.size(28.dp), colorFilter = ColorFilter.tint(palette.ink))
-                        Spacer(Modifier.width(10.dp))
-                        Text("heylana", style = HeylanaType.wordmark, color = palette.ink)
-                    }
-                    Column(
-                        Modifier.weight(1f).verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Start buddy.
-                        GlassSurface(backdrop, Modifier.fillMaxWidth(), radius = 24.dp) {
-                            Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Glyph.POWER, palette.accentSoft, size = 18.dp)
-                                    Spacer(Modifier.width(12.dp))
-                                    Text("Start buddy", Modifier.weight(1f), style = HeylanaType.body, color = palette.ink)
-                                    GlassSwitch(buddyOn, onBuddy)
-                                }
-                                Text(MenuText.BUDDY_WHY, style = HeylanaType.small, color = palette.inkSecondary)
-                            }
-                        }
-
-                        // Plan.
-                        GlassSurface(backdrop, Modifier.fillMaxWidth(), radius = 24.dp) {
-                            Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Glyph.STAR, palette.accentSoft, size = 18.dp)
-                                    Spacer(Modifier.width(12.dp))
-                                    Text("Plan", Modifier.weight(1f), style = HeylanaType.body, color = palette.ink)
-                                    Text(MenuText.planName(standing), style = HeylanaType.label, color = palette.inkSecondary)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val fill = MenuText.planFill(standing)
-                                    if (fill != null) {
-                                        Box(Modifier.weight(1f).height(4.dp).clip(CircleShape).background(palette.switchOff)) {
-                                            Box(Modifier.fillMaxWidth(fill).fillMaxHeight().clip(CircleShape).background(palette.accent))
-                                        }
-                                        Spacer(Modifier.width(12.dp))
-                                    }
-                                    Text(MenuText.planLine(standing), style = HeylanaType.small, color = palette.inkSecondary)
-                                }
-                                if (MenuText.showGoPro(standing)) AccentButton("Go Pro", onGoPro, height = 44.dp)
-                            }
-                        }
-
-                        GlassRow(backdrop, "Skill market", glyph = Glyph.BAG, onClick = { onScreen(Screen.SKILLS) }) {
-                            Box(
-                                Modifier.clip(RoundedCornerShape(999.dp)).background(palette.accent.copy(alpha = 0.18f))
-                                    .padding(horizontal = 10.dp, vertical = 3.dp)
-                            ) { Text(MenuText.skillsActive(skillsActive), style = HeylanaType.tiny, color = palette.accentSoft) }
-                            Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp)
-                        }
-                        GlassRow(backdrop, "Advanced", glyph = Glyph.SLIDERS, onClick = { onScreen(Screen.ADVANCED) }) {
-                            Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp)
-                        }
-                        GlassRow(backdrop, "Privacy", glyph = Glyph.SHIELD, onClick = { onScreen(Screen.PRIVACY) }) {
-                            Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp)
-                        }
-                        GlassRow(backdrop, "Settings", glyph = Glyph.GEAR, onClick = { onScreen(Screen.SETTINGS) }) {
-                            Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp)
-                        }
+            Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                Row(Modifier.padding(start = 12.dp, top = 8.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Image(painterResource(R.drawable.ic_heylana_mark), null, Modifier.size(26.dp), colorFilter = ColorFilter.tint(palette.ink))
+                    Spacer(Modifier.width(10.dp))
+                    Text("heylana", style = HeylanaType.wordmark, color = palette.ink)
+                }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    MenuSection("Buddy")
+                    FlatRow("Start buddy", subtitle = MenuText.BUDDY_WHY, glyph = Glyph.POWER, card = false) {
+                        FlatSwitch(buddyOn, onBuddy)
                     }
 
-                    // Who is signed in.
-                    Row(Modifier.padding(start = 6.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(40.dp).clip(CircleShape).background(palette.tileFill),
-                            contentAlignment = Alignment.Center
-                        ) { Text(MenuText.initial(name), style = HeylanaType.bodyMedium, color = palette.ink) }
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(name.ifBlank { "Heylana" }, style = HeylanaType.label, color = palette.ink)
-                            Text(MenuText.walletLine(shortWallet), style = HeylanaType.tiny, color = palette.inkSecondary)
+                    MenuSection("Account")
+                    FlatRow(
+                        "Plan",
+                        subtitle = MenuText.planLine(standing),
+                        glyph = Glyph.STAR,
+                        card = false
+                    ) { Text(MenuText.planName(standing), style = HeylanaType.label, color = palette.inkSecondary) }
+                    MenuText.planFill(standing)?.let { fill ->
+                        Box(Modifier.padding(start = 56.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(palette.switchOff)) {
+                            Box(Modifier.fillMaxWidth(fill).fillMaxHeight().clip(CircleShape).background(palette.accent))
                         }
+                    }
+                    if (MenuText.showGoPro(standing)) {
+                        Box(Modifier.padding(start = 56.dp, end = 16.dp, top = 4.dp, bottom = 8.dp)) { AccentButton("Go Pro", onGoPro, height = 40.dp) }
+                    }
+                    FlatRow("Skill market", glyph = Glyph.BAG, card = false, onClick = { onScreen(Screen.SKILLS) }) {
+                        Text(MenuText.skillsActive(skillsActive), style = HeylanaType.small, color = palette.inkSecondary)
+                    }
+
+                    MenuSection("More")
+                    FlatRow("Advanced", glyph = Glyph.SLIDERS, card = false, onClick = { onScreen(Screen.ADVANCED) })
+                    FlatRow("Privacy", glyph = Glyph.SHIELD, card = false, onClick = { onScreen(Screen.PRIVACY) })
+                    FlatRow("Settings", glyph = Glyph.GEAR, card = false, onClick = { onScreen(Screen.SETTINGS) })
+                }
+
+                // Who is signed in.
+                Row(Modifier.fillMaxWidth().padding(start = 12.dp, top = 12.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(40.dp).clip(CircleShape).background(palette.surfaceHigh),
+                        contentAlignment = Alignment.Center
+                    ) { Text(MenuText.initial(name), style = HeylanaType.bodyMedium, color = palette.ink) }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(name.ifBlank { "Heylana" }, style = HeylanaType.body, color = palette.ink)
+                        Text(MenuText.walletLine(shortWallet), style = HeylanaType.small, color = palette.inkSecondary)
                     }
                 }
             }
@@ -209,5 +167,12 @@ fun MenuSheet(
     }
 }
 
-/** How much of the screen's width the menu takes. */
+/** A section's heading in the drawer. */
+@Composable
+private fun MenuSection(title: String) {
+    SectionHead(title, Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp))
+}
+
+/** How much of the screen's width the drawer takes, and how long it takes to slide. */
 private const val MENU_WIDTH = 0.84f
+private const val DRAWER_MS = 240

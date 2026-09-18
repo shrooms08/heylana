@@ -29,6 +29,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import android.os.SystemClock
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -45,19 +48,16 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import xyz.heylana.app.ui.app.Backdrop
-import xyz.heylana.app.ui.app.GlassChip
-import xyz.heylana.app.ui.app.GlassPage
-import xyz.heylana.app.ui.app.GlassSurface
+import xyz.heylana.app.ui.app.BarButton
+import xyz.heylana.app.ui.app.FlatChip
+import xyz.heylana.app.ui.app.FlatPage
+import xyz.heylana.app.ui.app.FlatSurface
 import xyz.heylana.app.ui.app.Glyph
-import xyz.heylana.app.ui.app.GooeyReveal
-import xyz.heylana.app.ui.app.HomeOrb
 import xyz.heylana.app.ui.app.Icon
+import xyz.heylana.app.ui.app.LibraryOrb
 import xyz.heylana.app.ui.app.MarkPill
+import xyz.heylana.app.ui.app.OrbDebug
 import xyz.heylana.app.ui.app.OrbMode
-import xyz.heylana.app.ui.app.RoundGlassButton
-import xyz.heylana.app.ui.app.SectionHead
-import xyz.heylana.app.ui.app.beam
 import xyz.heylana.app.ui.app.tap
 import xyz.heylana.app.ui.theme.HeylanaType
 import xyz.heylana.app.ui.theme.LocalHeylana
@@ -68,7 +68,6 @@ import xyz.heylana.app.ui.theme.LocalHeylana
  */
 @Composable
 fun HomeScreen(
-    backdrop: Backdrop,
     name: String,
     chat: AppChat,
     muted: Boolean,
@@ -84,7 +83,7 @@ fun HomeScreen(
     var message by remember { mutableStateOf("") }
     var history by remember { mutableStateOf(false) }
     val thinking = chat.thinking
-    val orbMode = when {
+    val orbMode = OrbDebug.forcedMode ?: when {
         listening -> OrbMode.LISTENING
         thinking -> OrbMode.THINKING
         chat.speaking -> OrbMode.SPEAKING
@@ -92,19 +91,26 @@ fun HomeScreen(
     }
     val last = chat.exchanges.lastOrNull()
 
-    GlassPage(backdrop, background = {
-        HomeOrb(orbMode, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 128.dp), level = if (listening) micLevel else chat.level)
-    }) {
+    FlatPage {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            // Top bar: menu, the pill, the speaker.
-            Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                RoundGlassButton(backdrop, Glyph.MENU, "Menu", onMenu)
+            // Top bar: menu, the name, the speaker.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                BarButton(Glyph.MENU, "Menu", onMenu)
                 Spacer(Modifier.weight(1f))
-                MarkPill(backdrop, if (thinking) "thinking…" else "your buddy", subtitleAccent = thinking)
+                MarkPill(if (thinking) "thinking…" else "your buddy", subtitleAccent = thinking)
                 Spacer(Modifier.weight(1f))
-                RoundGlassButton(backdrop, if (muted) Glyph.SPEAKER_OFF else Glyph.SPEAKER, if (muted) "Speaker off" else "Speaker on", { onMute(!muted) })
+                BarButton(if (muted) Glyph.SPEAKER_OFF else Glyph.SPEAKER, if (muted) "Speaker off" else "Speaker on", { onMute(!muted) })
             }
-            Spacer(Modifier.height(128.dp + 236.dp - 74.dp + 30.dp))
+
+            // The orb is the character: no mark inside it.
+            Spacer(Modifier.height(24.dp))
+            LibraryOrb(
+                orbMode,
+                Modifier.align(Alignment.CenterHorizontally),
+                diameter = ORB_DP.dp,
+                level = if (listening) micLevel else chat.level
+            )
+            Spacer(Modifier.height(28.dp))
 
             // Under the orb: the greeting, "one moment" while thinking, or the answer strip.
             Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp), contentAlignment = Alignment.TopCenter) {
@@ -113,7 +119,7 @@ fun HomeScreen(
                         Text("One moment.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
                         Text("Thinking…", style = HeylanaType.display, color = palette.ink)
                     }
-                    last != null -> AnswerStrip(backdrop, chat, history, onHistory = { history = !history })
+                    last != null -> AnswerStrip(chat, history, onHistory = { history = !history })
                     else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (name.isBlank()) "Hi." else "Hi, $name.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
                         Text("What do you need?", style = HeylanaType.display, color = palette.ink, textAlign = TextAlign.Center)
@@ -122,34 +128,29 @@ fun HomeScreen(
             }
             Spacer(Modifier.weight(1f))
 
-            // The chips give way to the question just asked (frame 1b), and to the keyboard.
+            // The chips give way to the question just asked, and to the keyboard.
             val typing = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-            if (!typing) Box(Modifier.fillMaxWidth().height(110.dp)) {
-                GooeyReveal(!thinking, Modifier.fillMaxSize(), seedX = 0.5f, seedY = 0.5f, radius = 22.dp) {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        ChipRow(backdrop, HomeChips.FIRST_ROW, { chat.send(it) }, onAskAboutScreen)
-                        ChipRow(backdrop, HomeChips.SECOND_ROW, { chat.send(it) }, onAskAboutScreen)
+            if (!typing) Box(Modifier.fillMaxWidth().height(102.dp)) {
+                androidx.compose.animation.AnimatedVisibility(!thinking, Modifier.fillMaxSize(), enter = fadeIn(), exit = fadeOut()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ChipRow(HomeChips.FIRST_ROW, { chat.send(it) }, onAskAboutScreen)
+                        ChipRow(HomeChips.SECOND_ROW, { chat.send(it) }, onAskAboutScreen)
                     }
                 }
-                GooeyReveal(thinking, Modifier.fillMaxSize().padding(horizontal = 20.dp), seedX = 0.5f, seedY = 0.5f) {
-                    GlassSurface(backdrop, Modifier.fillMaxWidth().beam(1f, 24.dp), radius = 24.dp) {
-                        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text("YOU ASKED", style = HeylanaType.caps, color = palette.accentSoft)
+                androidx.compose.animation.AnimatedVisibility(thinking, Modifier.fillMaxSize().padding(horizontal = 20.dp), enter = fadeIn(), exit = fadeOut()) {
+                    FlatSurface(Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("You asked", style = HeylanaType.label, color = palette.inkSecondary)
                             Text(chat.asked.orEmpty(), style = HeylanaType.body, color = palette.ink, maxLines = 2)
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                repeat(3) { i ->
-                                    Box(Modifier.size(6.dp).clip(CircleShape).background(palette.accent.copy(alpha = 1f - i * 0.3f)))
-                                }
-                            }
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(16.dp))
 
             // The message bar and the mic.
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 22.dp), verticalAlignment = Alignment.CenterVertically) {
-                GlassSurface(backdrop, Modifier.weight(1f).height(58.dp).beam(if (thinking) 0.8f else 0f, 29.dp), radius = 29.dp) {
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                FlatSurface(Modifier.weight(1f).height(58.dp), radius = 29.dp, fill = palette.surfaceHigh) {
                     Row(Modifier.fillMaxSize().padding(start = 20.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) {
                             if (message.isEmpty()) Text("Message…", style = HeylanaType.bodyLight, color = palette.inkTertiary)
@@ -188,7 +189,7 @@ fun HomeScreen(
                             radius = size.minDimension * 0.9f
                         )
                     }.clip(CircleShape).background(palette.accent).pointerInput(Unit) {
-                        // Tap opens the voice screen listening; hold talks here and sends on release.
+                        // Tap opens the voice screen listening; hold talks and sends on release.
                         detectTapGestures(onPress = {
                             val down = SystemClock.uptimeMillis()
                             val started = onMicDown()
@@ -203,31 +204,34 @@ fun HomeScreen(
     }
 }
 
+/** The orb on Home. */
+private const val ORB_DP = 200
+
 @Composable
-private fun ChipRow(backdrop: Backdrop, chips: List<HomeChip>, send: (String) -> Unit, startBuddy: () -> Unit) {
+private fun ChipRow(chips: List<HomeChip>, send: (String) -> Unit, startBuddy: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         chips.forEach { chip ->
-            GlassChip(backdrop, chip.glyph, chip.label, onClick = { HomeChips.tap(chip, send, startBuddy) })
+            FlatChip(chip.glyph, chip.label, onClick = { HomeChips.tap(chip, send, startBuddy) })
         }
     }
 }
 
 /** The answer, up to six lines and scrolling past that; the chevron opens the last three exchanges. */
 @Composable
-fun AnswerStrip(backdrop: Backdrop, chat: AppChat, history: Boolean, onHistory: () -> Unit) {
+fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
     val palette = LocalHeylana.current
     val shown = if (history) chat.exchanges.toList() else listOfNotNull(chat.exchanges.lastOrNull())
-    GlassSurface(backdrop, Modifier.fillMaxWidth().beam(if (chat.speaking) 0.35f + 0.65f * chat.level else 0f, 24.dp), radius = 24.dp) {
+    FlatSurface(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 14.dp)) {
             Column(
                 Modifier.heightIn(max = if (history) 260.dp else 22.dp * 6).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 shown.forEach { exchange ->
-                    if (history) Text(exchange.question, style = HeylanaType.small, color = palette.accentSoft)
+                    if (history) Text(exchange.question, style = HeylanaType.small, color = palette.inkSecondary)
                     Text(exchange.answer, style = HeylanaType.body, color = palette.ink)
                 }
             }

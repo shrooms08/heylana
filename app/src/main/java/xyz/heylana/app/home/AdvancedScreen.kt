@@ -33,11 +33,10 @@ import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.settings.VoiceCopy
 import xyz.heylana.app.ui.app.AccentButton
-import xyz.heylana.app.ui.app.Backdrop
-import xyz.heylana.app.ui.app.GlassField
-import xyz.heylana.app.ui.app.GlassPage
-import xyz.heylana.app.ui.app.GlassRow
-import xyz.heylana.app.ui.app.GlassSurface
+import xyz.heylana.app.ui.app.FlatField
+import xyz.heylana.app.ui.app.FlatPage
+import xyz.heylana.app.ui.app.FlatRow
+import xyz.heylana.app.ui.app.FlatSurface
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.Icon
 import xyz.heylana.app.ui.app.InnerTopBar
@@ -71,16 +70,16 @@ object AdvancedText {
 
 /** Frame 5 of the export: three providers, the key, and where it is kept. */
 @Composable
-fun AdvancedScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () -> Unit) {
+fun AdvancedScreen(settings: HeylanaSettings, onBack: () -> Unit) {
     val palette = LocalHeylana.current
     var key by remember { mutableStateOf("") }
     var masked by remember { mutableStateOf(settings.maskedApiKey()) }
     var inUse by remember { mutableStateOf(settings.useOwnKey && settings.hasApiKey) }
     var line by remember { mutableStateOf("") }
 
-    GlassPage(backdrop, background = {}) {
+    FlatPage {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding()) {
-            Box(Modifier.padding(vertical = 14.dp)) { InnerTopBar(backdrop, onBack) }
+            Box(Modifier.padding(vertical = 14.dp)) { InnerTopBar(onBack) }
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -91,12 +90,10 @@ fun AdvancedScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () -> 
                 Spacer(Modifier.height(18.dp))
                 SectionHead("Provider")
                 AdvancedText.PROVIDERS.forEach { provider ->
-                    GlassRow(
-                        backdrop,
-                        provider.name,
+                    FlatRow(provider.name,
                         subtitle = provider.detail,
                         letter = provider.letter,
-                        lit = provider.wired,
+                        selected = provider.wired,
                         enabled = provider.wired
                     ) {
                         if (provider.wired) {
@@ -105,7 +102,7 @@ fun AdvancedScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () -> 
                             }
                         } else {
                             Box(
-                                Modifier.clip(RoundedCornerShape(999.dp)).background(palette.tileFill)
+                                Modifier.clip(RoundedCornerShape(999.dp)).background(palette.surfaceHigh)
                                     .padding(horizontal = 10.dp, vertical = 3.dp)
                             ) { Text(AdvancedText.SOON, style = HeylanaType.tiny, color = palette.inkSecondary) }
                         }
@@ -113,9 +110,9 @@ fun AdvancedScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () -> 
                 }
                 Spacer(Modifier.height(10.dp))
                 SectionHead("API key")
-                GlassSurface(backdrop, Modifier.fillMaxWidth(), radius = 24.dp) {
+                FlatSurface(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GlassField(
+                        FlatField(
                             key, { key = it },
                             placeholder = masked ?: "sk-ant-…",
                             style = HeylanaType.body,
@@ -213,11 +210,11 @@ object PrivacyCopy {
 
 /** The privacy screen: the pixels line, then the list. */
 @Composable
-fun PrivacyScreen(backdrop: Backdrop, provider: String, onBack: () -> Unit) {
+fun PrivacyScreen(provider: String, onBack: () -> Unit) {
     val palette = LocalHeylana.current
-    GlassPage(backdrop, background = {}) {
+    FlatPage {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
-            Box(Modifier.padding(vertical = 14.dp)) { InnerTopBar(backdrop, onBack) }
+            Box(Modifier.padding(vertical = 14.dp)) { InnerTopBar(onBack) }
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -226,14 +223,14 @@ fun PrivacyScreen(backdrop: Backdrop, provider: String, onBack: () -> Unit) {
                 Text(PrivacyCopy.TITLE, style = HeylanaType.title, color = palette.ink)
                 Text(PrivacyCopy.LEAD, style = HeylanaType.bodyLight, color = palette.inkSecondary)
                 Spacer(Modifier.height(10.dp))
-                GlassRow(backdrop, "No pixels, ever", subtitle = PrivacyCopy.PIXELS, glyph = Glyph.EYE, lit = true)
+                FlatRow("No pixels, ever", subtitle = PrivacyCopy.PIXELS, glyph = Glyph.EYE, selected = true)
                 Spacer(Modifier.height(6.dp))
                 SectionHead("What leaves the phone")
                 PrivacyCopy.items(provider).forEachIndexed { i, item ->
-                    GlassRow(backdrop, item.title, subtitle = item.detail, letter = "${i + 1}")
+                    FlatRow(item.title, subtitle = item.detail, letter = "${i + 1}")
                 }
                 Spacer(Modifier.height(6.dp))
-                GlassRow(backdrop, "You sign", subtitle = PrivacyCopy.SIGN, glyph = Glyph.LOCK)
+                FlatRow("You sign", subtitle = PrivacyCopy.SIGN, glyph = Glyph.LOCK)
                 Spacer(Modifier.height(24.dp))
             }
         }

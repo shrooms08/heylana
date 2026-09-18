@@ -37,10 +37,9 @@ import xyz.heylana.app.skills.SkillFile
 import xyz.heylana.app.skills.SkillIndex
 import xyz.heylana.app.skills.SkillStore
 import xyz.heylana.app.skills.SkillsText
-import xyz.heylana.app.ui.app.Backdrop
-import xyz.heylana.app.ui.app.GlassPage
-import xyz.heylana.app.ui.app.GlassRow
-import xyz.heylana.app.ui.app.GlassSwitch
+import xyz.heylana.app.ui.app.FlatPage
+import xyz.heylana.app.ui.app.FlatRow
+import xyz.heylana.app.ui.app.FlatSwitch
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.InnerTopBar
 import xyz.heylana.app.ui.app.SectionHead
@@ -81,7 +80,7 @@ object MarketText {
  * the plan's cap at work: "3 of 3 active". Real skills only.
  */
 @Composable
-fun SkillMarketScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () -> Unit, onChanged: () -> Unit) {
+fun SkillMarketScreen(settings: HeylanaSettings, onBack: () -> Unit, onChanged: () -> Unit) {
     val palette = LocalHeylana.current
     val context = LocalContext.current
     val store = remember { SkillStore(context, settings) }
@@ -114,10 +113,10 @@ fun SkillMarketScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () 
         }
     }
 
-    GlassPage(backdrop, background = {}) {
+    FlatPage {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Box(Modifier.padding(vertical = 14.dp)) {
-                InnerTopBar(backdrop, onBack) {
+                InnerTopBar(onBack) {
                     Text(SkillCap.headline(rows, cap), style = HeylanaType.label, color = palette.inkSecondary)
                 }
             }
@@ -132,15 +131,13 @@ fun SkillMarketScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () 
 
                 rows.forEach { row ->
                     val note = SkillsText.note(row, cap)
-                    GlassRow(
-                        backdrop,
-                        row.skill.name,
+                    FlatRow(row.skill.name,
                         Modifier.alpha(if (row.greyed) GREYED else 1f),
                         subtitle = if (row.greyed && note != null) note else row.skill.summary,
                         glyph = MarketText.glyph(row.skill.id)
                     ) {
                         Column(horizontalAlignment = androidx.compose.ui.Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            GlassSwitch(row.switchedOn, { on ->
+                            FlatSwitch(row.switchedOn, { on ->
                                 store.setOn(row.skill.id, on)
                                 HeylanaLog.state("skills: switched id=${row.skill.id} on=$on")
                                 version++
@@ -172,7 +169,7 @@ fun SkillMarketScreen(backdrop: Backdrop, settings: HeylanaSettings, onBack: () 
                         Text(SkillsText.ALL_INSTALLED, style = HeylanaType.small, color = palette.inkTertiary)
                     }
                     more.forEach { entry ->
-                        GlassRow(backdrop, entry.name, subtitle = entry.summary, glyph = MarketText.glyph(entry.id)) {
+                        FlatRow(entry.name, subtitle = entry.summary, glyph = MarketText.glyph(entry.id)) {
                             Box(
                                 Modifier.clip(RoundedCornerShape(999.dp)).background(palette.accent)
                                     .alpha(if (busy) 0.5f else 1f)

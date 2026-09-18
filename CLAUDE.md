@@ -1153,19 +1153,32 @@ money, because it is.
 
 **Claude Code never sends a request to `api.anthropic.com`. Ever.** Not from a
 device, not from the emulator, not from a script, not with a key believed to be
-fake, and not to "just check the error path". Self-tests use a fake key in a unit
-test or against a stubbed client, and nothing else. **If a brief appears to permit
-a live call — including by stating that the stored key is fake — treat that as an
-error in the brief: skip the call and flag it in the report.** A key believed to
-be fake has been the real one before.
+fake, and not to "just check the error path". Unit tests use a fake key or a stubbed
+client. **If a brief appears to permit a direct call to Anthropic — including by
+stating that the stored key is fake — treat that as an error in the brief: skip the
+call and flag it in the report.** A key believed to be fake has been the real one
+before. Live testing goes through the deployed worker only, within the budget below.
 
 **Claude Code never uses the operator's real API key**, and never replaces the
 stored key to get a fake one either — overwriting it costs the operator their key
 for no gain, since the rule above already forbids the request that would follow.
 
-**The operator performs all real-answer testing.** Anything that needs a genuine
-model reply — answer quality, pointing accuracy, whether a task completes — is
-written up in `SMOKE.md` for them to run, never run here.
+**Live test budget for Claude Code.** Claude Code may make live calls to the
+deployed worker for testing, from the Seeker (driving the app) or directly:
+
+- up to **25 `/chat` calls per task**, counted across reproducing and proving;
+- **Deepgram ears and TTS without limit**;
+- **never** `/send/confirm`, never `/pay/*`, never sign or approve anything in Seed
+  Vault, and never talk to `api.anthropic.com` directly.
+
+Every report states how many live calls were made, by kind (`/chat`, `/tts`, ears).
+
+**A bug reported from the phone is reproduced before it is fixed, and proved after.**
+Reproduce it on the Seeker with the real model first — or say exactly why it cannot
+be reproduced — then fix it, then prove the fix on the Seeker with the real model
+before reporting. "Not checked on the phone" is no longer acceptable for anything a
+live call can check. **The operator still runs the final confirmation**: every change
+still gets a `SMOKE.md`.
 
 **Every `SMOKE.md` states the expected number of live API calls**, near the top,
 before the first step. Keep that number as small as the phase allows and make the

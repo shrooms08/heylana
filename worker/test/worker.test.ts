@@ -158,6 +158,41 @@ test('Archie is Achird on Gemini, and each call logs its provider and voice', as
   assert.equal(end.bytes, 2)
 })
 
+test('VOICE_PROVIDER=deepgram speaks through Aura in Hera or Aries, with the Deepgram key, streamed as it comes', async () => {
+  const lines: string[] = []
+  const original = console.log
+  console.log = (line: string) => lines.push(line)
+  try {
+    reply = () => new Response(new Uint8Array([1, 2, 3, 4, 5]), { status: 200, headers: { 'content-type': 'audio/l16;rate=24000' } })
+    const response = await worker.fetch(post('/tts', { text: 'The search bar is at the top.' }), { ...env(), VOICE_PROVIDER: 'deepgram' })
+    const url = new URL(calls[0].url)
+    assert.equal(url.origin + url.pathname, 'https://api.deepgram.com/v1/speak')
+    assert.equal(url.searchParams.get('model'), 'aura-2-hera-en')
+    assert.equal((calls[0].init.headers as any).authorization, `Token ${SECRETS.DEEPGRAM_API_KEY}`)
+    assert.deepEqual(sentBody(calls[0]), { text: 'The search bar is at the top.' })
+    assert.equal(response.headers.get('content-type'), 'audio/L16')
+    assert.equal(response.headers.get('x-sample-rate'), '24000')
+    assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [1, 2, 3, 4, 5])
+    await (await worker.fetch(post('/tts', { text: 'hello', voice: 'archie' }), { ...env(), VOICE_PROVIDER: 'deepgram' })).arrayBuffer()
+    assert.equal(new URL(calls[1].url).searchParams.get('model'), 'aura-2-aries-en')
+  } finally {
+    console.log = original
+  }
+  const logged = lines.filter((l) => l.includes('"route":"tts"')).map((l) => JSON.parse(l))
+  assert.equal(logged[0].provider, 'deepgram')
+  assert.equal(logged[0].voice, 'aura-2-hera-en')
+  assert.ok(!lines.join('\n').includes('search bar'))
+})
+
+test('Deepgram out of quota is a 429 the phone can name, and its key never comes back', async () => {
+  reply = () => new Response(JSON.stringify({ err_msg: `limit for ${SECRETS.DEEPGRAM_API_KEY}` }), { status: 429 })
+  const response = await worker.fetch(post('/tts', { text: 'hello' }), { ...env(), VOICE_PROVIDER: 'deepgram' })
+  assert.equal(response.status, 429)
+  const body = await response.text()
+  assert.equal(JSON.parse(body).reason, 'quota')
+  assert.ok(!body.includes(SECRETS.DEEPGRAM_API_KEY))
+})
+
 test('VOICE_PROVIDER=cartesia keeps Cartesia, with the format the phone is told about', async () => {
   reply = () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })
   const response = await worker.fetch(post('/tts', { text: 'The search bar is at the top.' }), { ...env(), VOICE_PROVIDER: 'cartesia' })

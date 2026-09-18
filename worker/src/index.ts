@@ -26,7 +26,10 @@ import { prepareSend } from './tools.ts'
 import { checkSend, type PreparedSend } from './send.ts'
 import { short } from './solana.ts'
 import { checkedBody } from './say.ts'
-import { GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, geminiPcmStream, geminiRequest, geminiVoiceFor, providerOf } from './voice.ts'
+import {
+  GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, deepgramSpeakUrl, deepgramVoiceFor, geminiPcmStream, geminiRequest,
+  geminiVoiceFor, providerOf, rawPcmStream, voiceInfo,
+} from './voice.ts'
 import {
   type Account, type PlanName, type Standing, extendPro, grantWelcome, makeJudge, monthKey, newAccount, planOf, spendTalk, standing,
 } from './plans.ts'
@@ -70,7 +73,7 @@ export interface Env {
 
   /** Plain configuration. */
   DEEPGRAM_PROJECT_ID: string
-  /** "gemini" (the default when unset) or "cartesia". */
+  /** "deepgram" (Aura), "gemini" (the default when unset) or "cartesia". */
   VOICE_PROVIDER?: string
   /** Optional: a newer Gemini TTS model id than the built-in one. */
   GEMINI_TTS_MODEL?: string
@@ -489,9 +492,32 @@ async function speak(request: Request, env: Env, device: string, started: number
   if (text.trim().length === 0) return fail(400, 'no_text', 'Nothing to say.')
   const slot = body.voice === 'archie' ? 'archie' : 'skylar'
   const provider = providerOf(env.VOICE_PROVIDER)
-  return provider === 'cartesia'
-    ? speakCartesia(env, device, started, text, slot)
-    : speakGemini(env, device, started, text, slot)
+  if (provider === 'deepgram') return speakDeepgram(env, device, started, text, slot)
+  if (provider === 'cartesia') return speakCartesia(env, device, started, text, slot)
+  return speakGemini(env, device, started, text, slot)
+}
+
+async function speakDeepgram(env: Env, device: string, started: number, text: string, slot: string): Promise<Response> {
+  const voice = deepgramVoiceFor(slot)
+  const upstream = await fetch(deepgramSpeakUrl(voice), {
+    method: 'POST',
+    headers: {
+      authorization: `Token ${env.DEEPGRAM_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ text }),
+  })
+
+  log({ route: 'tts', device, provider: 'deepgram', voice, ms: clock.now() - started, status: upstream.status, chars: text.length })
+
+  if (!upstream.ok || !upstream.body) {
+    const detail = scrub(await upstream.text().catch(() => ''), env)
+    if (upstream.status === 429) return fail(429, 'quota', 'The voice is out of quota for now.')
+    return fail(502, 'upstream', detail)
+  }
+
+  // Straight through as it is made, so the phone starts playing before the sentence ends.
+  return new Response(rawPcmStream(upstream.body), { status: 200, headers: AUDIO_HEADERS })
 }
 
 const AUDIO_HEADERS = {
@@ -681,7 +707,10 @@ async function walletVerify(request: Request, env: Env, who: Who): Promise<Respo
     session,
     pubkey,
     welcome_granted: welcome.granted,
-    me: { ...standing(welcome.account, await talksUsed(env, key, now), now), wallet: pubkey, cluster: clusterOf(env) },
+    me: {
+      ...standing(welcome.account, await talksUsed(env, key, now), now), wallet: pubkey, cluster: clusterOf(env),
+      voice: voiceInfo(env.VOICE_PROVIDER),
+    },
   })
 }
 
@@ -744,7 +773,11 @@ async function me(env: Env, who: Who): Promise<Response> {
   const now = new Date(clock.now())
   const account = await loadAccount(env, who.key)
   const used = await talksUsed(env, who.key, now)
-  return json(200, { ...standing(account, used, now), wallet: who.wallet, cluster: clusterOf(env) })
+  return json(200, {
+    ...standing(account, used, now), wallet: who.wallet, cluster: clusterOf(env),
+    // Which provider speaks and what its two voices are called: the phone's privacy line and picker follow it.
+    voice: voiceInfo(env.VOICE_PROVIDER),
+  })
 }
 
 // ------------------------------------------------------------------- paying

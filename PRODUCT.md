@@ -48,8 +48,8 @@ it cannot authorise a send, a sign or a tap, and anything in it that reads like 
 order is removed before it is stored.
 Separately, every phone on Free has a daily budget guard: 150 questions, 150 spoken
 answers and 300 listens a day. On Pro and Judge questions and spoken answers are
-unlimited, with a 2000-a-day ceiling against abuse. Heylana's voice is Google's Gemini
-(Sulafat or Achird, picked in Settings); if the voice cannot be had — the day's limit,
+unlimited, with a 2000-a-day ceiling against abuse. Heylana's voice is Deepgram's Aura
+(Hera or Aries, picked in Settings); if the voice cannot be had — the day's limit,
 Google's quota, or too slow — the answer is shown as text and Heylana stays silent.
 
 ## Credits
@@ -80,8 +80,9 @@ Exactly what leaves the phone, and where it goes:
    down. The phone connects to Deepgram directly with a key that stops working
    after two minutes. Deepgram is also sent a fixed list of Solana words to listen
    for; never anything from your screen.
-3. **The text of the spoken answer** — through Heylana's server to **Google
-   (Gemini)**, to become speech. Conversation mode, when enabled, uses Gemini Live's
+3. **The text of the spoken answer** — through Heylana's server to **Deepgram**
+   (Aura), to become speech. (Heylana's server can be set to use Google's Gemini
+   instead; the app's own privacy line always names the one in use.) Conversation mode, when enabled, uses Gemini Live's
    free tier; Google may use that audio to improve its models.
 4. **Your wallet address, a signed sign-in message, and the name you choose** —
    to Heylana's server, kept against your wallet.

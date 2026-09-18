@@ -17,7 +17,7 @@ Every route is a POST, and every route needs the header
 | Route | The app sends | It does |
 |---|---|---|
 | `/chat` | `{mode, system, messages, max_tokens}` | Picks the model from `mode` — `quick` is Haiku, `task` is Sonnet — adds the Anthropic key, and returns the reply as it came. |
-| `/tts` | `{text, voice}` | Says it through `VOICE_PROVIDER`: Gemini TTS by default (`skylar` is Sulafat, `archie` is Achird), streamed and turned into raw 24 kHz 16-bit PCM as it arrives; or Cartesia Sonic with `VOICE_PROVIDER = "cartesia"`. Text is cut at 400 characters. Google's quota answers `429 {"reason":"quota"}`. |
+| `/tts` | `{text, voice}` | Says it through `VOICE_PROVIDER`: `"deepgram"` as set in `wrangler.toml` — Aura-2, `skylar` is Hera and `archie` Aries, raw 24 kHz 16-bit PCM streamed straight through; or Gemini TTS (`"gemini"`, also when unset; `skylar` is Sulafat, `archie` is Achird), streamed and turned into raw 24 kHz 16-bit PCM as it arrives; or Cartesia Sonic with `VOICE_PROVIDER = "cartesia"`. Text is cut at 400 characters. Google's quota answers `429 {"reason":"quota"}`. |
 | `/stt-token` | `{}` | Mints a Deepgram key that stops working after two minutes, so the phone can open the listening socket itself. |
 
 On Free, each phone gets 150 questions, 150 spoken answers and 300 pairs of ears a day;

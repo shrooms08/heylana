@@ -149,6 +149,8 @@ private fun SettingsScreen(
     // The buddy picks skills without asking the worker, so it keeps the plan's cap.
     LaunchedEffect(standing) {
         standing?.let { settings.skillsCap = it.skillsCap }
+        // The voice follows the worker too: the privacy line and the picker's names.
+        standing?.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie) }
     }
 
     // Whenever the wallet changes: claim any payment still waiting, then ask where we stand.
@@ -213,7 +215,14 @@ private fun SettingsScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        VoiceCard(settings = settings, onSample = onSample)
+        // What /me just said wins over what was kept from last time.
+        val heardVoice = standing?.voice
+        VoiceCard(
+            settings = settings,
+            skylarName = heardVoice?.skylar ?: settings.voiceName(HeylanaSettings.VOICE_SKYLAR),
+            archieName = heardVoice?.archie ?: settings.voiceName(HeylanaSettings.VOICE_ARCHIE),
+            onSample = onSample
+        )
 
         var darkerGlass by remember { mutableStateOf(settings.darkerGlass) }
         SwitchCard(
@@ -239,7 +248,7 @@ private fun SettingsScreen(
             }
         )
 
-        PrivacyCard()
+        PrivacyCard(provider = standing?.voice?.provider ?: settings.voiceProvider)
 
         OutlinedButton(
             onClick = { advanced = !advanced },
@@ -298,7 +307,7 @@ private class TestCrash : RuntimeException(
  * choice is made by ear rather than by name.
  */
 @Composable
-private fun VoiceCard(settings: HeylanaSettings, onSample: () -> Unit) {
+private fun VoiceCard(settings: HeylanaSettings, skylarName: String, archieName: String, onSample: () -> Unit) {
     var chosen by remember { mutableStateOf(settings.voice) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -313,13 +322,13 @@ private fun VoiceCard(settings: HeylanaSettings, onSample: () -> Unit) {
             }
 
             ChoiceRow(
-                label = HeylanaSettings.VOICE_NAMES.getValue(HeylanaSettings.VOICE_SKYLAR),
+                label = skylarName,
                 detail = "Warm and clear. Heylana's own voice.",
                 selected = chosen == HeylanaSettings.VOICE_SKYLAR,
                 onSelect = { pick(HeylanaSettings.VOICE_SKYLAR) }
             )
             ChoiceRow(
-                label = HeylanaSettings.VOICE_NAMES.getValue(HeylanaSettings.VOICE_ARCHIE),
+                label = archieName,
                 detail = "Warm and friendly.",
                 selected = chosen == HeylanaSettings.VOICE_ARCHIE,
                 onSelect = { pick(HeylanaSettings.VOICE_ARCHIE) }
@@ -804,7 +813,7 @@ private fun JudgeCodeCard(api: WalletApi, onStanding: (Standing) -> Unit) {
 
 /** The plain-words version of what goes where. Same sentences as onboarding. */
 @Composable
-private fun PrivacyCard() {
+private fun PrivacyCard(provider: String) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = "What leaves the phone", style = MaterialTheme.typography.titleMedium)
@@ -816,10 +825,7 @@ private fun PrivacyCard() {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Your voice goes to Deepgram to be transcribed while you hold the " +
-                    "buddy. The spoken answer text goes to Google (Gemini) to become speech. " +
-                    "Conversation mode, when enabled, uses Gemini Live's free tier; Google may " +
-                    "use that audio to improve its models. The screen never goes to either.",
+                text = VoiceCopy.privacyLine(provider),
                 style = MaterialTheme.typography.bodySmall
             )
         }

@@ -47,10 +47,8 @@ class GeminiVoiceTest {
     }
 
     @Test
-    fun `the picker has the two Gemini voices and no phone voice`() {
+    fun `the picker has two voice slots and no phone voice`() {
         assertEquals(listOf("skylar", "archie"), HeylanaSettings.VOICES)
-        assertEquals("Sulafat", HeylanaSettings.VOICE_NAMES["skylar"])
-        assertEquals("Achird", HeylanaSettings.VOICE_NAMES["archie"])
     }
 
     @Test

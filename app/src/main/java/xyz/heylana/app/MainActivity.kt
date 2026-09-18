@@ -34,6 +34,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import androidx.core.content.ContextCompat
 import xyz.heylana.app.overlay.BuddyOverlayService
 import xyz.heylana.app.screen.HeylanaAccessibilityService
 import xyz.heylana.app.settings.HeylanaSettings
+import xyz.heylana.app.settings.VoiceCopy
 import xyz.heylana.app.settings.SettingsActivity
 import xyz.heylana.app.ui.theme.HeylanaTheme
 
@@ -180,10 +182,7 @@ private fun SetupScreen(
                 "it only lets you talk to the buddy instead of typing.\n\n" +
                 "Heylana reads the screen only when you ask, and watches for your tap " +
                 "only while it is pointing at something.\n\n" +
-                "Your voice goes to Deepgram to be transcribed while you hold the " +
-                "buddy. The spoken answer text goes to Google (Gemini) to become speech. " +
-                "Conversation mode, when enabled, uses Gemini Live's free tier; Google may " +
-                "use that audio to improve its models. The screen never goes to either.",
+                VoiceCopy.privacyLine(HeylanaSettings.get(LocalContext.current).voiceProvider),
             style = MaterialTheme.typography.bodyMedium
         )
 

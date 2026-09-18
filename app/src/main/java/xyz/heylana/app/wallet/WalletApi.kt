@@ -19,8 +19,13 @@ data class Standing(
     val judgeUntil: String?,
     val wallet: String?,
     /** The Solana the worker takes payments on. */
-    val cluster: Cluster = Cluster.MAINNET
+    val cluster: Cluster = Cluster.MAINNET,
+    /** Which provider speaks, and the two voices' names; null from an older worker. */
+    val voice: VoiceInfo? = null
 )
+
+/** What /me says about the voice. */
+data class VoiceInfo(val provider: String, val skylar: String?, val archie: String?)
 
 /** What the worker says to send for Pro. [amount] is in the token's base units. */
 data class Quote(
@@ -182,6 +187,15 @@ class WalletApi(private val settings: HeylanaSettings) {
         proUntil = json.optString("pro_until").takeIf { it.isNotEmpty() && it != "null" },
         judgeUntil = json.optString("judge_until").takeIf { it.isNotEmpty() && it != "null" },
         wallet = json.optString("wallet").takeIf { it.isNotEmpty() && it != "null" },
-        cluster = Cluster.fromWorker(json.optString("cluster").ifEmpty { null })
+        cluster = Cluster.fromWorker(json.optString("cluster").ifEmpty { null }),
+        voice = json.optJSONObject("voice")?.let { voice ->
+            voice.optString("provider").takeIf { it.isNotEmpty() }?.let { provider ->
+                VoiceInfo(
+                    provider = provider,
+                    skylar = voice.optString("skylar").takeIf { it.isNotEmpty() },
+                    archie = voice.optString("archie").takeIf { it.isNotEmpty() }
+                )
+            }
+        }
     )
 }

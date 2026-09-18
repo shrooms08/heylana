@@ -192,6 +192,24 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
      * How many skills the plan allows, as the worker's /me last said it, so the buddy
      * can pick a skill without asking. Null until Settings has heard it once.
      */
+    /** Which provider speaks, as /me last said: the privacy line names it. */
+    val voiceProvider: String
+        get() = prefs.getString(KEY_VOICE_PROVIDER, null) ?: VoiceCopy.DEFAULT_PROVIDER
+
+    /** What the picker calls [slot]: the name /me gave it, else the provider's own. */
+    fun voiceName(slot: String): String =
+        prefs.getString(KEY_VOICE_NAME_PREFIX + slot, null)?.takeIf { it.isNotBlank() }
+            ?: VoiceCopy.defaultName(voiceProvider, slot)
+
+    /** Keeps what /me said about the voice: the provider and the two slots' names. */
+    fun rememberVoice(provider: String, skylar: String?, archie: String?) {
+        prefs.edit().apply {
+            putString(KEY_VOICE_PROVIDER, provider)
+            if (skylar.isNullOrBlank()) remove(KEY_VOICE_NAME_PREFIX + VOICE_SKYLAR) else putString(KEY_VOICE_NAME_PREFIX + VOICE_SKYLAR, skylar)
+            if (archie.isNullOrBlank()) remove(KEY_VOICE_NAME_PREFIX + VOICE_ARCHIE) else putString(KEY_VOICE_NAME_PREFIX + VOICE_ARCHIE, archie)
+        }.apply()
+    }
+
     var skillsCap: Int?
         get() = prefs.getInt(KEY_SKILLS_CAP, 0).takeIf { it > 0 }
         set(value) {
@@ -238,8 +256,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         const val VOICE_ARCHIE = "archie"
         val VOICES = listOf(VOICE_SKYLAR, VOICE_ARCHIE)
 
-        /** What the picker calls each slot: the Gemini voice the worker speaks it in. */
-        val VOICE_NAMES = mapOf(VOICE_SKYLAR to "Sulafat", VOICE_ARCHIE to "Achird")
+
 
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_PENDING_PAYMENT = "pending_payment"
@@ -253,6 +270,8 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_WARM_UP = "warm_up_connection"
         private const val KEY_SKILLS_OFF = "skills_off"
         private const val KEY_SKILLS_CAP = "skills_cap"
+        private const val KEY_VOICE_PROVIDER = "voice_provider"
+        private const val KEY_VOICE_NAME_PREFIX = "voice_name_"
         private const val KEY_SIMULATE_FREE = "simulate_free_plan"
         private const val KEY_DARKER_GLASS = "darker_glass"
 

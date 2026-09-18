@@ -8,6 +8,11 @@ main = "src/index.ts"
 compatibility_date = "2026-09-10"
 
 [vars]
+# Who speaks the answers: "deepgram" (Aura-2, Hera and Aries), "gemini" (Sulafat and
+# Achird) or "cartesia". Unset means "gemini". /me tells the phone which, for its privacy
+# line and voice picker.
+VOICE_PROVIDER = "deepgram"
+
 # Cartesia voice ids. Not secret: they name a voice, they do not buy anything.
 VOICE_SKYLAR = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_ARCHIE = "ef191366-f52f-447a-a398-ed8c0f2943a1"

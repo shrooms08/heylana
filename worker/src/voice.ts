@@ -9,11 +9,84 @@
  * option behind VOICE_PROVIDER.
  */
 
-export type Provider = 'gemini' | 'cartesia'
+export type Provider = 'gemini' | 'cartesia' | 'deepgram'
 
-/** "gemini" unless VOICE_PROVIDER says "cartesia". */
+/** "deepgram" or "cartesia" when VOICE_PROVIDER says so; otherwise "gemini". */
 export function providerOf(setting: string | undefined): Provider {
-  return String(setting ?? '').trim().toLowerCase() === 'cartesia' ? 'cartesia' : 'gemini'
+  const wanted = String(setting ?? '').trim().toLowerCase()
+  if (wanted === 'deepgram') return 'deepgram'
+  if (wanted === 'cartesia') return 'cartesia'
+  return 'gemini'
+}
+
+// ------------------------------------------------------------- Deepgram Aura
+
+/** Deepgram's REST text-to-speech: the audio streams back as it is made. */
+export const DEEPGRAM_SPEAK_URL = 'https://api.deepgram.com/v1/speak'
+
+/**
+ * The picker's two slots, as Aura-2 English voices. Deepgram describes Hera (American,
+ * feminine) as "Smooth, Warm, Professional" and Aries (American, masculine) as "Warm,
+ * Energetic, Caring": the two warm American voices, one of each.
+ */
+export const DEEPGRAM_VOICES = { skylar: 'aura-2-hera-en', archie: 'aura-2-aries-en' } as const
+
+export function deepgramVoiceFor(slot: unknown): string {
+  return slot === 'archie' ? DEEPGRAM_VOICES.archie : DEEPGRAM_VOICES.skylar
+}
+
+/** The same 16-bit, 24 kHz, single-channel raw audio every provider hands the phone. */
+export function deepgramSpeakUrl(model: string): string {
+  const query = new URLSearchParams({ model, encoding: 'linear16', sample_rate: '24000', container: 'none' })
+  return `${DEEPGRAM_SPEAK_URL}?${query}`
+}
+
+/** What each slot is called, per provider — what the picker shows, sent on /me. */
+export const VOICE_NAMES: Record<Provider, { skylar: string; archie: string }> = {
+  deepgram: { skylar: 'Hera', archie: 'Aries' },
+  gemini: { skylar: 'Sulafat', archie: 'Achird' },
+  cartesia: { skylar: 'Skylar', archie: 'Archie' },
+}
+
+/** The voice as /me tells the phone: which provider speaks, and the two names. */
+export function voiceInfo(setting: string | undefined): { provider: Provider; skylar: string; archie: string } {
+  const provider = providerOf(setting)
+  return { provider, ...VOICE_NAMES[provider] }
+}
+
+/**
+ * Raw PCM passed straight through, except that a WAV header, if one ever comes first
+ * despite `container=none`, is taken off — so a header is never played as a click. The
+ * first bytes are held only until it is clear whether they are one.
+ */
+export function rawPcmStream(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  let head: Uint8Array | null = new Uint8Array(0)
+  const HEAD_BYTES = 64
+  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, out) {
+      if (head === null) {
+        out.enqueue(chunk)
+        return
+      }
+      const joined = new Uint8Array(head.length + chunk.length)
+      joined.set(head)
+      joined.set(chunk, head.length)
+      const looksLikeWav = joined.length >= 4 && String.fromCharCode(joined[0], joined[1], joined[2], joined[3]) === 'RIFF'
+      if (looksLikeWav && joined.length < HEAD_BYTES) {
+        head = joined
+        return
+      }
+      head = null
+      const offset = looksLikeWav ? wavDataOffset(joined) : 0
+      out.enqueue(offset > 0 ? joined.subarray(offset) : joined)
+    },
+    flush(out) {
+      if (head && head.length > 0) {
+        const offset = wavDataOffset(head)
+        out.enqueue(offset > 0 ? head.subarray(offset) : head)
+      }
+    },
+  }))
 }
 
 export const GEMINI_TTS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions'

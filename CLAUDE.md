@@ -234,8 +234,21 @@ answers are uncapped apart from an abuse ceiling of 2000 a day each
 routes). Over a cap the worker answers `429 daily_cap` and the app says so in plain words.
 That is budget protection, not a product tier.
 
-**The voice is Gemini TTS.** `/tts` speaks through `VOICE_PROVIDER`: `"gemini"` (the
-default, also when unset) or `"cartesia"`, kept as an option with its old voice ids. Gemini
+**The voice is Deepgram Aura, with Gemini selectable.** `/tts` speaks through
+`VOICE_PROVIDER`, set to `"deepgram"` in `wrangler.toml`: `"deepgram"`, `"gemini"` (also
+what an unset value means) or `"cartesia"`, kept with its old voice ids. **Deepgram** is
+Aura-2 over its REST `/v1/speak` with the `DEEPGRAM_API_KEY` the ears already use, asked
+for `encoding=linear16&sample_rate=24000&container=none` — the same raw 16-bit 24 kHz mono
+the phone already plays — and streamed straight through as it is made (`rawPcmStream`
+takes a WAV header off, split across chunks or not, should one ever come). `skylar` is
+**Hera** (`aura-2-hera-en`, American, "Smooth, Warm, Professional") and `archie` is
+**Aries** (`aura-2-aries-en`, American, "Warm, Energetic, Caring"): Deepgram's two warm
+American voices, one of each. Deepgram's 429 comes back as `429 quota`. `/me` carries
+`voice: {provider, skylar, archie}` (`voiceInfo`), which the phone keeps
+(`HeylanaSettings.rememberVoice`): the privacy line names the provider that speaks
+(`settings/VoiceCopy.ttsSentence`, on onboarding and in Settings) and the picker shows
+those two names; until `/me` has been heard the phone assumes Deepgram, as the worker is
+set. **Gemini**, when selected, is
 is `gemini-3.1-flash-tts-preview` (override with the `GEMINI_TTS_MODEL` var) on Google's
 Interactions API with `stream: true` and the `GEMINI_API_KEY` secret. `worker/src/voice.ts`
 turns its Server-Sent Events into raw PCM as they land: only `step.delta` events whose
@@ -498,7 +511,8 @@ switch are gone. The ears race is unchanged.
 **What goes where, in the words the app uses.** Heylana reads the screen only
 when you ask, and watches for your tap only while it is pointing at something.
 Your voice goes to Deepgram to be transcribed while you hold the buddy. The
-spoken answer text goes to Google (Gemini) to become speech. Conversation mode, when
+spoken answer text goes to Deepgram to become speech — or Google (Gemini), or Cartesia:
+`VoiceCopy.ttsSentence` names whichever `/me` says speaks. Conversation mode, when
 enabled, uses Gemini Live's free tier; Google may use that audio to improve its models.
 The screen never goes to either. **Keep that copy and the code saying the same thing** — the keyterms sent
 to Deepgram are the fixed word list only, and if screen labels are ever added to

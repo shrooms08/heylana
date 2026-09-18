@@ -58,6 +58,7 @@ import xyz.heylana.app.screen.Keyterms
 import xyz.heylana.app.screen.ScreenNode
 import xyz.heylana.app.screen.ScreenSignal
 import xyz.heylana.app.screen.ScreenSnapshot
+import xyz.heylana.app.screen.StepAdvance
 import xyz.heylana.app.screen.TapWatch
 import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
@@ -173,7 +174,7 @@ class BuddyOverlayService : Service() {
         view.setTalking(false)
     }
     private val autoAdvanceCheck = Runnable { considerAutoAdvance() }
-    private val teachingAdvance = Runnable { if (session?.teaching == true) advance(userAsked = false) }
+
 
     /** Runs only while a box is up and Heylana is waiting for the user to act. */
     private var tapWatch: TapWatch? = null
@@ -203,6 +204,7 @@ class BuddyOverlayService : Service() {
                     main.postDelayed(flyHomeNow, BETWEEN_SEGMENTS_MS)
                     return@post
                 }
+                if (!speaking && session != null) stepSpeaking(false)
                 if (!speaking && exchange.maySettle) {
                     HeylanaLog.state("settle: scheduled")
                     main.postDelayed(settleToIdle, SETTLE_MS)
@@ -1077,12 +1079,6 @@ class BuddyOverlayService : Service() {
         stopTapWatch()
         if (acknowledged) {
             highlight?.acknowledge()
-            // Teaching: doing the step is what moves it on. The screen gets a moment to settle.
-            if (session?.teaching == true) {
-                HeylanaLog.state("teach: step done by the user, advancing")
-                main.removeCallbacks(autoAdvanceCheck)
-                main.postDelayed(teachingAdvance, AUTO_ADVANCE_DEBOUNCE_MS)
-            }
         } else {
             highlight?.hide()
             overlayView?.stopLooking()
@@ -1104,7 +1100,7 @@ class BuddyOverlayService : Service() {
         if (teaching) HeylanaLog.state("teach: task started teaching=true")
         conversation.clear()
         // Screen-change events are switched on here and nowhere else.
-        HeylanaAccessibilityService.watchScreenChanges { main.post { onScreenChanged() } }
+        HeylanaAccessibilityService.watchScreenChanges { from -> main.post { onScreenChanged(from) } }
         showStep(reply, snapshot)
     }
 
@@ -1133,15 +1129,17 @@ class BuddyOverlayService : Service() {
                 highlight?.hide()
                 view.stopLooking()
                 view.showAnswer(spoken)
-                speak(spoken)
+                armStep(null, snapshot)
+                if (speak(spoken)) stepSpeaking(true)
                 return
             }
             view.teachTo(node.bounds, spoken) {
                 if (session !== current) return@teachTo
                 highlight?.ring(node.bounds)
                 view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
-                watchForTap(node)
-                speak(spoken)
+                // The step's clock starts as the disc lands.
+                armStep(node, snapshot)
+                if (speak(spoken)) stepSpeaking(true)
             }
             return
         }
@@ -1164,14 +1162,13 @@ class BuddyOverlayService : Service() {
             // Stays up until the step changes: the user needs it while they look.
             highlight?.point(node.bounds, view.spriteCenterOnScreen(), persistent = true)
             view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
-            watchForTap(node)
         } else {
             // No box for this step, but the task is still running.
             highlight?.hide()
             view.stopLooking()
         }
-
-        speak(spoken)
+        armStep(node, snapshot)
+        if (speak(spoken)) stepSpeaking(true)
     }
 
     /**
@@ -1183,6 +1180,7 @@ class BuddyOverlayService : Service() {
         val current = session ?: return
         if (inFlight?.isActive == true) return
         if (userAsked) current.unstick()
+        disarmStep()
 
         main.removeCallbacks(autoAdvanceCheck)
 
@@ -1191,7 +1189,9 @@ class BuddyOverlayService : Service() {
             return
         }
 
-        mouth?.stop()
+        // Only the user's own Next cuts the line; a step done by itself lets it finish,
+        // and the next step's line waits behind it in the voice's queue.
+        if (userAsked) mouth?.stop()
         view.setWorking(true)
         exchange.asking()
         view.showThinking()
@@ -1239,13 +1239,19 @@ class BuddyOverlayService : Service() {
     }
 
     /** Called only while a session is live — see the accessibility service. */
-    private fun onScreenChanged() {
+    private fun onScreenChanged(from: String?) {
         val current = session ?: return
         if (current.stuck) return
         if (inFlight?.isActive == true) return
+        // Heylana's own windows moving, or an event with no app, is not the user doing anything.
+        if (from == null || from == packageName) return
+        lastChangeFrom = from
         main.removeCallbacks(autoAdvanceCheck)
         main.postDelayed(autoAdvanceCheck, AUTO_ADVANCE_DEBOUNCE_MS)
     }
+
+    /** The app the last screen change came from, for [considerAutoAdvance]. */
+    private var lastChangeFrom: String? = null
 
     /**
      * The step is finished when the thing we pointed at has gone, or the user has
@@ -1256,14 +1262,70 @@ class BuddyOverlayService : Service() {
         if (current.stuck) return
         if (inFlight?.isActive == true) return
 
+        val step = stepAdvance ?: return
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         if (snapshot.isEmpty) return
+        decideStep(
+            step.onContentChange(
+                SystemClock.uptimeMillis(), lastChangeFrom, snapshot.packageName, StepAdvance.signature(snapshot.nodes)
+            )
+        )
+    }
 
-        val movedApp = current.pointedPackage != null &&
-            snapshot.packageName != current.pointedPackage
-        val pointedGone = current.pointedKey?.let { !snapshot.contains(it) } ?: false
+    // ------------------------------------------------------------ step advance
 
-        if (movedApp || pointedGone) advance(userAsked = false)
+    /** The rule for when the running step is done: see [StepAdvance]. */
+    private var stepAdvance: StepAdvance? = null
+    private val stepTick = Runnable { stepAdvance?.let { decideStep(it.tick(SystemClock.uptimeMillis())) } }
+
+    /**
+     * Starts the rule for a step whose disc has just landed (or whose box has just gone
+     * up): taps come from the tap feed, content changes from the screen feed, and once the
+     * quiet time is over anything held is looked at again.
+     */
+    private fun armStep(node: ScreenNode?, snapshot: ScreenSnapshot) {
+        stopTapWatch()
+        main.removeCallbacks(stepTick)
+        val now = SystemClock.uptimeMillis()
+        stepAdvance = StepAdvance(node?.key, snapshot.packageName, StepAdvance.signature(snapshot.nodes), now)
+        HeylanaAccessibilityService.watchTaps { signal -> main.post { onStepSignal(signal) } }
+        main.postDelayed(stepTick, StepAdvance.QUIET_MS + STEP_TICK_SLACK_MS)
+        HeylanaLog.state("step: armed pointed=${node != null} quiet_ms=${StepAdvance.QUIET_MS}")
+    }
+
+    private fun onStepSignal(signal: ScreenSignal) {
+        val step = stepAdvance ?: return
+        if (signal !is ScreenSignal.Clicked) return
+        decideStep(step.onClick(SystemClock.uptimeMillis(), signal.key, signal.packageName))
+    }
+
+    /** The step's line has started or finished being spoken. */
+    private fun stepSpeaking(speaking: Boolean) {
+        val step = stepAdvance ?: return
+        if (speaking) step.speechStarted() else decideStep(step.speechEnded(SystemClock.uptimeMillis()))
+    }
+
+    private fun decideStep(decision: StepAdvance.Decision) {
+        val step = stepAdvance
+        if (decision is StepAdvance.Decision.Wait && step != null && step.holding && !step.speaking) {
+            // Held until the quiet time ends: look again then, not before.
+            main.removeCallbacks(stepTick)
+            main.postDelayed(stepTick, step.quietLeft(SystemClock.uptimeMillis()) + STEP_TICK_SLACK_MS)
+        }
+        if (decision is StepAdvance.Decision.Wait && step?.holding == true) {
+            HeylanaLog.state("step: holding until ${if (step.speaking) "the line ends" else "the quiet time ends"}")
+        }
+        if (decision !is StepAdvance.Decision.Advance) return
+        HeylanaLog.state("advance reason=${decision.reason.log}")
+        disarmStep()
+        if (decision.reason == StepAdvance.Reason.CLICK) highlight?.acknowledge()
+        advance(userAsked = false)
+    }
+
+    private fun disarmStep() {
+        main.removeCallbacks(stepTick)
+        stepAdvance = null
+        HeylanaAccessibilityService.watchTaps(null)
     }
 
     /** The user tapped Done: say so, then close the task down. */
@@ -1281,7 +1343,6 @@ class BuddyOverlayService : Service() {
     private fun closeTask(line: String) {
         val view = overlayView ?: return
         val teaching = session?.teaching == true
-        main.removeCallbacks(teachingAdvance)
         view.showAnswer(line)
         endSession(clearBox = true)
         if (!teaching) {
@@ -1303,6 +1364,7 @@ class BuddyOverlayService : Service() {
 
     private fun endSession(clearBox: Boolean) {
         main.removeCallbacks(autoAdvanceCheck)
+        disarmStep()
         val ending = session ?: return
         session = null
         // Kept in memory for "what did I just do": the goal and the one-line steps, nothing more.
@@ -1389,6 +1451,8 @@ class BuddyOverlayService : Service() {
         }
         if (session != null) {
             view.showAnswer(text)
+            // Not spoken, but it is a line all the same: the step may move on once it has been read.
+            main.postDelayed({ if (session != null) stepSpeaking(false) }, readingMs(text))
             return
         }
         view.showNotice(text)
@@ -1466,7 +1530,10 @@ class BuddyOverlayService : Service() {
         cloudEars?.let { existing ->
             // One that is already getting ready is left alone; one that gave up
             // is thrown away, because the next touch deserves a fresh try.
-            if (existing.stage != DeepgramEars.Stage.FAILED) return
+            if (existing.stage != DeepgramEars.Stage.FAILED) {
+                existing.startPreRoll()
+                return
+            }
             existing.cancel()
             cloudEars = null
         }
@@ -1489,6 +1556,8 @@ class BuddyOverlayService : Service() {
         )
         cloudEars = deepgram
         deepgram.prepare(earsKeyterms)
+        // The microphone starts now, into memory only, so a hold's first syllable is there.
+        deepgram.startPreRoll()
     }
 
     /** The touch was not a hold: the socket goes, quietly and unused. */
@@ -1663,6 +1732,9 @@ class BuddyOverlayService : Service() {
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
+
+        /** A little past the quiet time, so a held tap is acted on as soon as it may be. */
+        private const val STEP_TICK_SLACK_MS = 120L
 
         /** How long a clarifying question waits for its answer. */
         private const val CLARIFY_WINDOW_MS = 60_000L

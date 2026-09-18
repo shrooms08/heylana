@@ -198,15 +198,45 @@ class DeepgramEars(
     }
 
     /**
-     * The user is holding: start recording. Safe to call before the socket is
-     * open — the microphone starts the moment it is.
+     * The finger is down: the microphone starts now, into [PreRoll] — the last
+     * [PreRoll.RING_MS] kept in memory and nothing else — so when the touch becomes a hold
+     * the first syllable, often said as the finger lands, is already captured. A tap or a
+     * drag throws it away unheard and unsent ([discard]).
+     */
+    @SuppressLint("MissingPermission")
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    fun startPreRoll() {
+        touchDownAt = SystemClock.elapsedRealtime()
+        if (!listening) startRecordingNow()
+    }
+
+    /**
+     * The user is holding: what the pre-roll kept goes first, then everything after it.
+     * Safe to call before the socket is open — it all waits in [early] until it is.
      */
     @SuppressLint("MissingPermission")
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun beginSpeaking() {
+        holdAt = SystemClock.elapsedRealtime()
         wanted = true
-        if (stage == Stage.READY) startRecordingNow()
+        // No pre-roll (no touch-down seen): start now, as before.
+        if (!listening) startRecordingNow()
     }
+
+    /** The last moments before the hold, kept only in memory. */
+    private val preRoll = PreRoll(PreRoll.bytesFor(SAMPLE_RATE))
+
+    @Volatile
+    private var touchDownAt = 0L
+
+    @Volatile
+    private var holdAt = 0L
+
+    @Volatile
+    private var recorderStartedAt = 0L
+
+    @Volatile
+    private var preRollFlushed = false
 
     /** Prepare and record as soon as possible: the plain Ears way in. */
     @SuppressLint("MissingPermission")
@@ -339,6 +369,9 @@ class DeepgramEars(
 
         recorder = record
         record.startRecording()
+        recorderStartedAt = SystemClock.elapsedRealtime()
+        preRoll.clear()
+        preRollFlushed = false
         pump = scope.launch(Dispatchers.IO) {
             val frame = ByteArray(FRAME_BYTES)
             var checked = false
@@ -355,15 +388,35 @@ class DeepgramEars(
                     HeylanaLog.state("deepgram: microphone open silenced=${silenced ?: "unknown"}")
                 }
                 val piece = frame.copyOf(read)
-                val live = socket.takeIf { stage == Stage.READY }
-                if (live != null) {
-                    live.send(piece.toByteString())
-                } else {
-                    keepEarly(piece)
+                if (!wanted) {
+                    // Not a hold yet: kept in the ring, never sent.
+                    preRoll.write(piece)
+                    continue
                 }
+                if (!preRollFlushed) {
+                    preRollFlushed = true
+                    val kept = preRoll.drain()
+                    val heldAfter = if (recorderStartedAt > 0) holdAt - recorderStartedAt else 0L
+                    // The phone's own recogniser starts at the hold too: say whether Android
+                    // went on giving this capture sound once it did.
+                    val silencedNow = runCatching { record.activeRecordingConfiguration?.isClientSilenced }.getOrNull()
+                    HeylanaLog.state(
+                        "deepgram: pre-roll kept_ms=${kept.size / BYTES_PER_MS} " +
+                            "clipped_ms=${PreRoll.clippedMs(heldAfter)} mic_after_touch_ms=" +
+                            (if (touchDownAt > 0) recorderStartedAt - touchDownAt else -1) +
+                            " silenced_at_hold=${silencedNow ?: "unknown"}"
+                    )
+                    if (kept.isNotEmpty()) sendOrKeep(kept)
+                }
+                sendOrKeep(piece)
                 callbacks.onLevel(levelOf(frame, read))
             }
         }
+    }
+
+    private fun sendOrKeep(piece: ByteArray) {
+        val live = socket.takeIf { stage == Stage.READY }
+        if (live != null) live.send(piece.toByteString()) else keepEarly(piece)
     }
 
     /** Holds the audio recorded before the socket answered, oldest first. */
@@ -499,6 +552,7 @@ class DeepgramEars(
     override fun cancel() {
         abandoned = true
         wanted = false
+        preRoll.clear()
         listening = false
         stage = Stage.IDLE
         synchronized(early) {
@@ -576,9 +630,10 @@ class DeepgramEars(
 
 /**
  * Deepgram's URL carries the whole configuration, keyterms included: nova-3 with
- * interim results on so the capsule fills in live, endpointing off because the
- * finger decides when it is over, and smart formatting so names and numbers come
- * back written properly.
+ * interim results on so the capsule fills in live, endpointing at 300ms and utterance
+ * end at 1200ms so phrases settle as they are said (the finger still decides when the
+ * question is over), and smart formatting so names and numbers come back written
+ * properly.
  *
  * Keyterms are one repeated `keyterm=` parameter each, which is what nova-3
  * expects — a comma-joined list is read as one long term and boosts nothing.
@@ -591,7 +646,10 @@ internal fun deepgramUrl(
     append(base)
     append("?model=nova-3")
     append("&interim_results=true")
-    append("&endpointing=false")
+    // 300ms of quiet settles a phrase; 1200ms ends the utterance. The finger still decides
+    // when the question is over — these only settle the words sooner.
+    append("&endpointing=300")
+    append("&utterance_end_ms=1200")
     append("&smart_format=true")
     append("&encoding=linear16")
     append("&sample_rate=").append(sampleRate)

@@ -19,7 +19,8 @@ class DeepgramUrlTest {
         assertTrue(url.startsWith("wss://api.deepgram.com/v1/listen?"))
         assertTrue("nova-3 hears names", url.contains("model=nova-3"))
         assertTrue("the capsule fills in live", url.contains("interim_results=true"))
-        assertTrue("the finger decides when it is over", url.contains("endpointing=false"))
+        assertTrue("phrases settle after 300ms of quiet", url.contains("endpointing=300"))
+        assertTrue("an utterance ends after 1200ms", url.contains("utterance_end_ms=1200"))
         assertTrue("names come back written properly", url.contains("smart_format=true"))
     }
 

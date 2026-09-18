@@ -107,7 +107,11 @@ class SettingsActivity : ComponentActivity() {
                     SettingsScreen(
                         settings = settings,
                         seedVault = seedVault,
-                        onSample = { sample?.speak(SAMPLE_LINE) },
+                        onSample = {
+                            // A new pick replaces the sample still playing rather than queueing behind it.
+                            sample?.stop()
+                            sample?.speak(SAMPLE_LINE)
+                        },
                         onDone = { finish() },
                         modifier = Modifier.padding(innerPadding)
                     )

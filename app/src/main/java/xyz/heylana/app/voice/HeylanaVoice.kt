@@ -8,6 +8,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import xyz.heylana.app.BuildConfig
@@ -48,14 +50,11 @@ class HeylanaVoice(
 
     private val proxy = Proxy(settings)
 
-    private var stream: Job? = null
     private var track: AudioTrack? = null
 
     /** Holds back the odd tail byte so no sample is ever written half-finished. */
     private val frames = PcmFrames(BYTES_PER_FRAME)
 
-    @Volatile
-    private var cancelled = false
 
     /** The first read waits this long; so does every read after it. */
     private val http = Proxy.http.newBuilder()
@@ -66,40 +65,68 @@ class HeylanaVoice(
     val available: Boolean
         get() = proxy.isConfigured
 
+    /** A line waiting its turn, and the voice it is to be said in. */
+    private class Line(val text: String, val voice: String) {
+        var gen: Int = 0
+    }
+
+    private val lines = VoiceQueue<Line>()
+
+    /** The generation now: a stop moves it on. */
+    private val generation: Int get() = lines.generation
+
+    /** Only one line is ever being fetched and played: one writer on one AudioTrack. */
+    private val oneAtATime = Mutex()
+
+    private fun pending(): Int = lines.pending()
+
     /**
-     * Reads [text] out. True if the voice is being asked, which is what tells the
-     * caller that either "finished speaking" or [onFailed] will follow.
+     * Queues [text] to be read out after whatever is being said now — never over it, and
+     * never cutting it off: only [stop] does that, on something the user did. True if the
+     * voice is being asked, which is what tells the caller that either "finished speaking"
+     * or [onFailed] will follow.
      */
     fun speak(text: String): Boolean {
         if (text.isBlank()) return false
-        stop(beforeSpeaking = true)
-        cancelled = false
         if (!proxy.isConfigured) return false
-
-        val chosen = settings.voice
-        stream = scope.launch {
-            val started = SystemClock.uptimeMillis()
-            val opened = withContext(Dispatchers.IO) { open(text, chosen) }
-            if (cancelled) {
-                (opened as? Opened.Ok)?.playing?.close()
-                return@launch
-            }
-            when (opened) {
-                is Opened.Failed -> fail(text, opened.reason)
-                is Opened.Ok -> {
-                    HeylanaLog.state("voice=proxy voice=$chosen headers_ms=${SystemClock.uptimeMillis() - started}")
-                    val outcome = withContext(Dispatchers.IO) { play(opened.playing) }
-                    if (outcome != null && !cancelled) fail(text, outcome)
-                }
-            }
-        }
+        val length = lines.add(Line(text, settings.voice))
+        HeylanaLog.state("voice: queued length=$length")
+        scope.launch(Dispatchers.IO) { drain() }
         return true
     }
 
-    private fun fail(text: String, reason: String) {
+    /** Plays the queue in order, one line at a time; a second drain waits, then finds it empty. */
+    private suspend fun drain() {
+        oneAtATime.withLock {
+            while (true) {
+                val (gen, line) = lines.next() ?: break
+                line.gen = gen
+                speakOne(line)
+            }
+        }
+    }
+
+    private fun speakOne(line: Line) {
+        val started = SystemClock.uptimeMillis()
+        val opened = open(line.text, line.voice)
+        if (line.gen != generation) {
+            (opened as? Opened.Ok)?.playing?.close()
+            return
+        }
+        when (opened) {
+            is Opened.Failed -> fail(line, opened.reason)
+            is Opened.Ok -> {
+                HeylanaLog.state("voice=proxy voice=${line.voice} headers_ms=${SystemClock.uptimeMillis() - started} queued=${pending()}")
+                val outcome = play(opened.playing, line.gen)
+                if (outcome != null && line.gen == generation) fail(line, outcome)
+            }
+        }
+    }
+
+    private fun fail(line: Line, reason: String) {
         // Silent: the words go back to be shown, nothing else speaks them.
         HeylanaLog.state("voice_failed reason=$reason")
-        scope.launch(Dispatchers.Main) { if (!cancelled) onFailed(text, reason) }
+        scope.launch(Dispatchers.Main) { if (line.gen == generation) onFailed(line.text, reason) }
     }
 
     private sealed interface Opened {
@@ -132,7 +159,9 @@ class HeylanaVoice(
      * Writes the audio out as it arrives, and reports when it is really over. Null when
      * it played (or was stopped); a [VoiceFailure] reason when nothing could be heard.
      */
-    private fun play(playing: Playing): String? {
+    private fun play(playing: Playing, gen: Int): String? {
+        // This line is over the moment a stop moves the generation on.
+        fun stopped() = gen != generation
         val rate = playing.sampleRate
         val minimum = AudioTrack.getMinBufferSize(rate, CHANNEL, ENCODING)
         // Enough room for a pause in the network, and enough in it before the
@@ -184,7 +213,7 @@ class HeylanaVoice(
         try {
             playing.response.body.byteStream().use { input ->
                 val chunk = ByteArray(CHUNK_BYTES)
-                while (!cancelled) {
+                while (!stopped()) {
                     val read = input.read(chunk)
                     if (read <= 0) break
                     capture?.write(chunk, 0, read)
@@ -213,21 +242,21 @@ class HeylanaVoice(
             }
 
             // A short answer may never reach the pre-roll; play what there is.
-            if (!speaking && bytesWritten > 0 && !cancelled) {
+            if (!speaking && bytesWritten > 0 && !stopped()) {
                 player.play()
                 speaking = true
                 onSpeaking(true)
             }
 
             // Written is not the same as heard: wait for the speaker to catch up.
-            while (!cancelled && speaking && player.playbackHeadPosition < framesWritten) {
+            while (!stopped() && speaking && player.playbackHeadPosition < framesWritten) {
                 reportHeard()
                 Thread.sleep(PLAYED_OUT_POLL_MS)
             }
         } catch (e: Exception) {
             // Nothing heard at all: the words are shown instead. A stream that dies
             // mid-sentence has already been heard in part and is left at that.
-            if (!cancelled && bytesWritten == 0L) {
+            if (!stopped() && bytesWritten == 0L) {
                 failure = if (e is java.io.InterruptedIOException) VoiceFailure.TIMEOUT else VoiceFailure.ERROR
             }
         } finally {
@@ -247,11 +276,12 @@ class HeylanaVoice(
             if (track === player) track = null
             if (speaking) {
                 onLevel(0f)
-                onSpeaking(false)
+                // The next line in the queue follows straight on: "finished" only when none does.
+                if (stopped() || pending() == 0) onSpeaking(false)
             }
         }
         // An answer that came back with no audio in it is a failure too.
-        if (failure == null && !cancelled && bytesWritten == 0L) failure = VoiceFailure.ERROR
+        if (failure == null && !stopped() && bytesWritten == 0L) failure = VoiceFailure.ERROR
         return failure
     }
 
@@ -274,11 +304,14 @@ class HeylanaVoice(
         }.getOrNull()
     }
 
-    /** Stops speaking. [beforeSpeaking] is the clear-down before a new line: nothing was under way to report. */
-    fun stop(beforeSpeaking: Boolean = false) {
-        cancelled = true
-        stream?.cancel()
-        stream = null
+    /**
+     * Stops speaking and drops everything queued — for something the user did (a new
+     * question, Next, the box closing, mute). The line in the air ends at once; the writer
+     * sees the new generation and lets go of its AudioTrack itself.
+     */
+    fun stop() {
+        val dropped = lines.stop()
+        if (dropped > 0) HeylanaLog.state("voice: stopped, dropped queued=$dropped")
         track?.let { player ->
             runCatching { player.pause() }
             runCatching { player.flush() }

@@ -477,6 +477,15 @@ any signature or reading any chain — and `--talks-cap` makes `/chat` answer
 would send a real transaction to the stub's made-up treasury. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 
+**The microphone starts at touch-down.** Preparing the ears at the first touch now also
+starts the `AudioRecord`, into `voice/PreRoll` — a 600ms ring in memory, never sent — so when
+the touch becomes a hold the moments before it go to the front of the stream and the first
+syllable, often said as the finger lands, is not clipped. A tap or a drag clears it unsent.
+The trace says `deepgram: pre-roll kept_ms=… clipped_ms=… mic_after_touch_ms=…
+silenced_at_hold=…` (`clipped_ms` is 0 while the hold comes within 600ms of the microphone
+starting). Deepgram's socket now asks for `endpointing=300` and `utterance_end_ms=1200` so
+phrases settle as they are said; the finger still decides when the question is over.
+
 **Deepgram gets the last word.** On release the microphone keeps streaming for 400ms
 (`TRAILING_MS`, the last word is usually still being said as the finger lifts), then the
 socket is sent Deepgram's `Finalize` and given up to 1500ms (`FINAL_WAIT_MS`) for the answer
@@ -496,6 +505,17 @@ are used as soon as Deepgram is known to have nothing, or when that window close
 neither is nothing heard; nothing waits past 4 seconds. A Deepgram that cannot
 work is simply out of the race — never a reason to hear nothing. The trace says
 `ears=deepgram|android won reason=…`.
+
+**One voice queue.** `HeylanaVoice` plays its lines one at a time, in order
+(`voice/VoiceQueue`, a mutex so there is only ever one writer on one `AudioTrack`): a new line
+waits for the one being said, and `speak` never cuts anything off. Only `stop()` does — for
+something the user did (a new question, Next, the box closing, mute, a new voice sample) —
+by moving the queue's generation on: queued lines are dropped and the writer still finishing
+sees its line is over and releases its track itself. A step moving on by itself no longer
+stops the voice; its line waits in the queue. Before this, a new line reset the shared
+"cancelled" flag while the old stream was still writing, so two writers ran at once — the
+cut and the screech. "Finished speaking" is reported only when the queue is empty. The trace
+says `voice: queued length=N` and `voice: stopped, dropped queued=N`.
 
 **No phone voice: a voice that cannot speak stays silent.** If `/tts` is refused (the
 day's cap, the provider's quota), fails, returns no audio, or no audio arrives within
@@ -563,7 +583,13 @@ tested per action in `QuickCatalogueTest`):
   in `to` instead of `number`/`name` is read either way; the words are matched as words or
   as one run (punctuation the user did not say cannot refuse it); and where nothing takes
   `smsto:`, `sms:` and then a plain `ACTION_SEND` share follow. A refusal says which part
-  failed and by how many characters, never the words themselves.
+  failed and by how many characters, never the words themselves. The words are read from
+  `message` too (the alarm label's field, named like the intent — the model puts them there),
+  a `name` that is only digits is a number, and a number the model wrote internationally
+  ("+44 800 123 4567" for "0800 123 4567") counts as said when its end is the said number
+  without its leading zero; the user's own digits are what go to Messages (`saidNumber`, for
+  calls too). The worker's tool now says the words go in `text` and the number as said, no
+  country code added.
 - `reminder(text, hour, minutes)`: saved into the calendar itself
   (`CalendarContract.Events` on the primary writable calendar, plus a ten-minute alert),
   so nothing is left to do: "Reminder saved for 6 PM today." The first one asks for
@@ -795,9 +821,21 @@ send `HeylanaPrompt.WALK_THROUGH_LINE`: if it takes more than one tap, the model
 a task whose say is the first step only, one short reason first. The session is a teaching
 one (`GuidanceSession.teaching`): each step the disc flies to the step's element and stays
 beside it with the ring, the strip beside it; there is no Next — `ChatPanelView.showSession(…,
-withNext = false)` — because doing the step moves it on: the tap watch acknowledging the tap
-(or the screen moving) books the next step after the usual 900ms settle, and a screen change
-does as before; each step re-reads the screen. Done stays, and "stop", "cancel", "that's
+withNext = false)` — because doing the step moves it on; each step re-reads the screen.
+
+**When a step is done: `screen/StepAdvance`.** Every session's step (teaching or not) moves on
+only on (a) a click whose element matches the pointed one, or (b) the target app's content
+really changing — a fresh read whose node set differs from the step's by more than 15%
+(Jaccard), or another app coming to the front — and never within 1500ms of the disc landing
+(changes then, the target app re-laying itself out around Heylana's windows, become the
+step's baseline instead), never while the step's line is still being spoken (a click or
+change then is held and acted on when the line ends), and never for an event from
+`xyz.heylana.app` or with no package. Accessibility events now carry their package
+(`ScreenSignal.Clicked/Changed(packageName)`). Before this, any screen movement 600ms after
+the pointer appeared counted as "done", and every teaching step advanced itself a few hundred
+ms after landing. The trace says `step: armed`, `step: holding until …` and `advance
+reason=click|content_changed`. One-shot answers keep their `TapWatch`. `StepAdvanceTest`
+feeds it made-up event streams. Done stays, and "stop", "cancel", "that's
 enough", "never mind" said on their own (`Teaching.isStop`) end it the same way. The session
 ends on `done`, Done, stop or the 8-step cap; its last line is spoken and then the disc flies
 home (`closeTask`, `flyHomeAfterSpeech`). A walk-through is never added to a send, a quick

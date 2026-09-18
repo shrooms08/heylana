@@ -145,12 +145,18 @@ sealed interface QuickAction {
                 SPOTIFY_PLAY -> text("query")?.let { SpotifyPlay(it) }
                 MEDIA_CONTROL -> text("command")?.lowercase()?.takeIf { it in MEDIA_COMMANDS }?.let { MediaControl(it) }
                 MESSAGE -> {
-                    val body = text("text") ?: return null
-                    // Some replies put the recipient in "to" instead of number or name.
+                    // The words often come back in "message" (the alarm label's field, named
+                    // like the intent) rather than "text": either is the message.
+                    val body = text("text") ?: text("message") ?: return null
+                    // Some replies put the recipient in "to" instead of number or name, and
+                    // a "name" that is only digits is a number.
                     val to = text("to")
-                    val number = text("number") ?: to?.takeIf { it.count(Char::isDigit) >= 3 }
-                    val name = text("name") ?: to?.takeIf { number == null }
-                    if (number == null && name == null) null else Message(number, name, body)
+                    val named = text("name")
+                    val number = text("number")
+                        ?: to?.takeIf { looksLikeNumber(it) }
+                        ?: named?.takeIf { looksLikeNumber(it) }
+                    val name = named?.takeIf { number == null || !looksLikeNumber(it) } ?: to?.takeIf { number == null }
+                    if (number == null && name == null) null else Message(number, name?.takeIf { number == null }, body)
                 }
                 REMINDER -> {
                     val body = text("text") ?: return null
@@ -184,7 +190,7 @@ sealed interface QuickAction {
             return when (fields["intent"]) {
                 MESSAGE -> when {
                     !has("number") && !has("name") && !has("to") -> "Who should I text?"
-                    !has("text") -> "What should the message say?"
+                    !has("text") && !has("message") -> "What should the message say?"
                     else -> null
                 }
                 REMINDER -> when {
@@ -204,6 +210,10 @@ sealed interface QuickAction {
                 else -> null
             }
         }
+
+        /** Digits and phone punctuation only, at least three digits: a number, not a name. */
+        private fun looksLikeNumber(value: String): Boolean =
+            value.count(Char::isDigit) >= 3 && value.all { it.isDigit() || it in " +-().\u00a0" }
 
         /** Android's timer takes at most a day. */
         const val MAX_TIMER_SECONDS = 24 * 60 * 60

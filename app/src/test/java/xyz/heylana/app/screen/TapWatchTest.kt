@@ -50,7 +50,7 @@ class TapWatchTest {
     fun `the screen settling as the box appears does not count`() {
         assertEquals(
             Verdict.IGNORE,
-            watch().consider(armed + TapWatch.GRACE_MS - 1, ScreenSignal.Changed)
+            watch().consider(armed + TapWatch.GRACE_MS - 1, ScreenSignal.Changed())
         )
     }
 
@@ -58,7 +58,7 @@ class TapWatchTest {
     fun `the screen moving after the grace period is acknowledged`() {
         assertEquals(
             Verdict.ACKNOWLEDGE,
-            watch().consider(armed + TapWatch.GRACE_MS, ScreenSignal.Changed)
+            watch().consider(armed + TapWatch.GRACE_MS, ScreenSignal.Changed())
         )
     }
 
@@ -75,7 +75,7 @@ class TapWatchTest {
         val watch = watch()
         val late = armed + TapWatch.WINDOW_MS
         assertEquals(Verdict.EXPIRE, watch.consider(late, ScreenSignal.Clicked(key)))
-        assertEquals(Verdict.EXPIRE, watch.consider(late, ScreenSignal.Changed))
+        assertEquals(Verdict.EXPIRE, watch.consider(late, ScreenSignal.Changed()))
     }
 
     @Test
@@ -94,7 +94,7 @@ class TapWatchTest {
         )
         assertEquals(
             Verdict.ACKNOWLEDGE,
-            stepWatch().consider(late, ScreenSignal.Changed)
+            stepWatch().consider(late, ScreenSignal.Changed())
         )
     }
 
@@ -110,7 +110,7 @@ class TapWatchTest {
     fun `a step's box is still given time to settle`() {
         assertEquals(
             Verdict.IGNORE,
-            stepWatch().consider(armed + TapWatch.GRACE_MS - 1, ScreenSignal.Changed)
+            stepWatch().consider(armed + TapWatch.GRACE_MS - 1, ScreenSignal.Changed())
         )
     }
 
@@ -120,7 +120,7 @@ class TapWatchTest {
         assertEquals(Verdict.IGNORE, watch.consider(armed + 100, ScreenSignal.Clicked(key)))
         assertEquals(
             Verdict.ACKNOWLEDGE,
-            watch.consider(armed + TapWatch.GRACE_MS, ScreenSignal.Changed)
+            watch.consider(armed + TapWatch.GRACE_MS, ScreenSignal.Changed())
         )
     }
 }

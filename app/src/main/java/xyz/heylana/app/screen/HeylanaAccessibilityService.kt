@@ -64,14 +64,15 @@ class HeylanaAccessibilityService : AccessibilityService() {
         // Our own windows moving is not the user doing anything.
         if (event.packageName?.toString() == packageName) return
 
+        val from = event.packageName?.toString()
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_CLICKED ->
-                taps?.invoke(ScreenSignal.Clicked(clickedKey(event)))
+                taps?.invoke(ScreenSignal.Clicked(clickedKey(event), from))
 
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                screen?.invoke()
-                taps?.invoke(ScreenSignal.Changed)
+                screen?.invoke(from)
+                taps?.invoke(ScreenSignal.Changed(from))
             }
         }
     }
@@ -377,7 +378,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
          * While it is null the service subscribes to nothing and processes nothing.
          */
         @Volatile
-        private var watcher: (() -> Unit)? = null
+        private var watcher: ((String?) -> Unit)? = null
 
         /** Reads the screen, or returns null if the service is not running. */
         fun snapshotOrNull(): ScreenSnapshot? = connected?.snapshot()
@@ -386,7 +387,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
          * Turns screen-change events on for the duration of a guidance session.
          * Pass null to stop listening entirely.
          */
-        fun watchScreenChanges(onChanged: (() -> Unit)?) {
+        fun watchScreenChanges(onChanged: ((String?) -> Unit)?) {
             watcher = onChanged
             connected?.applyEventTypes()
         }

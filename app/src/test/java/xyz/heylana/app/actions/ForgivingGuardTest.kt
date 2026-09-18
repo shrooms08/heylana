@@ -63,4 +63,24 @@ class ForgivingGuardTest {
         assertNull(ask("intent" to "message", "number" to "0800123", "text" to "hi"))
         assertNull(QuickAction.clarify(mapOf("type" to "send", "intent" to "message")))
     }
+
+    @Test
+    fun `the words in the alarm-label field, a number as a name, an international number - all still a message`() {
+        fun of(vararg pairs: Pair<String, Any?>) = QuickAction.of(mapOf("type" to "intent", "intent" to "message", *pairs))
+        val said = "message 0800 123 4567 I'm on my way"
+        // The words in "message" rather than "text".
+        val inLabel = of("number" to "0800 123 4567", "message" to "I'm on my way")
+        assertEquals(QuickAction.Message("0800 123 4567", null, "I'm on my way"), inLabel)
+        allowed(inLabel!!, said)
+        assertNull(QuickAction.clarify(mapOf("type" to "intent", "intent" to "message", "number" to "0800", "message" to "hi")))
+        // The number put in "name".
+        assertEquals(QuickAction.Message("0800 123 4567", null, "hi"), of("name" to "0800 123 4567", "text" to "hi"))
+        // The model's international form of what was said: allowed, with the user's own digits.
+        val international = allowed(QuickAction.Message("+44 800 123 4567", null, "I'm on my way"), said) as QuickAction.Message
+        assertEquals("08001234567", international.number)
+        val call = allowed(QuickAction.Dial("+448001234567", null), "call 0800 123 4567") as QuickAction.Dial
+        assertEquals("08001234567", call.number)
+        // A different number is still refused.
+        assertTrue(QuickGuard.check(QuickAction.Message("+44 800 999 9999", null, "hi"), "message 0800 123 4567 hi") is QuickGuard.Verdict.Refused)
+    }
 }

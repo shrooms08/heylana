@@ -102,12 +102,14 @@ object QuickGuard {
             }
         }
         if (action.number != null) {
-            val number = normalNumber(action.number)
-            val digits = number.filter(Char::isDigit)
-            if (digits.length !in 3..15 || !digitsSaid(digits, text)) {
-                return Verdict.Refused(RECIPIENT_NOT_SAID, "number_not_said digits=${digits.length}")
-            }
-            return Verdict.Allowed(QuickAction.Message(number, null, action.text))
+            // The number as the user said it: the model sometimes writes it internationally
+            // (+44 800 123 4567 for 0800 123 4567), which is the same number said differently.
+            val said = saidNumber(normalNumber(action.number), text)
+                ?: return Verdict.Refused(
+                    RECIPIENT_NOT_SAID,
+                    "number_not_said digits=${action.number.count(Char::isDigit)} said_digits=${allSaidDigits(text).length}"
+                )
+            return Verdict.Allowed(QuickAction.Message(said, null, action.text))
         }
         val name = action.name ?: return Verdict.Refused(RECIPIENT_NOT_SAID, "nobody_to_text")
         if (wordsSaid(name, text)) return Verdict.Allowed(QuickAction.Message(null, name, action.text))
@@ -191,15 +193,35 @@ object QuickGuard {
 
     private fun dial(action: QuickAction.Dial, text: String): Verdict {
         val number = action.number?.let { normalNumber(it) }
-        if (action.number != null) {
-            val digits = number?.filter(Char::isDigit).orEmpty()
-            if (digits.length !in 3..15 || !digitsSaid(digits, text)) return Verdict.Refused(NUMBER_NOT_SAID, "number_not_said")
-            return Verdict.Allowed(QuickAction.Dial(number, null))
+        if (number != null) {
+            val said = saidNumber(number, text) ?: return Verdict.Refused(NUMBER_NOT_SAID, "number_not_said")
+            return Verdict.Allowed(QuickAction.Dial(said, null))
         }
         val name = action.name ?: return Verdict.Refused(NUMBER_NOT_SAID, "nothing_to_dial")
         return if (wordsSaid(name, text)) Verdict.Allowed(QuickAction.Dial(null, name))
         else Verdict.Refused(NUMBER_NOT_SAID, "name_not_said")
     }
+
+    /**
+     * The number the user said that [given] stands for, in the user's own digits: [given]
+     * itself if it was said, or the said number that [given] ends with once its leading
+     * zero goes (the model's international form of a national number). Null if neither.
+     */
+    fun saidNumber(given: String, text: String): String? {
+        val digits = given.filter(Char::isDigit)
+        if (digits.length !in 3..15) return null
+        if (digitsSaid(digits, text)) return given
+        for (run in listOf(text.filter(Char::isDigit), SpokenNumbers.digits(text))) {
+            val national = run.trimStart('0')
+            if (national.length >= MIN_NATIONAL_DIGITS && digits.endsWith(national)) return run
+        }
+        return null
+    }
+
+    private fun allSaidDigits(text: String): String = text.filter(Char::isDigit).ifEmpty { SpokenNumbers.digits(text) }
+
+    /** Enough digits that matching the end of an international number is not a coincidence. */
+    private const val MIN_NATIONAL_DIGITS = 7
 
     /** The digits were said: typed, spoken ("oh eight hundred"), or a mix of the two. */
     fun digitsSaid(digits: String, text: String): Boolean =

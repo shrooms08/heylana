@@ -3,11 +3,14 @@ package xyz.heylana.app.screen
 /** Something the screen did while Heylana was pointing at one of its elements. */
 sealed interface ScreenSignal {
 
-    /** An element was clicked. [key] identifies it, or is null if it was unreadable. */
-    data class Clicked(val key: String?) : ScreenSignal
+    /**
+     * An element was clicked. [key] identifies it, or is null if it was unreadable;
+     * [packageName] is the app it was in.
+     */
+    data class Clicked(val key: String?, val packageName: String? = null) : ScreenSignal
 
-    /** The screen moved: a new window, a dialog, or its contents changed. */
-    data object Changed : ScreenSignal
+    /** The screen moved: a new window, a dialog, or its contents changed, in [packageName]. */
+    data class Changed(val packageName: String? = null) : ScreenSignal
 }
 
 /** What to do about a signal. */
@@ -59,7 +62,7 @@ class TapWatch(
                     Verdict.IGNORE
                 }
 
-            ScreenSignal.Changed ->
+            is ScreenSignal.Changed ->
                 if (now - armedAt >= GRACE_MS) Verdict.ACKNOWLEDGE else Verdict.IGNORE
         }
     }

@@ -906,9 +906,13 @@ tested per action in `QuickCatalogueTest`):
   the calendar's own new-event screen with title, begin and a 30-minute end. Unlike an alarm, a bare
   hour is the next time that clock reading comes round ("call mum at 6" at noon is 6 PM);
   "tomorrow at 6" is the first 6 from 7 AM on (6 PM). A said half of the day stands.
-- `flashlight(on|off)`: `CameraManager.setTorchMode` on the first camera with a flash. "Turn
-  it off/on" within five minutes of switching the flashlight is done in the app with no
-  model call (`action: follow-up intent=flashlight … model=not_asked`).
+- `flashlight(on|off)`: `CameraManager.setTorchMode` on the first camera with a flash. Said
+  outright — "turn on the flashlight", "torch off", "switch the flashlight off please"
+  (`QuickActions.flashlightCommand`: exactly one on/off, nothing else in the sentence) — it is
+  done on the phone with no model call (`action: said outright intent=flashlight …
+  model=not_asked`): on the Seeker the torch fires under 0.2s after the words are in, where a
+  model round took about 2s. "Turn it off/on" within five minutes of switching the flashlight
+  is done the same way (`action: follow-up intent=flashlight … model=not_asked`).
 - `camera` / `selfie`: `STILL_IMAGE_CAMERA`; a selfie adds the three front-camera extras
   camera apps read (whether one honours them is up to the app).
 - `web_search(query)`: the Google search page with `ACTION_VIEW`, in the default browser.

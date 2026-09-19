@@ -234,4 +234,19 @@ class QuickCatalogueTest {
         assertEquals("intent=settings page=wifi", QuickLog.describe(QuickAction.OpenSettings("wifi")))
         assertEquals("intent=media_control command=pause", QuickLog.describe(QuickAction.MediaControl("pause")))
     }
+
+    @Test
+    fun `flashlight said outright needs no model - the state is in the words`() {
+        for ((said, on) in listOf(
+            "turn on the flashlight" to true, "Turn the flashlight off" to false, "flashlight on" to true,
+            "torch off" to false, "switch off the torch please" to false, "can you turn on my flashlight?" to true,
+            "flash light on" to true
+        )) {
+            assertEquals(said, QuickAction.Flashlight(on), QuickActions.flashlightCommand(said))
+        }
+        for (not in listOf("flashlight", "turn the flashlight on and off", "is the flashlight on", "how do I turn on the flashlight",
+            "turn on the flashlight in 5 minutes", "turn it off")) {
+            assertEquals(not, null, QuickActions.flashlightCommand(not))
+        }
+    }
 }

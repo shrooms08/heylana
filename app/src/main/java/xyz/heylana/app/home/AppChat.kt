@@ -178,6 +178,11 @@ class AppChat(
     }
 
     private suspend fun action(question: String): String? {
+        // "Turn on the flashlight" says everything: no model call, so it is instant.
+        QuickActions.flashlightCommand(question)?.let { direct ->
+            HeylanaLog.state("action: said outright intent=flashlight state=${if (direct.on) "on" else "off"} model=not_asked")
+            return run(direct, question, null)
+        }
         val route = Routing.forQuestion(null, question)
         return when (val reply = brain.ask(question, "", null, null, route)) {
             is BrainReply.Say -> {

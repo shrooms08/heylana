@@ -270,6 +270,25 @@ object QuickActions {
     /** "turn it off" straight after the flashlight was switched: the pronoun can only mean the torch. */
     private val PRONOUN_SWITCH = Regex("^\\s*(please\\s+)?(turn|switch|put)\\s+(it|that|the light)\\s+(on|off)\\b|^\\s*(please\\s+)?(turn|switch)\\s+(on|off)\\s+(it|that)\\b", OPTIONS)
 
+    /**
+     * "Turn on the flashlight", "torch off", "switch the flashlight off": said outright, the
+     * state is in the words, so the phone does it with nothing asked of the model — at once.
+     */
+    private val FLASHLIGHT_COMMAND = Regex(
+        "^\\s*(hey\\s+heylana[,\\s]*)?(please\\s+|can you\\s+|could you\\s+)?" +
+            "(?:(turn|switch|put|flip)\\s+)?(?:(on|off)\\s+)?(?:the\\s+|my\\s+)?(flash ?light|torch)(?:\\s+(on|off))?" +
+            "(\\s+please)?[\\s.!?]*$",
+        OPTIONS
+    )
+
+    /** The flashlight switch said outright, or null (no state, or both, or anything more). */
+    fun flashlightCommand(question: String): QuickAction.Flashlight? {
+        val match = FLASHLIGHT_COMMAND.find(question) ?: return null
+        val states = listOfNotNull(match.groupValues[4].ifEmpty { null }, match.groupValues[6].ifEmpty { null })
+        if (states.size != 1) return null
+        return QuickAction.Flashlight(states.single().equals("on", ignoreCase = true))
+    }
+
     /** The follow-up [PRONOUN_SWITCH] allows, or null. */
     fun flashlightFollowUp(question: String): QuickAction.Flashlight? {
         val match = PRONOUN_SWITCH.find(question) ?: return null

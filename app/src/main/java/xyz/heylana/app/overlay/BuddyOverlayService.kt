@@ -555,6 +555,15 @@ class BuddyOverlayService : Service() {
         // the app lay itself out again before reading the screen.
         view.hideKeyboard()
 
+        // "Turn on the flashlight" says everything: done here, at once, with no model call.
+        QuickActions.flashlightCommand(question)?.let { direct ->
+            HeylanaLog.state("action: said outright intent=flashlight state=${if (direct.on) "on" else "off"} model=not_asked")
+            exchange.over()
+            view.endVoiceExchange()
+            handleQuick(direct, question)
+            return
+        }
+
         // "Turn it off" straight after the flashlight went on can only mean the torch:
         // done here, with nothing asked of the model.
         val followUp = QuickActions.flashlightFollowUp(question)

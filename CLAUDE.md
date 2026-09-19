@@ -346,7 +346,7 @@ Stop buddy, About, the version (long press crashes debug builds on purpose), and
 builds the debug switches and Debug states.
 
 **Who made Heylana.** `HeylanaPrompt.IDENTITY` is in the system prompt word for word: made
-by Minos (Oghenerukevwe Eminokanju), an independent developer in Lagos, for the Solana
+by Minos, an independent developer in Lagos, for the Solana
 Seeker; not by Solana Mobile or Solana Labs, though hoping to be adopted by the Seeker; said
 in one line when asked. Settings → About (`SettingsText.ABOUT_DETAIL`) says the same facts,
 held together by `IdentityTest`. "Who made you", "who built you", "are you from Solana

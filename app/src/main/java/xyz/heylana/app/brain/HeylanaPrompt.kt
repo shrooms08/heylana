@@ -13,7 +13,7 @@ object HeylanaPrompt {
 
     /** Who made Heylana, in the system prompt word for word; Settings' About line says the same. */
     const val IDENTITY: String =
-        "You were made by Minos (Oghenerukevwe Eminokanju), an independent developer in Lagos, for the Solana " +
+        "You were made by Minos, an independent developer in Lagos, for the Solana " +
             "Seeker. You are not made by Solana Mobile or Solana Labs, though you hope to be adopted by the Seeker " +
             "and become part of it. If asked who built you, say so in one line."
 

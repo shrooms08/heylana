@@ -82,7 +82,7 @@ object SettingsText {
 
     const val ABOUT = "About"
     /** The same facts as the system prompt's identity line (`HeylanaPrompt.IDENTITY`). */
-    const val ABOUT_DETAIL = "Made by Minos (Oghenerukevwe Eminokanju), an independent developer in Lagos, for the " +
+    const val ABOUT_DETAIL = "Made by Minos, an independent developer in Lagos, for the " +
         "Solana Seeker. Not made by Solana Mobile or Solana Labs, though Heylana hopes to be adopted by the Seeker " +
         "and become part of it."
 

@@ -58,7 +58,11 @@ On the buddy, a small label on its box says what it is doing — reading, thinki
 preparing, simulating, approve in wallet, sent, working — and touching the buddy while it
 talks stops it mid-sentence.
 
-The menu holds the buddy's on switch, your plan, your own API key (Advanced), exactly what leaves the phone (Privacy), and Settings: the voice, Dark or
+Starting and stopping the buddy, and turning memory on or off, take a deliberate hold: a
+round button whose ring fills over a little over a second, a tick, and it happens — let go
+early and nothing does. The buddy pops out at the side of the screen when it starts.
+
+The menu holds the buddy's start button, your plan, your own API key (Advanced), exactly what leaves the phone (Privacy), and Settings: the voice, Dark or
 Light, and Stop buddy.
 
 ## Plans

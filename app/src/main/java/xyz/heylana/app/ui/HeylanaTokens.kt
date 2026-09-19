@@ -228,6 +228,11 @@ object HeylanaTokens {
     /** How long the mark takes to dissolve into the orb, and to reassemble from it. */
     const val ORB_DISSOLVE_MS = 300L
 
+    /** Start buddy: the disc pops out from its edge — this long, overshooting this much, from this small. */
+    const val POP_IN_MS = 420L
+    const val POP_IN_OVERSHOOT = 1.6f
+    const val POP_IN_FROM_SCALE = 0.4f
+
     /** How much of the disc the orb fills. */
     const val ORB_FRACTION = 0.8f
 

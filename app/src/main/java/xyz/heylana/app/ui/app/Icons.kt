@@ -19,7 +19,7 @@ import androidx.compose.ui.unit.dp
 /** The export's line icons, drawn on its 24-unit grid with a 1.7 stroke. No icon library. */
 enum class Glyph {
     MENU, SPEAKER, SPEAKER_OFF, MIC, BACK, CHEVRON, CAMERA, TIMER, SWAP, DOC, PLAY, SEND, POWER, STAR,
-    BAG, SLIDERS, SHIELD, GEAR, WALLET, LOCK, CHECK, PAUSE, CLOSE, CHEVRON_UP, CHEVRON_DOWN, BALANCE, BELL, EYE, LAYERS, BOOK, TRASH
+    BAG, SLIDERS, SHIELD, GEAR, WALLET, LOCK, CHECK, PAUSE, CLOSE, CHEVRON_UP, CHEVRON_DOWN, BALANCE, BELL, EYE, LAYERS, BOOK, TRASH, BRAIN
 }
 
 @Composable
@@ -82,6 +82,11 @@ fun Icon(glyph: Glyph, tint: Color, modifier: Modifier = Modifier, size: Dp = 20
             Glyph.EYE -> { line(2.5f, 12f, 6f, 7.5f, 12f, 5.5f, 18f, 7.5f, 21.5f, 12f, 18f, 16.5f, 12f, 18.5f, 6f, 16.5f, 2.5f, 12f); circle(12f, 12f, 3f) }
             Glyph.BOOK -> { line(12f, 6f, 12f, 20f); line(12f, 6f, 8f, 4.5f, 3f, 5f, 3f, 18.5f, 8f, 18f, 12f, 20f); line(12f, 6f, 16f, 4.5f, 21f, 5f, 21f, 18.5f, 16f, 18f, 12f, 20f) }
             Glyph.TRASH -> { line(4f, 7f, 20f, 7f); line(9f, 7f, 9f, 4f, 15f, 4f, 15f, 7f); line(6f, 7f, 7f, 20f, 17f, 20f, 18f, 7f); line(10f, 11f, 10f, 16f); line(14f, 11f, 14f, 16f) }
+            Glyph.BRAIN -> {
+                arc(4f, 3f, 8f, 180f, 180f); arc(12f, 3f, 8f, 180f, 180f)
+                arc(3f, 9f, 10f, 90f, 180f); arc(11f, 9f, 10f, -90f, 180f)
+                line(8f, 19f, 16f, 19f); line(12f, 5f, 12f, 19f); line(7f, 12f, 9.5f, 13f); line(17f, 12f, 14.5f, 13f)
+            }
             Glyph.LAYERS -> { line(12f, 4f, 21f, 9f, 12f, 14f, 3f, 9f, 12f, 4f); line(3f, 14f, 12f, 19f, 21f, 14f) }
         }
     }

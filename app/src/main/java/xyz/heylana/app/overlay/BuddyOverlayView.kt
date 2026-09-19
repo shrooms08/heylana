@@ -275,6 +275,21 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         params.y = spriteTop
         windowManager.addView(this, params)
         attached = true
+        popIn()
+    }
+
+    /** Start buddy: the disc pops out from the edge it docks on, growing as it comes. */
+    private fun popIn() {
+        val fromRight = spriteLeft > usableWidth / 2
+        sprite.scaleX = HeylanaTokens.POP_IN_FROM_SCALE
+        sprite.scaleY = HeylanaTokens.POP_IN_FROM_SCALE
+        sprite.alpha = 0f
+        sprite.translationX = if (fromRight) discSize.toFloat() else -discSize.toFloat()
+        sprite.animate().scaleX(1f).scaleY(1f).alpha(1f).translationX(0f)
+            .setDuration(HeylanaTokens.POP_IN_MS)
+            .setInterpolator(android.view.animation.OvershootInterpolator(HeylanaTokens.POP_IN_OVERSHOOT))
+            .start()
+        HeylanaLog.state("overlay: pop in side=${if (fromRight) "right" else "left"}")
     }
 
     fun removeFromWindow() {

@@ -38,7 +38,7 @@ import xyz.heylana.app.Features
 import xyz.heylana.app.R
 import xyz.heylana.app.ui.app.AccentButton
 import xyz.heylana.app.ui.app.FlatRow
-import xyz.heylana.app.ui.app.FlatSwitch
+import xyz.heylana.app.ui.app.HoldControl
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.SectionHead
 import xyz.heylana.app.ui.app.tap
@@ -50,6 +50,11 @@ import xyz.heylana.app.wallet.Standing
 /** Every word the menu says, away from Compose so it can be tested. */
 object MenuText {
     const val BUDDY_WHY = "Heylana can then see your screen when you ask"
+    const val HOLD_TO_START = "Hold to start. Heylana can then see your screen when you ask."
+    const val HOLD_TO_STOP = "On. Hold to stop."
+
+    /** Under Start buddy: what holding the control will do. */
+    fun buddyLine(on: Boolean): String = if (on) HOLD_TO_STOP else HOLD_TO_START
     const val NO_WALLET = "No wallet connected"
     const val CHECKING = "Checking your plan…"
 
@@ -118,8 +123,8 @@ fun MenuSheet(
                 }
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                     MenuSection("Buddy")
-                    FlatRow("Start buddy", subtitle = MenuText.BUDDY_WHY, glyph = Glyph.POWER, card = false) {
-                        FlatSwitch(buddyOn, onBuddy)
+                    FlatRow("Start buddy", subtitle = MenuText.buddyLine(buddyOn), card = false) {
+                        HoldControl(Glyph.POWER, buddyOn, "Start buddy", onFire = { onBuddy(!buddyOn) })
                     }
 
                     MenuSection("Account")

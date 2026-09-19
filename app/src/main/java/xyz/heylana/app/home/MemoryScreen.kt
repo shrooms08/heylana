@@ -30,7 +30,7 @@ import xyz.heylana.app.ui.app.AccentButton
 import xyz.heylana.app.ui.app.BarButton
 import xyz.heylana.app.ui.app.FlatPage
 import xyz.heylana.app.ui.app.FlatRow
-import xyz.heylana.app.ui.app.FlatSwitch
+import xyz.heylana.app.ui.app.HoldControl
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.InnerTopBar
 import xyz.heylana.app.ui.app.SectionHead
@@ -45,6 +45,10 @@ object MemoryText {
     const val LEAD = "Short notes Heylana keeps about you, against your wallet. Never your screen, an address or an amount."
     const val SWITCH = "Keep notes about me"
     const val SWITCH_WHY = "Off keeps nothing, and deletes what was kept."
+    const val HOLD_ON = "Hold to turn on."
+    const val HOLD_OFF = "On. Hold to turn off: off keeps nothing, and deletes what was kept."
+
+    fun switchLine(on: Boolean): String = if (on) HOLD_OFF else HOLD_ON
     const val KEPT = "What Heylana keeps"
     const val EMPTY = "Nothing kept yet. Say \"remember that…\" to Heylana, or finish a lesson."
     const val OFF = "Memory is off. Nothing is kept."
@@ -110,10 +114,13 @@ fun MemoryScreen(settings: HeylanaSettings, onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 val current = state
                 if (!hasWallet) Text(MemoryText.NO_WALLET, style = HeylanaType.body, color = palette.ink)
-                else FlatRow(MemoryText.SWITCH, subtitle = MemoryText.SWITCH_WHY) {
-                    FlatSwitch(current?.on ?: settings.memoryOn, { on ->
-                        if (current != null) scope.launch { take(api.memoryConsent(on), if (on) "on" else "off") }
-                    })
+                else {
+                    val on = current?.on ?: settings.memoryOn
+                    FlatRow(MemoryText.SWITCH, subtitle = MemoryText.switchLine(on)) {
+                        HoldControl(Glyph.BRAIN, on, MemoryText.SWITCH, enabled = current != null, onFire = {
+                            scope.launch { take(api.memoryConsent(!on), if (!on) "on" else "off") }
+                        })
+                    }
                 }
                 problem?.let { Text(it, style = HeylanaType.small, color = palette.inkSecondary) }
                 Spacer(Modifier.height(6.dp))

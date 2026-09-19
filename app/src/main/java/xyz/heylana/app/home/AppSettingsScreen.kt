@@ -45,6 +45,7 @@ import xyz.heylana.app.ui.app.FlatPage
 import xyz.heylana.app.ui.app.FlatRow
 import xyz.heylana.app.ui.app.FlatSurface
 import xyz.heylana.app.ui.app.FlatSwitch
+import xyz.heylana.app.ui.app.HoldControl
 import xyz.heylana.app.ui.app.Glyph
 import xyz.heylana.app.ui.app.Icon
 import xyz.heylana.app.ui.app.InnerTopBar
@@ -76,7 +77,7 @@ object SettingsText {
     const val JUDGE_HINT = "Judging Heylana? Enter your code."
     const val BAD_CODE = "That code isn't right."
     const val STOP_BUDDY = "Stop buddy"
-    const val STOP_DETAIL_ON = "The disc leaves the screen until you start it again."
+    const val STOP_DETAIL_ON = "Hold to stop. The disc leaves the screen until you start it again."
     const val STOP_DETAIL_OFF = "The buddy isn't running."
 
     const val ABOUT = "About"
@@ -195,9 +196,8 @@ fun AppSettingsScreen(
 
                 Spacer(Modifier.height(6.dp))
                 FlatRow(SettingsText.STOP_BUDDY,
-                    subtitle = if (buddyOn) SettingsText.STOP_DETAIL_ON else SettingsText.STOP_DETAIL_OFF,
-                    glyph = Glyph.POWER, enabled = buddyOn, onClick = onStopBuddy
-                )
+                    subtitle = if (buddyOn) SettingsText.STOP_DETAIL_ON else SettingsText.STOP_DETAIL_OFF
+                ) { HoldControl(Glyph.POWER, buddyOn, SettingsText.STOP_BUDDY, onFire = onStopBuddy, enabled = buddyOn) }
 
                 if (BuildConfig.DEBUG) DebugRows(settings) {
                     context.startActivity(Intent().setComponent(ComponentName(context, DEBUG_STATES_ACTIVITY)))

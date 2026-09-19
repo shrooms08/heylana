@@ -316,8 +316,17 @@ recogniser showed are kept if it then ends with no final (it often does in tap-t
 Deepgram's are not revived once it hears no speech. The wave moves with the mic level
 while listening and with Heylana's voice while she speaks.
 
-**The menu** slides in from the left over a dimmed Home: Start buddy (its switch starts and
-stops the overlay service), the plan from `/me` in `PlanText.summary`'s words — Free "30
+**Hold to act.** Start buddy (the menu), Stop buddy (Settings) and Memory on/off (Menu →
+Memory) are `ui/app/HoldControl`: a round flat button — power for the buddy, brain for memory
+— with a ring that fills clockwise from the top over `HOLD_MS` (1.2s) while held. At full the
+phone ticks (`HapticFeedbackConstants.CONFIRM`) and the action fires; letting go sooner unwinds
+the ring and nothing happens (`app: hold fired control=… was_on=…`, `app: hold released early
+control=… at=0.42`). TalkBack's double tap fires it directly. A started buddy pops out from its
+docking edge (`BuddyOverlayView.popIn`: from 40% size, a disc's width off the edge, overshoot
+1.6 over 420ms, `overlay: pop in side=…`).
+
+**The menu** slides in from the left over a dimmed Home: Start buddy (held to start and
+stop the overlay service), the plan from `/me` in `PlanText.summary`'s words — Free "30
 talks a month" with a usage bar and Go Pro (which opens the old Settings screen on the Go
 Pro sheet), Pro "Unlimited talks", Judge "Unlimited until Nov 9" — Memory, Advanced, Privacy,
 Settings, and the name with the short wallet. No plan copy mentions skills.

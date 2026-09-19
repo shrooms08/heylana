@@ -185,24 +185,114 @@ class QuickActionRunner(private val context: Context) {
         }
     }
 
-    /** Every contact with a phone number: name and number, read here and kept nowhere. */
+    /**
+     * Every contact with a phone number: name, number, and the other names the phone knows
+     * them by — nicknames, and a relation from the owner's own card ("brother"). Read here and
+     * kept nowhere; only counts are logged.
+     */
     private fun phoneContacts(): List<Contact> {
-        val phone = android.provider.ContactsContract.CommonDataKinds.Phone::class.java
-        val columns = arrayOf(
-            android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-            android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
-        )
-        val out = ArrayList<Contact>()
-        context.contentResolver.query(
-            android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI, columns, null, null, null
+        val resolver = context.contentResolver
+        val rows = ArrayList<Triple<Long, String, String>>()
+        resolver.query(
+            android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                android.provider.ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+            ), null, null, null
         )?.use { cursor ->
             while (cursor.moveToNext()) {
-                val name = cursor.getString(0)?.trim().orEmpty()
-                val number = cursor.getString(1)?.trim().orEmpty()
-                if (name.isNotEmpty() && number.any(Char::isDigit)) out += Contact(name, number)
+                val name = cursor.getString(1)?.trim().orEmpty()
+                val number = cursor.getString(2)?.trim().orEmpty()
+                if (name.isNotEmpty() && number.any(Char::isDigit)) rows += Triple(cursor.getLong(0), name, number)
+            }
+        }
+        val nicknames = runCatching { nicknames() }.getOrDefault(emptyMap())
+        val relations = runCatching { ownRelations() }.getOrDefault(emptyList())
+        HeylanaLog.state("action: contacts read n=${rows.size} nicknames=${nicknames.size} relations=${relations.size}")
+        return rows.map { (id, name, number) ->
+            val related = relations.filter { (who, _) -> AppMatcher.score(AppMatcher.words(who), AppMatcher.words(name)) >= RELATED_SCORE }
+                .map { it.second }
+            Contact(name, number, nicknames[id].orEmpty() + related)
+        }
+    }
+
+    /** Nicknames by contact. */
+    private fun nicknames(): Map<Long, List<String>> {
+        val out = HashMap<Long, MutableList<String>>()
+        context.contentResolver.query(
+            android.provider.ContactsContract.Data.CONTENT_URI,
+            arrayOf(android.provider.ContactsContract.Data.CONTACT_ID, android.provider.ContactsContract.CommonDataKinds.Nickname.NAME),
+            "${android.provider.ContactsContract.Data.MIMETYPE} = ?",
+            arrayOf(android.provider.ContactsContract.CommonDataKinds.Nickname.CONTENT_ITEM_TYPE), null
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val nick = cursor.getString(1)?.trim().orEmpty()
+                if (nick.isNotEmpty()) out.getOrPut(cursor.getLong(0)) { ArrayList() } += nick
             }
         }
         return out
+    }
+
+    /**
+     * The owner's own card: who is listed as their brother, mother, partner… as (name, relation
+     * word). The word is what "my brother" is matched against.
+     */
+    private fun ownRelations(): List<Pair<String, String>> {
+        val uri = android.provider.ContactsContract.Profile.CONTENT_URI.buildUpon()
+            .appendPath(android.provider.ContactsContract.Contacts.Data.CONTENT_DIRECTORY).build()
+        val out = ArrayList<Pair<String, String>>()
+        context.contentResolver.query(
+            uri,
+            arrayOf(
+                android.provider.ContactsContract.CommonDataKinds.Relation.NAME,
+                android.provider.ContactsContract.CommonDataKinds.Relation.TYPE,
+                android.provider.ContactsContract.CommonDataKinds.Relation.LABEL
+            ),
+            "${android.provider.ContactsContract.Data.MIMETYPE} = ?",
+            arrayOf(android.provider.ContactsContract.CommonDataKinds.Relation.CONTENT_ITEM_TYPE), null
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val who = cursor.getString(0)?.trim().orEmpty()
+                val word = relationWord(cursor.getInt(1), cursor.getString(2)) ?: continue
+                if (who.isNotEmpty()) out += who to word
+            }
+        }
+        return out
+    }
+
+    private fun relationWord(type: Int, label: String?): String? {
+        return when (type) {
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_BROTHER -> "brother"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_SISTER -> "sister"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_MOTHER -> "mother"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_FATHER -> "father"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_SPOUSE -> "spouse"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_PARTNER -> "partner"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_CHILD -> "child"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_FRIEND -> "friend"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_MANAGER -> "boss"
+            android.provider.ContactsContract.CommonDataKinds.Relation.TYPE_CUSTOM -> label?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+            else -> null
+        }
+    }
+
+    /**
+     * Debug builds only: which kind of match [name] finds among the phone's contacts, and how many
+     * were read — no names, no numbers — without opening Messages or anything else.
+     */
+    fun resolveContactForDebug(name: String): String {
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            context, android.Manifest.permission.READ_CONTACTS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (!granted) return "no_permission"
+        val contacts = phoneContacts()
+        val kind = when (ContactMatcher.best(name, contacts)) {
+            is ContactMatcher.Match.Found -> "found"
+            is ContactMatcher.Match.Ambiguous -> "ambiguous"
+            ContactMatcher.Match.None -> "none"
+        }
+        return "$kind of=${contacts.size}"
     }
 
     /** The first visible calendar the phone will let Heylana write to, preferring the primary one. */
@@ -305,3 +395,6 @@ class QuickActionRunner(private val context: Context) {
             .distinctBy { it.packageName }
     }
 }
+
+/** A name on the owner's card matches a contact this well (the whole name, or every word of it). */
+private const val RELATED_SCORE = 80

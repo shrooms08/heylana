@@ -36,4 +36,19 @@ class ContactMatcherTest {
     fun `the line names the contact and never reads the number`() {
         assertEquals("Your message to Ada Obi is ready. Check it and tap send.", QuickText.messageTo("Ada Obi"))
     }
+
+    @Test
+    fun `my brother finds whoever the phone knows as their brother, in any of the usual words`() {
+        val saved = listOf(Contact("Ada Obi", "0800 111"), Contact("Bro Tunde", "0800 222"), Contact("Kemi", "0800 333"))
+        assertEquals("Bro Tunde", (ContactMatcher.best("my brother", saved) as ContactMatcher.Match.Found).contact.name)
+        // A nickname on the contact, or the owner's own card naming the relation.
+        val byAlias = listOf(Contact("Tunde Adeyemi", "0800 222", aliases = listOf("brother")), Contact("Ada Obi", "0800 111"))
+        assertEquals("Tunde Adeyemi", (ContactMatcher.best("my brother", byAlias) as ContactMatcher.Match.Found).contact.name)
+        val mum = listOf(Contact("Mummy", "0800 444"), Contact("Ada Obi", "0800 111"))
+        assertEquals("Mummy", (ContactMatcher.best("my mum", mum) as ContactMatcher.Match.Found).contact.name)
+        assertEquals("Mummy", (ContactMatcher.best("mom", mum) as ContactMatcher.Match.Found).contact.name)
+        // Ada is still Ada, and a relation nobody has is none.
+        assertEquals("Ada Obi", (ContactMatcher.best("Ada", saved) as ContactMatcher.Match.Found).contact.name)
+        assertEquals(ContactMatcher.Match.None, ContactMatcher.best("my sister", saved))
+    }
 }

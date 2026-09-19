@@ -23,7 +23,9 @@ object Keyterms {
     /** The words this phone is about, whatever is on screen. */
     val ALWAYS = listOf(
         "Solana", "Seeker", "Seed Vault", "SKR", "USDC", "SOL", "swap", "stake",
-        "dApp Store", "Kamino", "Jupiter", "Phantom", "Backpack", "wallet", "mint", "airdrop"
+        "dApp Store", "Kamino", "Jupiter", "Phantom", "Backpack", "wallet", "mint", "airdrop",
+        // Short commands said to the phone itself: "torch on" came back as two other words.
+        "flashlight", "torch"
     )
 
     /** Longer than this is a sentence, not a name, and no use as a hint. */

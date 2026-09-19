@@ -530,6 +530,16 @@ class BuddyOverlayService : Service() {
             stopSessionOnRequest()
             return
         }
+        // "Stop" with nothing running means stop talking and put the box away: nothing to ask.
+        if (task == null && Teaching.isStop(question)) {
+            HeylanaLog.state("ask: stop with nothing running model=not_asked")
+            teaching?.cancel()
+            mouth?.stop()
+            exchange.over()
+            view.endVoiceExchange()
+            view.closePanel()
+            return
+        }
 
         // A new question drops whatever the last one left behind, including any
         // task that was running, and any teaching flight in the air.
@@ -804,6 +814,14 @@ class BuddyOverlayService : Service() {
     private fun registerDebugQuickAction() {
         val receiver = object : android.content.BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                // Who "my brother" finds, by kind and count only, with nothing opened:
+                //   adb shell am broadcast -a xyz.heylana.app.debug.QUICK_ACTION --es contact "'my brother'"
+                intent.getStringExtra("contact")?.let { name ->
+                    scope.launch(Dispatchers.IO) {
+                        HeylanaLog.state("debug: contact ${quickRunner.resolveContactForDebug(name)}")
+                    }
+                    return
+                }
                 val said = intent.getStringExtra("said").orEmpty()
                 val json = runCatching { org.json.JSONObject(intent.getStringExtra("action").orEmpty()) }.getOrNull()
                 val fields = HashMap<String, Any?>()

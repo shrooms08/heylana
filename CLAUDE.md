@@ -796,6 +796,16 @@ trace says `deepgram: finalize sent`, then `deepgram: final after_ms=… words=�
 `deepgram: no final reason=no_speech_detected|socket_closed_early|timeout`. `EarsRace`
 prefers Deepgram's words for 2000ms after the release to fit that.
 
+**Short phrases, checked on the Seeker (Sept 19).** Ten holds, each phrase spoken aloud from
+the Mac beside the phone as the finger landed: the microphone opened 19–34ms after touch-down,
+the pre-roll kept 300–320ms and clipped nothing, and Deepgram answered 309–975ms after
+Finalize and won every race it had words for. "flashlight on/off", "turn it off" (twice),
+"stop" (twice) and "next song" were heard and done first time; one "torch on" came back as
+two other words, so "flashlight" and "torch" joined the fixed keyterms; one hold's audio began
+after the release (the Mac's speaker waking). "Stop" with nothing running now just stops
+Heylana and puts the box away, with no model call (`ask: stop with nothing running
+model=not_asked`).
+
 **Both ears listen, every time.** At the long press the phone's own recogniser
 starts, and so does Deepgram — whose key and socket were already being fetched
 from the first touch of the disc, and whose microphone buffers until the socket
@@ -897,6 +907,14 @@ tested per action in `QuickCatalogueTest`):
   every word said; two people who fit equally is "I found X and Y. Say which one.") and opens
   Messages on her number with the words: "Your message to Ada is ready. Check it and tap
   send." Contacts are read on the phone, kept nowhere, never sent; the log has counts only.
+  **"Message my brother I'm outside"** works the same way with no number and no name:
+  `ContactMatcher` takes "brother" to mean the usual words for it ("bro"; "mum" also finds
+  "mom", "mother", "mummy"…) and matches them against each contact's name, their nicknames,
+  and the relations on the owner's own card (`ContactsContract.Profile`: whoever is listed as
+  their brother gets "brother" as another name), logging `action: contacts read n=…
+  nicknames=… relations=…`. In debug builds `adb shell am broadcast -a
+  xyz.heylana.app.debug.QUICK_ACTION --es contact "'my brother'"` logs only which kind of
+  match it finds (`debug: contact found|ambiguous|none|no_permission of=N`) and opens nothing.
   A number is still accepted, never required.
 - `reminder(text, hour, minutes)`: saved into the calendar itself
   (`CalendarContract.Events` on the primary writable calendar, plus a ten-minute alert),

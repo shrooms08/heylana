@@ -176,15 +176,6 @@ class SigningLengthTest {
         )
         assertFalse(shortOnly.contains("explain_address"))
     }
-
-    @Test
-    fun `the own-key shorten prompt matches the worker's`() {
-        val worker = java.io.File(listOf("../worker/src/shorten.ts", "worker/src/shorten.ts").first { java.io.File(it).exists() }).readText()
-        val expected = HeylanaPrompt.shortenSystem(40).replace("40", "\${maxWords}")
-        val quoted = Regex("'([^']*)'|`([^`]*)`").findAll(worker.substringAfter("export function shortenSystem"))
-            .map { it.groupValues[1] + it.groupValues[2] }.take(4).joinToString("")
-        assertEquals(expected, quoted)
-    }
 }
 
 class SigningBudgetTest {

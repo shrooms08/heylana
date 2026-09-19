@@ -52,7 +52,7 @@ data class Provider(val id: String, val name: String, val detail: String, val le
 object AdvancedText {
     const val TITLE = "Use my own key"
     const val SUBTITLE = "Bring your own provider and pay them directly."
-    const val NOTE = "Held in the phone's keystore. It never leaves the device."
+    const val NOTE = "Kept encrypted in the phone's keystore. It goes to Heylana's server with each question, is used for that question only, and is never stored or logged there."
     const val SOON = "soon"
     const val SAVED = "Saved. Questions now go on your own key."
     const val EMPTY = "Paste a key first."

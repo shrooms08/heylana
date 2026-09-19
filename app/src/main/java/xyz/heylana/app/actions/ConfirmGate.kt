@@ -10,8 +10,7 @@ import xyz.heylana.app.wallet.Answer
  * proposed, to this phone, and only with its confirmation token does the action fire.
  *
  * Everything else (an alarm, a timer, an app, a page) is R2 and fires on the guard
- * alone. The own-key path has no worker in it, so its actions fire on the guard alone
- * too; through the worker, an R3 action with no id from it is never fired.
+ * alone. A user's own key changes nothing here: it too goes through the worker.
  */
 object ConfirmGate {
 
@@ -23,7 +22,7 @@ object ConfirmGate {
     fun needsConfirmation(intent: String): Boolean = intent in R3
 
     sealed interface Decision {
-        /** [why] is for the log: "r2", "own_key", "confirmed", "debug". */
+        /** [why] is for the log: "r2", "confirmed", "debug". */
         data class Fire(val why: String) : Decision
         data class Hold(val line: String, val why: String) : Decision
     }
@@ -31,14 +30,12 @@ object ConfirmGate {
     suspend fun check(
         intent: String,
         actionId: String?,
-        ownKey: Boolean,
         confirm: suspend (kind: String, subject: String) -> Answer<String>,
         debug: Boolean = false,
         log: (String) -> Unit = { HeylanaLog.state(it) }
     ): Decision {
         val decision = when {
             !needsConfirmation(intent) -> Decision.Fire("r2")
-            ownKey -> Decision.Fire("own_key")
             debug -> Decision.Fire("debug")
             actionId == null -> Decision.Hold(NOT_CONFIRMED, "no_action_id")
             else -> when (val answer = confirm(intent, actionId)) {

@@ -910,7 +910,7 @@ class BuddyOverlayService : Service() {
                 // R3: the worker confirms it proposed this action before the phone's app is opened.
                 scope.launch {
                     val decision = ConfirmGate.check(
-                        verdict.action.intent, actionId, settings.useOwnKey,
+                        verdict.action.intent, actionId,
                         confirm = { kind, subject -> walletApi.confirmation(kind, subject, guardPassed = true) },
                         debug = debug && BuildConfig.DEBUG
                     )

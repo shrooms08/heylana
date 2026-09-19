@@ -913,9 +913,9 @@ private fun AdvancedSection(
                     Text(text = "Use my own key", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Off by default. On, the questions go straight to Anthropic " +
-                            "on your own key and you pay for them. The voice and the ears " +
-                            "still go through Heylana.",
+                        text = "Off by default. On, your questions still go through Heylana's " +
+                            "server, which asks Anthropic with your key for that question only " +
+                            "and never keeps it; you pay for them. The voice and the ears are unchanged.",
                         style = MaterialTheme.typography.bodySmall
                     )
                 }

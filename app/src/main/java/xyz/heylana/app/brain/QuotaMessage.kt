@@ -13,11 +13,17 @@ object QuotaMessage {
 
     const val SESSION_ENDED = "Your wallet session ended. Connect your wallet again in Settings."
 
+    /** "Use my own key": Anthropic said no to it, or it isn't shaped like one. */
+    const val OWN_KEY_REFUSED = "Anthropic refused your own key. Check it in Menu, Advanced."
+    const val OWN_KEY_MALFORMED = "Your own key doesn't look right. Check it in Menu, Advanced."
+
     /** The line for this refusal, or null when it is not one of these. */
     fun forReason(reason: String): String? = when (reason) {
         "talks_cap" -> TALKS_CAP
         "daily_cap" -> DAILY_CAP
         "bad_session" -> SESSION_ENDED
+        "own_key_refused" -> OWN_KEY_REFUSED
+        "bad_key" -> OWN_KEY_MALFORMED
         else -> null
     }
 }

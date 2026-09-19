@@ -60,7 +60,9 @@ class MenuScreensTest {
     fun `only Anthropic is wired, and the note never mentions Seed Vault`() {
         assertEquals(listOf("anthropic"), AdvancedText.PROVIDERS.filter { it.wired }.map { it.id })
         assertEquals(3, AdvancedText.PROVIDERS.size)
-        assertEquals("Held in the phone's keystore. It never leaves the device.", AdvancedText.NOTE)
+        // The key now travels to Heylana's server with each question: the note says so.
+        assertTrue(AdvancedText.NOTE.contains("used for that question only"))
+        assertFalse(AdvancedText.NOTE.contains("never leaves the device"))
         assertFalse(AdvancedText.NOTE.contains("Seed Vault"))
     }
 

@@ -13,15 +13,14 @@ class ConfirmGateTest {
     private suspend fun check(
         intent: String,
         actionId: String?,
-        ownKey: Boolean,
         confirm: suspend (String, String) -> Answer<String>
-    ) = ConfirmGate.check(intent, actionId, ownKey, confirm, log = {})
+    ) = ConfirmGate.check(intent, actionId, confirm, log = {})
 
     @Test
     fun `an alarm, a timer or an app is R2 and never asks the worker`() = runBlocking {
         var asked = false
         for (intent in listOf(QuickAction.ALARM, QuickAction.TIMER, QuickAction.OPEN_APP)) {
-            val decision = check(intent, null, ownKey = false, confirm = { _, _ -> asked = true; Answer.Ok("t") })
+            val decision = check(intent, null, confirm = { _, _ -> asked = true; Answer.Ok("t") })
             assertEquals(ConfirmGate.Decision.Fire("r2"), decision)
         }
         assertEquals(false, asked)
@@ -31,7 +30,7 @@ class ConfirmGateTest {
     fun `a message or a reminder fires only with the worker's confirmation of its id`() = runBlocking {
         val asked = mutableListOf<Pair<String, String>>()
         for (intent in listOf(QuickAction.MESSAGE, QuickAction.REMINDER)) {
-            val decision = check(intent, "id-1", ownKey = false, confirm = { kind, id -> asked += kind to id; Answer.Ok("t") })
+            val decision = check(intent, "id-1", confirm = { kind, id -> asked += kind to id; Answer.Ok("t") })
             assertEquals(ConfirmGate.Decision.Fire("confirmed"), decision)
         }
         assertEquals(listOf("message" to "id-1", "reminder" to "id-1"), asked)
@@ -39,9 +38,9 @@ class ConfirmGateTest {
 
     @Test
     fun `refused, unreachable, or no id from the worker holds it, in plain words`() = runBlocking {
-        val refused = check(QuickAction.MESSAGE, "id", false, confirm = { _, _ -> Answer.Refused(403, "not_confirmable") })
-        val offline = check(QuickAction.MESSAGE, "id", false, confirm = { _, _ -> Answer.Unreachable("IOException") })
-        val noId = check(QuickAction.REMINDER, null, false, confirmed)
+        val refused = check(QuickAction.MESSAGE, "id", confirm = { _, _ -> Answer.Refused(403, "not_confirmable") })
+        val offline = check(QuickAction.MESSAGE, "id", confirm = { _, _ -> Answer.Unreachable("IOException") })
+        val noId = check(QuickAction.REMINDER, null, confirmed)
         for (decision in listOf(refused, offline, noId)) {
             assertTrue(decision is ConfirmGate.Decision.Hold)
             assertEquals(ConfirmGate.NOT_CONFIRMED, (decision as ConfirmGate.Decision.Hold).line)
@@ -49,7 +48,7 @@ class ConfirmGateTest {
     }
 
     @Test
-    fun `the own-key path has no worker, so the guard alone decides`() = runBlocking {
-        assertEquals(ConfirmGate.Decision.Fire("own_key"), check(QuickAction.MESSAGE, null, ownKey = true, confirm = confirmed))
+    fun `a user's own key changes nothing - a message still waits for the worker's confirmation`() = runBlocking {
+        assertEquals(ConfirmGate.Decision.Hold(ConfirmGate.NOT_CONFIRMED, "no_action_id"), check(QuickAction.MESSAGE, null, confirm = { _, _ -> Answer.Ok("t") }))
     }
 }

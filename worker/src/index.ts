@@ -315,7 +315,12 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     return fail(400, 'bad_messages', 'messages must be a non-empty array.')
   }
 
-  if (body.shorten === true) return await shorten(body, env, who, started)
+  // "Use my own key": the user's Anthropic key for this request's model calls, and nothing else.
+  const own = ownKeyOf(request)
+  if (own === 'malformed') return fail(400, 'bad_key', "That doesn't look like an Anthropic key.")
+  const userKey = own
+
+  if (body.shorten === true) return await shorten(body, env, who, started, userKey)
 
   // Every question is a talk. Checked before anything is spent upstream, and
   // only counted once the answer has actually come back.
@@ -323,7 +328,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   const account = await loadAccount(env, who.key)
   const used = await talksUsed(env, who.key, now)
   const spent = spendTalk(account, used, now)
-  if (!spent.allowed) {
+  // On the user's own key they pay for the model, so it is not one of their plan's talks.
+  if (!spent.allowed && !userKey) {
     const where = standing(account, used, now)
     log({ route: 'chat', device, wallet: who.wallet?.slice(0, 8), talks_cap: true })
     return json(429, {
@@ -359,7 +365,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     const upstream = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers: {
-        'x-api-key': env.ANTHROPIC_API_KEY,
+        'x-api-key': userKey ?? env.ANTHROPIC_API_KEY,
         'anthropic-version': ANTHROPIC_VERSION,
         'content-type': 'application/json',
       },
@@ -479,8 +485,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   }
 
   if (status >= 200 && status < 300) {
-    await saveAccount(env, who.key, spent.account)
-    await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
+    if (!userKey) await saveAccount(env, who.key, spent.account)
+    if (!userKey) await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
   }
   log({
     route: 'chat',
@@ -517,6 +523,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     ...(actionsRemoved > 0 ? { actions_removed: actionsRemoved } : {}),
     // Prompt caching: tokens read from the cache and written to it, over every round.
     kb_hits: kbStats.kbHits,
+    // Whose key paid for the model: never the key itself.
+    key: userKey ? 'user' : 'heylana',
     cache_read: cacheUse.read,
     cache_write: cacheUse.write,
     ...(memoryRecords > 0 ? { memory_records: memoryRecords } : {}),
@@ -528,8 +536,9 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
 
   // The phone's usage line (and the eval) see the cache too: tokens read and written over every round.
   if (status >= 200 && status < 300) text = withCacheTotals(text, cacheUse)
+  if (userKey && status === 401) return fail(401, 'own_key_refused', 'Anthropic refused your own key. Check it in Advanced.')
 
-  return new Response(scrub(text, env), {
+  return new Response(scrub(text, env, [userKey]), {
     status,
     headers: { 'content-type': 'application/json' },
   })
@@ -539,14 +548,14 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
  * An answer that ran long, said again in fewer words. The worker writes the whole
  * request, so it cannot be used as a free question; see shorten.ts.
  */
-async function shorten(body: any, env: Env, who: Who, started: number): Promise<Response> {
+async function shorten(body: any, env: Env, who: Who, started: number, userKey: string | null = null): Promise<Response> {
   const asked = shortenRequest(body)
   if (!asked) return fail(400, 'bad_shorten', 'shorten needs one short text.')
   const model = MODELS.quick
   const upstream = await fetch(ANTHROPIC_URL, {
     method: 'POST',
     headers: {
-      'x-api-key': env.ANTHROPIC_API_KEY,
+      'x-api-key': userKey ?? env.ANTHROPIC_API_KEY,
       'anthropic-version': ANTHROPIC_VERSION,
       'content-type': 'application/json',
     },
@@ -567,11 +576,13 @@ async function shorten(body: any, env: Env, who: Who, started: number): Promise<
     model,
     shorten: true,
     max_words: asked.maxWords,
+    key: userKey ? 'user' : 'heylana',
     status: upstream.status,
     tokens_in: usage.input,
     tokens_out: usage.output,
   })
-  return new Response(scrub(text, env), { status: upstream.status, headers: { 'content-type': 'application/json' } })
+  if (userKey && upstream.status === 401) return fail(401, 'own_key_refused', 'Anthropic refused your own key. Check it in Advanced.')
+  return new Response(scrub(text, env, [userKey]), { status: upstream.status, headers: { 'content-type': 'application/json' } })
 }
 
 /** Some text to say out loud, in one of Heylana's two voices, by the configured provider. */
@@ -1625,7 +1636,7 @@ function usageOf(text: string): { input: number; output: number } {
  * Last line of defence: no reply ever carries a key, however an upstream
  * service chose to word its error.
  */
-export function scrub(text: string, env: Env): string {
+export function scrub(text: string, env: Env, extra: (string | null | undefined)[] = []): string {
   const secrets = [
     env.ANTHROPIC_API_KEY,
     env.CARTESIA_API_KEY,
@@ -1637,12 +1648,30 @@ export function scrub(text: string, env: Env): string {
     env.JUPITER_API_KEY,
     env.MAINNET_RPC_URL,
     env.SENTRY_DSN,
+    ...extra,
   ]
   let safe = text
   for (const secret of secrets) {
     if (secret && secret.length > 6) safe = safe.split(secret).join('***')
   }
-  return safe
+  // Any Anthropic key at all, whoever's: an error that quotes one never carries it out.
+  return safe.replace(ANTHROPIC_KEY_SHAPE, 'sk-ant-***')
+}
+
+const ANTHROPIC_KEY_SHAPE = /sk-ant-[A-Za-z0-9_-]{6,}/g
+
+/** The header "Use my own key" sends. */
+export const OWN_KEY_HEADER = 'X-Heylana-Key'
+
+/**
+ * The user's own Anthropic key from [OWN_KEY_HEADER], null when there is none, or
+ * 'malformed'. Used for one request's model calls; never stored, never logged.
+ */
+function ownKeyOf(request: Request): string | null | 'malformed' {
+  const given = request.headers.get(OWN_KEY_HEADER)
+  if (given === null) return null
+  const key = given.trim()
+  return /^sk-ant-[A-Za-z0-9_-]{20,200}$/.test(key) ? key : 'malformed'
 }
 
 function fail(status: number, reason: string, detail: string): Response {

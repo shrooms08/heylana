@@ -184,10 +184,11 @@ yet (it never sends a second copy); or not found — check your wallet.
     phone model. No screen text, no screenshots, no taps, no name, and every Solana
     address and key is removed before it leaves.
 
-Never: the screen never goes to Deepgram or Google's voice. No API key is ever stored
-on the phone. What Heylana reads off the screen is used for one request and then
-dropped — never logged, never saved. The hidden "use my own key" setting is the
-one exception to (1): questions go straight to Anthropic on a key you typed in.
+Never: the screen never goes to Deepgram or Google's voice. None of Heylana's own keys is
+ever on the phone; the only key it ever holds is one you typed in yourself. What Heylana reads off the screen is used for one request and then
+dropped — never logged, never saved. With "use my own key" (Advanced), your questions
+still go through Heylana's server: your key goes with each one, kept encrypted on the phone
+between times, and the server uses it for that question only and never stores or logs it.
 
 ## What Heylana may do: the tool registry
 

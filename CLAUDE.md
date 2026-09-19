@@ -251,7 +251,7 @@ Mobile Wallet Adapter flow, or "Continue without a wallet"), the name card, then
 Permissions; once Home has been reached (`HeylanaSettings.firstRunDone`) the app opens on
 Home. The screens' contents follow design/refs "Heylana App Screens.html" (copy, order),
 with two corrections: Home says "Hi, <name>. What do you need?", and the Advanced note is
-"Held in the phone's keystore. It never leaves the device." (never Seed Vault there).
+"Kept encrypted in the phone's keystore. It goes to Heylana's server with each question, is used for that question only, and is never stored or logged there." (never Seed Vault there).
 Debug builds open any screen with `-e screen home|sign_in|permissions|voice|skills|advanced|privacy|settings|learn|memory`.
 
 **Colours live in `ui/theme/HeylanaTheme` and nowhere else; the type is Outfit only.**
@@ -845,9 +845,20 @@ the newer releases are built with Kotlin 2.4 and this project's compiler cannot
 read them. The two MWA artifacts share a namespace, which AGP 9 refuses unless
 `android.uniquePackageNames=false` in `gradle.properties`.
 
-The one exception is the hidden "use my own key" setting: questions only, on a
-key the user typed in themselves. The voice and the ears keep using the proxy,
-because those keys are not the user's to hold.
+**Your own key goes through the worker too.** "Use my own key" (Menu → Advanced) sends the key
+the user typed in, from EncryptedSharedPreferences, with each `/chat` in `X-Heylana-Key`
+(`ProxyClient.withOwnKey`, `OWN_KEY_HEADER`); the app never calls Anthropic itself and names no
+model (`OwnKeyTest` holds the source to it). The worker checks its shape (`sk-ant-…`, else
+`400 bad_key`), uses it as `x-api-key` for that request's model calls only — every tool
+round and the shorten call — and never stores or logs it: the chat line says `key: user` or
+`key: heylana`, `scrub` removes the key (and anything shaped like an Anthropic key) from any
+reply, and Anthropic refusing it comes back as `401 own_key_refused` ("Anthropic refused your
+own key. Check it in Menu, Advanced."). Everything else is unchanged: tools, the registry,
+memory, caching, the red-team checks, the forced send and quick-action tools, and R3
+confirmations (`ConfirmGate` no longer has an own-key exception). A question on the user's
+key is not one of their plan's talks (they pay for it); the daily caps still apply, and
+tools still run on Heylana's RPC. The voice and the ears keep Heylana's keys.
+`worker/test/byok.test.ts`.
 
 `scripts/stub-proxy.py` answers all three routes locally with fixed replies, so
 the whole app can be exercised without spending anything. It also fakes the

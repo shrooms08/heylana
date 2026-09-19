@@ -227,7 +227,7 @@ class AppChat(
                 HeylanaLog.state("action: guard verdict=allowed ${QuickLog.describe(verdict.action)}")
                 // A message or a reminder (R3) fires only once the worker confirms it proposed it.
                 when (val decision = ConfirmGate.check(
-                    verdict.action.intent, actionId, settings.useOwnKey,
+                    verdict.action.intent, actionId,
                     confirm = { kind, subject -> wallet.confirmation(kind, subject, guardPassed = true) }
                 )) {
                     is ConfirmGate.Decision.Fire -> runner.run(verdict.action).line

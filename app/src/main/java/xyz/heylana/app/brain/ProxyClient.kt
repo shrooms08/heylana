@@ -4,9 +4,7 @@ import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import xyz.heylana.app.BuildConfig
@@ -65,9 +63,11 @@ sealed interface BrainReply {
  * the proxy chooses the model. The app cannot name one, and does not hold a key
  * to send with it.
  *
- * The one exception is the hidden "use my own key" setting, which talks to
- * Anthropic directly with a key the user typed in themselves. That key is read
- * from [HeylanaSettings] at call time and never logged or written anywhere else.
+ * "Use my own key" changes only whose key pays: the key the user typed in is read from
+ * [HeylanaSettings] at call time and sent to the worker with that one request, in
+ * [OWN_KEY_HEADER]; the worker uses it for that question's model calls and nothing else.
+ * Tools, the registry, memory, caching and the red-team checks all run as always. The app
+ * never talks to Anthropic itself, and the key is never logged or written anywhere else.
  */
 class ProxyClient(private val settings: HeylanaSettings) {
 
@@ -75,7 +75,6 @@ class ProxyClient(private val settings: HeylanaSettings) {
 
     /** Opens the connection to whichever host the next request will go to. */
     suspend fun warmUp() {
-        if (settings.useOwnKey) return
         proxy.warmUp()
     }
 
@@ -98,12 +97,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
         /** One more line for this question: "explain this" over Solana docs, or "why" after it. */
         lens: String? = null
     ): BrainReply {
-        val tools = route.toolsWanted && !settings.useOwnKey
+        val tools = route.toolsWanted
         val quickAction = route.why == Routing.Why.QUICK_ACTION
         // A send or a quick action is one forced tool call that writes nothing: app notes would only cost.
         val carried = skill.takeUnless { route.why == Routing.Why.SEND_QUESTION || quickAction || route.skipsScreen }
-        // Through the worker the action tool is forced; only the own-key path has to ask in words.
-        val quickRules = quickAction && settings.useOwnKey
+        // The worker forces the action tool, own key or not: the rules in words are never needed.
+        val quickRules = false
         HeylanaLog.state(
             "brain: mode=${route.mode} why=${route.why.log} " +
                 (route.solana?.let { "solana-core loaded reason=${it.log}" } ?: "solana-core not loaded") +
@@ -150,7 +149,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         // A send is never left to prose: the worker asks the model for the send only.
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
         // Nor is an alarm, a timer, an app, a page, a place or a number.
-        if (quickAction && !settings.useOwnKey) extra.put("intent", "quick_action")
+        if (quickAction) extra.put("intent", "quick_action")
         val reply = send(
             message,
             route.mode,
@@ -201,7 +200,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
      */
     suspend fun recap(task: FinishedTask, question: String): BrainReply {
         val route = Routing.recapRoute(task)
-        val tools = route.toolsWanted && !settings.useOwnKey
+        val tools = route.toolsWanted
         HeylanaLog.state(
             "brain: mode=${route.mode} why=${route.why.log} on_chain=${task.onChain} " +
                 "tools=${if (tools) "sent names=$RECENT_ACTIVITY" else "not sent"} screen=not_read"
@@ -268,26 +267,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
     private suspend fun shorten(text: String, cap: Int): String? = withContext(Dispatchers.IO) {
         val clipped = text.take(SHORTEN_MAX_CHARS)
         val messages = JSONArray().put(JSONObject().put("role", "user").put("content", clipped))
-        val request = if (settings.useOwnKey) {
-            val key = settings.apiKey ?: return@withContext null
-            val body = JSONObject()
-                .put("model", HeylanaSettings.DEFAULT_QUICK_MODEL)
-                .put("max_tokens", SHORTEN_MAX_TOKENS)
-                .put("system", HeylanaPrompt.shortenSystem(cap))
-                .put("messages", messages)
-            Request.Builder()
-                .url(ANTHROPIC_ENDPOINT)
-                .addHeader("x-api-key", key)
-                .addHeader("anthropic-version", ANTHROPIC_VERSION)
-                .addHeader("content-type", "application/json")
-                .post(body.toString().toRequestBody(JSON))
-                .build()
-        } else {
-            if (!proxy.isConfigured) return@withContext null
-            // The worker writes the rest of this request itself.
-            val body = JSONObject().put("mode", MODE_QUICK).put("shorten", true).put("max_words", cap).put("messages", messages)
-            proxy.post("chat", body.toString())
-        }
+        if (!proxy.isConfigured) return@withContext null
+        // The worker writes the rest of this request itself, on the user's key when they gave one.
+        val body = JSONObject().put("mode", MODE_QUICK).put("shorten", true).put("max_words", cap).put("messages", messages)
+        val request = withOwnKey(proxy.post("chat", body.toString()))
         try {
             Proxy.http.newCall(request).execute().use { response ->
                 val body = response.body.string()
@@ -366,16 +349,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         expectsAction: Boolean,
         systemOverride: String?
     ): Attempt {
-        val ownKey = settings.useOwnKey
         val system = systemOverride ?: HeylanaPrompt.system(solana, skill, signing, quickRules)
-        val request = if (ownKey) {
-            ownKeyRequest(userMessage, mode, system)
-        } else {
-            proxyRequest(userMessage, mode, system, tools, extra)
-        }
-        if (request == null) {
-            return Attempt.Done(BrainReply.Failed(if (ownKey) NO_KEY else NO_PROXY))
-        }
+        val request = proxyRequest(userMessage, mode, system, tools, extra)
+            ?: return Attempt.Done(BrainReply.Failed(NO_PROXY))
 
         val warmed = proxy.warm
         val started = SystemClock.elapsedRealtime()
@@ -421,24 +397,16 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val body = payload(userMessage, system).put("mode", mode)
         if (tools) body.put("tools", true)
         extra?.keys()?.forEach { key -> body.put(key, extra.get(key)) }
-        return proxy.post("chat", body.toString())
+        return withOwnKey(proxy.post("chat", body.toString()))
     }
 
-    /** The hidden way round: straight to Anthropic with the user's own key. */
-    private fun ownKeyRequest(userMessage: String, mode: String, system: String): Request? {
-        val key = settings.apiKey ?: return null
-        val model = if (mode == MODE_TASK) {
-            HeylanaSettings.DEFAULT_TASK_MODEL
-        } else {
-            HeylanaSettings.DEFAULT_QUICK_MODEL
-        }
-        return Request.Builder()
-            .url(ANTHROPIC_ENDPOINT)
-            .addHeader("x-api-key", key)
-            .addHeader("anthropic-version", ANTHROPIC_VERSION)
-            .addHeader("content-type", "application/json")
-            .post(payload(userMessage, system).put("model", model).toString().toRequestBody(JSON))
-            .build()
+    /**
+     * "Use my own key": the key rides on this one request in X-Heylana-Key, and the worker
+     * uses it for this question's model calls only. It is never logged, here or there.
+     */
+    private fun withOwnKey(request: Request): Request {
+        val key = settings.apiKey?.takeIf { settings.useOwnKey } ?: return request
+        return request.newBuilder().header(OWN_KEY_HEADER, key).build()
     }
 
     private fun payload(userMessage: String, system: String): JSONObject = JSONObject()
@@ -597,8 +565,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
     }
 
     companion object {
-        private const val ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1/messages"
-        private const val ANTHROPIC_VERSION = "2023-06-01"
+        /** Where the user's own key rides, to the worker only. */
+        const val OWN_KEY_HEADER = "X-Heylana-Key"
         private const val MAX_TOKENS = 300
         private const val SHORTEN_MAX_TOKENS = 150
         /** The worker refuses a longer text to shorten; see worker/src/shorten.ts. */
@@ -616,9 +584,5 @@ class ProxyClient(private val settings: HeylanaSettings) {
 
         private const val NO_PROXY =
             "Heylana is not set up yet. Whoever built this app needs to add the proxy address."
-        private const val NO_KEY =
-            "No API key yet. Add your key in Heylana \u2192 Settings, or switch off Use my own key."
-
-        private val JSON = "application/json".toMediaType()
     }
 }

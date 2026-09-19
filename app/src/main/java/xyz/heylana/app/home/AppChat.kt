@@ -22,6 +22,7 @@ import xyz.heylana.app.actions.QuickLog
 import xyz.heylana.app.actions.QuickText
 import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
+import xyz.heylana.app.brain.ErrorTable
 import xyz.heylana.app.brain.ProxyClient
 import xyz.heylana.app.brain.Routing
 import xyz.heylana.app.brain.SolanaCore
@@ -141,6 +142,12 @@ class AppChat(
                 xyz.heylana.app.lessons.LessonWords.wantsTopicList(question) -> xyz.heylana.app.lessons.LessonText.PICK
                 // "Remember that…", a preference, the yes that keeps it, "forget that": no question to the model.
                 claimed -> memoryDesk.handle(question)
+                // An error the table knows is answered here; one it doesn't goes to the knowledge base.
+                ErrorTable.find(question) != null -> ErrorTable.find(question)!!.let { known ->
+                    HeylanaLog.state("error: table hit name=${known.name} where=said model=not_asked")
+                    ErrorTable.line(known).also { memory.record(question, it, null) }
+                }
+                ErrorTable.looksLikeError(question) -> explainError(question)
                 QuickActions.isQuickAction(question) -> action(question)
                 else -> chat(question)
             }
@@ -172,6 +179,14 @@ class AppChat(
         } else Routing.CHAT
         val history = memory.asPromptText(null)
         return when (val reply = brain.ask(question, "", history, null, route)) {
+            is BrainReply.Say -> reply.text.also { memory.record(question, it, null) }
+            is BrainReply.Failed -> reply.message
+        }
+    }
+
+    private suspend fun explainError(question: String): String {
+        HeylanaLog.state("error: not in the table where=said")
+        return when (val reply = brain.explainError(question, question)) {
             is BrainReply.Say -> reply.text.also { memory.record(question, it, null) }
             is BrainReply.Failed -> reply.message
         }

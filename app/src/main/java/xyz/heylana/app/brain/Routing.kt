@@ -24,6 +24,8 @@ object Routing {
         /** "What did I just do" after a task: from its steps, and on chain from recent activity. */
         RECAP("recap"),
         WALLET_SCREEN("wallet_screen"),
+        /** An error the built-in table doesn't know: the knowledge base only. */
+        EXPLAIN_ERROR("explain_error"),
         SWAP_SCREEN("swap_screen"),
         PLAIN("plain")
     }

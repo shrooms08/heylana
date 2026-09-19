@@ -177,6 +177,17 @@ class ProxyClient(private val settings: HeylanaSettings) {
         return send(message, MODE_QUICK, tools = true, extra = extra, system = HeylanaPrompt.LESSON_SYSTEM)
     }
 
+    /**
+     * An error [ErrorTable] doesn't know: the quick model with search_solana_kb alone, asked for
+     * the cause, the usual fix and one link, or where to ask if nothing fits.
+     */
+    suspend fun explainError(question: String, errorText: String): BrainReply {
+        HeylanaLog.state("brain: mode=$MODE_QUICK why=${Routing.Why.EXPLAIN_ERROR.log} tools=sent names=$SEARCH_KB chars=${errorText.length}")
+        val extra = JSONObject().put("tool_names", JSONArray(listOf(SEARCH_KB))).put("said", question)
+        val reply = send(HeylanaPrompt.errorMessage(errorText, question), MODE_QUICK, tools = true, extra = extra)
+        return limitLength(reply, AnswerLength.GENERAL_WORDS)
+    }
+
     /** "Why?" on the step in hand: its reason and the step again. Quick model, no screen. */
     suspend fun explainStep(goal: String, historyText: String, question: String): BrainReply {
         HeylanaLog.state("brain: mode=$MODE_QUICK why=${Routing.Why.TEACH_WHY.log} screen=not_read")

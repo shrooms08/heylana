@@ -520,6 +520,27 @@ three chunks at cosine ≥ 0.6 with title, url, source, licence and a 1,200-char
 the tool tells the model to name the title in one short phrase. The chat log carries
 `kb_hits` (chunks handed over), never their text. `test/kb.test.ts`.
 
+**Explain this error (`brain/ErrorTable`).** An error in the user's words — an Anchor
+"Error Code: … Error Number: …" line, a bare name like AccountDidNotDeserialize, "custom
+program error: 0x…", a runtime message like "Blockhash not found", an MWA `ERROR_…` or a Seed
+Vault `RESULT_…` — is looked up in a built-in table first and answered on the phone with no
+model call and no screen read: "<name> (<code>): <cause> Usual fix: <fix> More: <one link>"
+(`error: table hit name=… where=said model=not_asked`). Asked about an error ("explain this
+error", "why did it fail", "what causes…"), the buddy looks for one on the screen the same way
+(`where=screen`). The table's codes and messages were copied from source on Sept 19: all 82
+Anchor framework errors (otter-sec/anchor v1.2.0 `lang/error/src/lib.rs`, the same as
+master; a program's own errors are numbered from 6000), the 20 SPL Token and 9 System program
+errors (a small hex code is read as theirs only when the text names the program), the
+runtime's instruction and transaction error texts (solana-sdk `instruction-error`,
+`transaction-error`), the 8 MWA protocol errors (`ProtocolContract.java`) plus the JS
+client's session errors, and Seed Vault's `RESULT_*` codes (`WalletContractV1.java`); causes
+and fixes are Heylana's words, every link checked to answer. Text that reads like an error
+but isn't in the table (a program log, a failed simulation) goes to the quick model with
+`search_solana_kb` alone and `HeylanaPrompt.ERROR_LINE` — cause, usual fix, one link from the
+result used, or, if nothing fits, to ask on solana.stackexchange.com with the full error, the
+program id and the instruction that failed (`brain: mode=quick why=explain_error`).
+`ErrorTableTest`.
+
 **Solana knowledge costs nothing when it is not needed.** `SolanaCore` (about 350
 tokens plus its rules) and the tool definitions go only when the app in front is a
 known Solana app, the question has Solana words, an address or a .skr/.sol name, or

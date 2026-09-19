@@ -53,6 +53,7 @@ import xyz.heylana.app.wallet.SendText
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.WalletProblem
 import xyz.heylana.app.brain.FinishedTask
+import xyz.heylana.app.brain.ErrorTable
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.brain.HeylanaPrompt
 import xyz.heylana.app.brain.Teaching
@@ -585,6 +586,16 @@ class BuddyOverlayService : Service() {
             return
         }
 
+        // An error the built-in table knows, in the user's own words: answered here, no screen, no model.
+        ErrorTable.find(question)?.let { known ->
+            HeylanaLog.state("error: table hit name=${known.name} where=said model=not_asked")
+            exchange.over()
+            view.endVoiceExchange()
+            conversation.record(question, ErrorTable.line(known), null)
+            sayLine(ErrorTable.line(known))
+            return
+        }
+
         // "What did I just do" right after a task: answered from that task, with no screen read.
         val finished = lastTask?.takeIf { it.fresh(System.currentTimeMillis()) }
         if (finished != null && Teaching.isRecap(question)) {
@@ -607,6 +618,39 @@ class BuddyOverlayService : Service() {
 
             val screenText = if (chat != null) "" else snapshot.toPromptText()
             if (chat == null) logScreenSize(snapshot, screenText)
+
+            // An error: the user's words first, then — asked about an error — the screen. The table
+            // answers what it knows; anything else that reads like an error goes to the knowledge base.
+            val asksError = ErrorTable.asksAboutError(question)
+            val onScreen = if (asksError) ErrorTable.find(screenText) else null
+            if (onScreen != null) {
+                HeylanaLog.state("error: table hit name=${onScreen.name} where=screen model=not_asked")
+                exchange.over()
+                view.endVoiceExchange()
+                sayLine(ErrorTable.line(onScreen))
+                return@launch
+            }
+            val errorText = when {
+                ErrorTable.looksLikeError(question) -> question
+                asksError && ErrorTable.looksLikeError(screenText) -> screenText
+                else -> null
+            }
+            if (errorText != null) {
+                HeylanaLog.state("error: not in the table where=${if (errorText === question) "said" else "screen"}")
+                mode(BuddyMode.THINKING)
+                val reply = brain.explainError(question, errorText)
+                mode(null)
+                exchange.over()
+                view.endVoiceExchange()
+                when (reply) {
+                    is BrainReply.Say -> {
+                        conversation.record(question, reply.text, snapshot.packageName)
+                        sayLine(reply.text)
+                    }
+                    is BrainReply.Failed -> view.showNotice(reply.message)
+                }
+                return@launch
+            }
 
             // A chat question belongs to no app: it neither reads nor clears what came before.
             val memory = conversation.asPromptText(if (chat != null) null else snapshot.packageName)

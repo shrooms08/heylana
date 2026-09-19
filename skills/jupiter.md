@@ -2,12 +2,13 @@
 id: jupiter
 name: Jupiter
 package: ag.jup.jupiter.android
-version: 1
+version: 2
 author: Heylana
 summary: Jupiter Mobile - swaps, limit and recurring orders, and Jupiter Lend.
 privacy: Reference text only. It reads nothing and sends nothing.
 ---
-From Jupiter's public docs; not yet walked on this Seeker (unverified).
+From Jupiter's public docs. On this Seeker (2026-09-19) the app opens behind its own lock, a screen titled "Authenticate" asking to touch the fingerprint sensor or "Use PIN"; the screens behind it were not walked (unverified).
+If the user asks about that screen: it is Jupiter's own app lock, unlocked with their fingerprint or PIN.
 
 Screens
 Home tab: total balance and 1-day change, Deposit, Trade, Earn and More.

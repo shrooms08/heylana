@@ -1049,7 +1049,14 @@ assets (`androidComponents` in `app/build.gradle.kts`), so the repo and the app
 cannot disagree. They can be switched off, never removed. Package names were
 checked against `pm list packages` on the Seeker; Kamino has no app of its own and
 lives in the Wallet, picked by its trigger words. Anything not walked on the phone
-is marked "(unverified)" for the operator to fix.
+is marked "(unverified)" for the operator to fix. **Walked on Sept 19:** the Wallet's Kamino Earn
+flow, read only, on mainnet (Start, both intro pages, the Deposit screen; nothing deposited),
+and `kamino.md` now quotes its labels, with only the after-a-deposit screens left unverified.
+Jupiter opens behind its own fingerprint-or-PIN lock ("Authenticate", "Use PIN"), so its
+screens could not be walked without the owner; `jupiter.md` says so and stays unverified
+behind it. Screen labels were read from screenshots (deleted afterwards): `uiautomator dump`
+never gets an idle moment on the Wallet, and Heylana's own reads are never written down.
+The sanitiser strips any line with "system prompt" in it, so a skill says "screen" instead.
 
 **More skills come from a public index — on the roadmap, switched off
 (`Features.SKILL_MARKET`).** `skills-index/index.json` lists id,

@@ -84,8 +84,9 @@ test('the key never appears in a log line or an error, even when upstream quotes
   assert.equal(JSON.parse(body).reason, 'own_key_refused')
   upstreamStatus = 400
   const other = await (await ask({})).text()
-  assert.ok(!other.includes(USER_KEY), 'scrubbed out of an upstream error')
-  assert.ok(other.includes('invalid x-api-key ***'), 'the error still says what went wrong')
+  assert.ok(!other.includes(USER_KEY), 'never in an upstream error')
+  assert.deepEqual([JSON.parse(other).reason, JSON.parse(other).upstream_status], ['brain_unavailable', 400])
+  assert.ok(!other.includes('x-api-key'), 'the upstream message stays on the worker')
   for (const line of logs) assert.ok(!line.includes(USER_KEY) && !line.includes('USERKEY'), line)
 })
 

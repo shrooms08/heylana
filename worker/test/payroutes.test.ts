@@ -264,8 +264,10 @@ test('the RPC token never appears in an error', async () => {
   const { session } = await connected(e)
   globalThis.fetch = (async () => { throw new Error(`connect failed to ${RPC}`) }) as typeof fetch
   const res = await worker.fetch(req('/pay/blockhash', {}, session), e)
-  assert.equal(res.status, 502)
-  assert.ok(!(await res.text()).includes('secret-token-abc'))
+  assert.equal(res.status, 500)
+  const text = await res.text()
+  assert.ok(!text.includes('secret-token-abc'))
+  assert.equal(JSON.parse(text).reason, 'internal')
 })
 
 test('a payment the wallet gave no signature for is found by its reference', async () => {

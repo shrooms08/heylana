@@ -360,14 +360,15 @@ test('a Deepgram key that cannot mint keys is named, not passed through as noise
 
 // --------------------------------------------------------------- the errors
 
-test('an upstream error that quotes the key comes back with it removed', async () => {
+test('an upstream error that quotes the key never reaches the phone: brain_unavailable and its status only', async () => {
   reply = () =>
     new Response(JSON.stringify({ error: { message: `bad key ${SECRETS.ANTHROPIC_API_KEY}` } }), { status: 401 })
   const response = await worker.fetch(post('/chat', { mode: 'quick', messages: [1] }), env())
   const text = await response.text()
-  assert.equal(response.status, 401)
+  assert.equal(response.status, 502)
   assert.ok(!text.includes(SECRETS.ANTHROPIC_API_KEY))
-  assert.ok(text.includes('***'))
+  assert.ok(!text.includes('bad key'))
+  assert.equal(JSON.parse(text).upstream_status, 401)
 })
 
 test('a thrown error carries no secret either', async () => {
@@ -377,7 +378,8 @@ test('a thrown error carries no secret either', async () => {
   for (const provider of ['cartesia', 'gemini']) {
     const response = await worker.fetch(post('/tts', { text: 'hello' }), { ...env(), VOICE_PROVIDER: provider })
     const text = await response.text()
-    assert.equal(response.status, 502)
+    assert.equal(response.status, 500)
+    assert.equal(JSON.parse(text).reason, 'internal')
     assert.ok(!text.includes(SECRETS.CARTESIA_API_KEY))
     assert.ok(!text.includes(SECRETS.GEMINI_API_KEY))
   }

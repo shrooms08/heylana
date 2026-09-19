@@ -2,7 +2,9 @@ package xyz.heylana.app.ops
 
 import android.app.Application
 import io.sentry.Breadcrumb
+import io.sentry.Sentry
 import io.sentry.SentryEvent
+import io.sentry.SentryLevel
 import io.sentry.android.core.SentryAndroid
 import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
@@ -23,7 +25,23 @@ object CrashReports {
         dsn.isNotBlank() && (!debugBuild || inDebug)
 
     /** The breadcrumbs kept: which screen came and went, and the app's own lifecycle. Nothing read or typed. */
-    private val KEPT_BREADCRUMBS = setOf("navigation", "ui.lifecycle", "app.lifecycle")
+    private val KEPT_BREADCRUMBS = setOf("navigation", "ui.lifecycle", "app.lifecycle", PROBLEM)
+
+    /** Failures shown to the user as a plain line: what really happened, for the report. */
+    private const val PROBLEM = "problem"
+
+    /**
+     * A failure the user was told about in plain words: where, which kind, the status and
+     * the worker's reason (or an exception's name). Kept as a breadcrumb for any later
+     * report, and sent on its own when it was Heylana's side. Never a body, never a word said.
+     */
+    fun problem(where: String, kind: String, status: Int?, reason: String?) {
+        if (!Sentry.isEnabled()) return
+        val message = ReportScrub.text("$where kind=$kind status=${status ?: "none"} reason=${reason ?: "none"}")
+        Sentry.addBreadcrumb(Breadcrumb().apply { category = PROBLEM; this.message = message; level = SentryLevel.WARNING })
+        if (kind == "our_side") Sentry.captureMessage("problem: $message", SentryLevel.WARNING)
+    }
+
 
     fun start(app: Application) {
         if (!enabled(BuildConfig.SENTRY_DSN, BuildConfig.DEBUG, BuildConfig.SENTRY_IN_DEBUG)) return

@@ -241,11 +241,13 @@ class VoiceSession(
                 note = NOTHING_HEARD
             }
             is EarsRace.Verdict.Problem -> {
-                HeylanaLog.state("ears: problem reported")
+                // What the ear said stays in the log; the user reads the plain line.
+                HeylanaLog.state("ears: problem reported, shown as plain")
+                xyz.heylana.app.ops.CrashReports.problem("ears", "ears", null, null)
                 endRace()
                 phase = Phase.READY
                 heard = ""
-                note = verdict.message
+                note = xyz.heylana.app.brain.PlainError.forEars(verdict.message)
             }
         }
     }

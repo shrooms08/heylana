@@ -68,6 +68,10 @@ class AppChat(
         private set
     var level by mutableFloatStateOf(0f)
         private set
+    /** The voice is over its limit: the strip says so under the answer, until the next question. */
+    var voiceLimited by mutableStateOf(false)
+        private set
+
     /** True for two seconds after a line was kept without being asked. */
     var remembered by mutableStateOf(false)
         private set
@@ -84,7 +88,10 @@ class AppChat(
             scope = scope,
             onSpeaking = { now -> scope.launch(Dispatchers.Main) { speaking = now } },
             onLevel = { l -> level = l },
-            onFailed = { _, reason -> HeylanaLog.state("app: voice_failed reason=$reason, shown as text") }
+            onFailed = { _, reason ->
+                HeylanaLog.state("app: voice_failed reason=$reason, shown as text")
+                if (xyz.heylana.app.voice.VoiceFailure.isOverLimit(reason)) scope.launch(Dispatchers.Main) { voiceLimited = true }
+            }
         )
     }
 
@@ -139,6 +146,7 @@ class AppChat(
         thinking = true
         HeylanaLog.state("app: ask chars=${question.length} screen=not_read")
         answerSources = emptyList()
+        voiceLimited = false
         inFlight = scope.launch {
             val claimed = memoryDesk.claims(question)
             // A fact about the user ("I use Jupiter for swaps") is kept alongside, while the

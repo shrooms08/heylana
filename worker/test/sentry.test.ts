@@ -72,14 +72,14 @@ test('an event loses the person and every secret or address in any string', () =
 
 test('with no SENTRY_DSN nothing is reported', async () => {
   const res = await worker.fetch(ask(), env())
-  assert.equal(res.status, 502)
+  assert.equal(res.status, 500)
   assert.deepEqual(sentryBodies, [])
 })
 
 test('with a SENTRY_DSN an unhandled error is reported, scrubbed', async () => {
   const pending: Promise<unknown>[] = []
   const res = await worker.fetch(ask(), env({ SENTRY_DSN: DSN }), { waitUntil: (p) => { pending.push(p) } })
-  assert.equal(res.status, 502)
+  assert.equal(res.status, 500)
   await Promise.all(pending)
   assert.equal(sentryBodies.length, 1)
   const body = sentryBodies[0]

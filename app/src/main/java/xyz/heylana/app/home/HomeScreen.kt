@@ -248,6 +248,11 @@ fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
                     Text(exchange.answer, style = HeylanaType.body, color = palette.ink)
                 }
             }
+            // The voice could not speak it: say why, once, under the words.
+            if (chat.voiceLimited) Text(
+                xyz.heylana.app.voice.VoiceFailure.OVER_LIMIT_LINE,
+                Modifier.padding(top = 8.dp), style = HeylanaType.small, color = palette.inkSecondary
+            )
             // Where the latest answer came from: up to two flat chips, each opening its page.
             val sources = chat.exchanges.lastOrNull()?.sources.orEmpty()
             if (!history && sources.isNotEmpty()) {

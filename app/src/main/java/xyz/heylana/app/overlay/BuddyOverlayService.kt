@@ -310,11 +310,13 @@ class BuddyOverlayService : Service() {
             }
 
             is EarsRace.Verdict.Problem -> {
-                HeylanaLog.state("ears: problem reported")
+                // What the ear said stays in the log; the user hears the plain line.
+                HeylanaLog.state("ears: problem reported, shown as plain")
+                xyz.heylana.app.ops.CrashReports.problem("ears", "ears", null, null)
                 endRace()
                 exchange.over()
                 overlayView?.endVoiceExchange()
-                overlayView?.showNotice(verdict.message)
+                overlayView?.showNotice(xyz.heylana.app.brain.PlainError.forEars(verdict.message))
             }
         }
     }
@@ -1813,7 +1815,7 @@ class BuddyOverlayService : Service() {
         val view = overlayView ?: return
         keepSpeechThroughClose = false
         // A silence with a reason the user can do nothing about says so, once, under the words.
-        if (VoiceFailure.isDailyCap(reason)) view.showNote(VoiceFailure.DAILY_CAP_LINE)
+        if (VoiceFailure.isOverLimit(reason)) view.showNote(VoiceFailure.OVER_LIMIT_LINE)
         // Mid-teaching the words are already beside the disc: read them, then fly on.
         teaching?.let { run ->
             run.unspoken(text)

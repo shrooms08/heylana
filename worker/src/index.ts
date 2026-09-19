@@ -298,7 +298,8 @@ export default {
       // carries nothing that could have come from a secret.
       log({ route, device, ms: clock.now() - started, error: 'unhandled' })
       sentryFor(request, env.SENTRY_DSN, context, (text) => scrub(text, env))?.captureException(error)
-      return fail(502, 'upstream', scrub(String(error), env))
+      // The phone says "Something went wrong on my side."; what happened is in the log and Sentry.
+      return fail(500, 'internal', 'Something went wrong on Heylana\'s side.')
     }
   },
 }
@@ -547,9 +548,19 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   // The phone's usage line (and the eval) see the cache too: tokens read and written over every round.
   if (status >= 200 && status < 300) text = withCacheTotals(text, cacheUse)
   if (userKey && status === 401) return fail(401, 'own_key_refused', 'Anthropic refused your own key. Check it in Advanced.')
+  // The model failed (over its limit, overloaded, refused): its words never go to the phone.
+  if (status < 200 || status >= 300) return brainUnavailable(status)
 
   return new Response(scrub(text, env, [userKey]), {
     status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+/** The model did not answer: the status it gave rides along, never its message. */
+function brainUnavailable(upstreamStatus: number): Response {
+  return new Response(JSON.stringify({ reason: 'brain_unavailable', detail: 'The model did not answer.', upstream_status: upstreamStatus }), {
+    status: 502,
     headers: { 'content-type': 'application/json' },
   })
 }
@@ -592,6 +603,7 @@ async function shorten(body: any, env: Env, who: Who, started: number, userKey: 
     tokens_out: usage.output,
   })
   if (userKey && upstream.status === 401) return fail(401, 'own_key_refused', 'Anthropic refused your own key. Check it in Advanced.')
+  if (!upstream.ok) return brainUnavailable(upstream.status)
   return new Response(scrub(text, env, [userKey]), { status: upstream.status, headers: { 'content-type': 'application/json' } })
 }
 

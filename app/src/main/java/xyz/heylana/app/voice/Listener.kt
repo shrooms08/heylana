@@ -175,19 +175,17 @@ class Listener(
             ?.takeIf { it.isNotEmpty() }
 
     private fun message(error: Int): String = when (error) {
-        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
-            "I need microphone permission. Open Heylana and allow the microphone."
-
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> NO_PERMISSION
         SpeechRecognizer.ERROR_NETWORK,
-        SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-            "Voice input needs a connection right now. Type instead."
-
-        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Still finishing the last one, hold again."
-        else -> UNAVAILABLE
+        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> xyz.heylana.app.brain.PlainError.OFFLINE
+        else -> xyz.heylana.app.brain.PlainError.EARS
     }
 
     companion object {
-        const val UNAVAILABLE = "Voice input not available on this device, type instead."
+        const val UNAVAILABLE = xyz.heylana.app.brain.PlainError.EARS
+
+        /** The one ear failure the user can fix, so it keeps its own words. */
+        const val NO_PERMISSION = "I need microphone permission. Open Heylana and allow the microphone."
 
         /** More than this and the platform starts ignoring them anyway. */
         private const val MAX_BIASING_STRINGS = 20

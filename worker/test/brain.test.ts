@@ -158,11 +158,14 @@ test('a lookup that fails says so without the RPC address in it', async () => {
   assert.equal((await res.text()).includes('secret-token'), false)
 })
 
-test('a failed round is passed through, and the talk is not counted', async () => {
-  script = [{ status: 529, type: 'error', error: { type: 'overloaded_error' } }]
+test('a failed round is brain_unavailable with only its status, and the talk is not counted', async () => {
+  script = [{ status: 529, type: 'error', error: { type: 'overloaded_error', message: 'Overloaded' } }]
   const kv = store()
   const res = await worker.fetch(ask({ tools: true }), env(kv))
-  assert.equal(res.status, 529)
+  assert.equal(res.status, 502)
+  const body = await res.json()
+  assert.deepEqual([body.reason, body.upstream_status], ['brain_unavailable', 529])
+  assert.ok(!JSON.stringify(body).includes('Overloaded'), 'the model\'s own words never reach the phone')
   assert.equal([...kv.values.keys()].some((key) => key.startsWith('talks:')), false)
 })
 

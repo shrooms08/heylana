@@ -25,7 +25,9 @@ class GeminiVoiceTest {
         assertTrue(VoiceFailure.isDailyCap(VoiceFailure.reasonFor(429, "daily_cap")))
         assertFalse(VoiceFailure.isDailyCap(VoiceFailure.reasonFor(429, "quota")))
         assertFalse(VoiceFailure.isDailyCap(VoiceFailure.TIMEOUT))
-        assertEquals("Voice is over its daily limit; text only until tomorrow.", VoiceFailure.DAILY_CAP_LINE)
+        assertEquals("Voice is over its limit; text only for now.", VoiceFailure.OVER_LIMIT_LINE)
+        assertTrue(VoiceFailure.isOverLimit(VoiceFailure.reasonFor(429, "quota")))
+        assertFalse(VoiceFailure.isOverLimit(VoiceFailure.TIMEOUT))
     }
 
     @Test

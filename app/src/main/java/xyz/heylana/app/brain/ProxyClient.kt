@@ -373,9 +373,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 extractReply(body, expectsAction)
             }
         } catch (e: IOException) {
-            Attempt.Done(BrainReply.Failed("Couldn't reach Heylana: ${e.message ?: "no connection"}"))
-        } catch (_: Exception) {
-            Attempt.Done(BrainReply.Failed("Something went wrong reading the reply."))
+            val kind = PlainError.forIo(e)
+            problem(kind, null, e.javaClass.simpleName)
+            Attempt.Done(BrainReply.Failed(PlainError.line(kind)))
+        } catch (e: Exception) {
+            problem(PlainError.Kind.OUR_SIDE, null, e.javaClass.simpleName)
+            Attempt.Done(BrainReply.Failed(PlainError.OUR_SIDE))
         }
     }
 
@@ -447,14 +450,17 @@ class ProxyClient(private val settings: HeylanaSettings) {
         )
     }
 
-    /** Short and readable, never a stack trace, and never a key. */
+    /** One of the plain lines, never the body: what the worker or the model said stays in the log. */
     private fun httpError(code: Int, body: String): String {
         val reason = runCatching { JSONObject(body).optString("reason") }.getOrDefault("")
-        QuotaMessage.forReason(reason)?.let { return it }
-        val detail = runCatching {
-            JSONObject(body).optJSONObject("error")?.optString("message").orEmpty()
-        }.getOrDefault("")
-        return if (detail.isBlank()) "Something went wrong ($code)." else "Error $code: $detail"
+        problem(PlainError.chatKind(code, reason), code, reason)
+        return PlainError.forChat(code, reason)
+    }
+
+    /** The failure for Logcat and Sentry: kind, status, reason or exception name. Never a body or a word said. */
+    private fun problem(kind: PlainError.Kind, code: Int?, reason: String?) {
+        HeylanaLog.state("chat: ${PlainError.logLine(kind, code, reason)}")
+        xyz.heylana.app.ops.CrashReports.problem("chat", kind.name.lowercase(), code, reason)
     }
 
     /**

@@ -32,6 +32,9 @@ object VoiceFailure {
     /** The device's daily allowance of spoken answers is used up. */
     fun isDailyCap(reason: String): Boolean = reason == DAILY_CAP
 
-    /** Shown under the answer when the voice is over its daily limit, so the silence has a reason. */
-    const val DAILY_CAP_LINE = "Voice is over its daily limit; text only until tomorrow."
+    /** Over a limit: the day's cap, or the voice provider's quota. The silence then gets a reason. */
+    fun isOverLimit(reason: String): Boolean = reason == DAILY_CAP || reason == QUOTA
+
+    /** Shown under the answer when the voice is over its limit, so the silence has a reason. */
+    const val OVER_LIMIT_LINE = xyz.heylana.app.brain.PlainError.VOICE_LIMIT
 }

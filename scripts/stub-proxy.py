@@ -47,6 +47,13 @@ DEVNET = "--devnet" in sys.argv
 SEND_REPLY = "--send-reply" in sys.argv
 #   --sim-fail    /send/build answers a failed simulation ("Not enough USDC. You have 0.03.").
 SIM_FAIL = "--sim-fail" in sys.argv
+# Failures, each the way the worker gives it, so every plain line can be seen without spending:
+#   --brain-down   /chat answers 502 brain_unavailable, as when the model is over its limit or down
+#   --server-error /chat answers 500 internal, as when the worker itself breaks
+#   --voice-limit  /tts answers 429 quota, as when the voice is over its limit
+BRAIN_DOWN = "--brain-down" in sys.argv
+SERVER_ERROR = "--server-error" in sys.argv
+VOICE_LIMIT = "--voice-limit" in sys.argv
 STUB_SEND_TO = "7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv"
 #   --skr-name N  the first sign-in's profile carries N as the wallet's .skr name
 SKR_NAME = sys.argv[sys.argv.index("--skr-name") + 1] if "--skr-name" in sys.argv else ""
@@ -239,6 +246,17 @@ class Stub(BaseHTTPRequestHandler):
         if route == "pay/confirm":
             STATE["plan"], STATE["pro_until"] = "pro", "2026-10-15T12:00:00.000Z"
             return self.send_json(200, standing())
+
+        if route == "chat" and BRAIN_DOWN:
+            # The model's own words (a spending limit, "Overloaded") never come back: only the status.
+            return self.send_json(502, {"reason": "brain_unavailable", "detail": "The model did not answer.",
+                                        "upstream_status": 529})
+
+        if route == "chat" and SERVER_ERROR:
+            return self.send_json(500, {"reason": "internal", "detail": "Something went wrong on Heylana's side."})
+
+        if route == "tts" and VOICE_LIMIT:
+            return self.send_json(429, {"reason": "quota", "detail": "The voice is out of quota for now."})
 
         if route == "chat" and TALKS_CAP:
             return self.send_json(429, {"reason": "talks_cap", "plan": "free", "used": 30, "limit": 30,

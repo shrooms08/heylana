@@ -196,8 +196,9 @@ object PrivacyCopy {
         Item("A random install id", "To Heylana's server, to count the daily budget."),
         Item(
             "Memory, only if you turn it on",
-            "To Heylana's server, kept against your wallet: short notes you asked it to keep, preferences you said " +
-                "yes to, and lessons you finished, at most 60 lines. Never what's on your screen, never an address or " +
+            "To Heylana's server, kept against your wallet: short notes you asked it to keep, things you say about " +
+                "yourself (\"I use Jupiter for swaps\"; a Remembered chip shows, and \"forget that\" takes it back), " +
+                "preferences you said yes to, and lessons you finished, at most 60 lines. Never what's on your screen, never an address or " +
                 "an amount. Up to 12 go with your questions, never with quick actions. See, delete or wipe them in " +
                 "Menu, Memory; off keeps nothing."
         ),

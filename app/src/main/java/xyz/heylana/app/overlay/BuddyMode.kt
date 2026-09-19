@@ -15,7 +15,9 @@ enum class BuddyMode(val label: String) {
     SIMULATING("simulating"),
     APPROVE_IN_WALLET("approve in wallet"),
     SENT("sent"),
-    WORKING("working");
+    WORKING("working"),
+    /** Two seconds after a fact the user stated was kept without being asked. */
+    REMEMBERED(xyz.heylana.app.memory.MemoryWords.REMEMBERED);
 
     companion object {
         /** A confirmed send's stages: the final simulation, the wallet, then the chain. */

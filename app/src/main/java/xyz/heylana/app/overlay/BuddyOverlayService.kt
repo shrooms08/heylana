@@ -25,6 +25,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
@@ -574,6 +575,9 @@ class BuddyOverlayService : Service() {
         // screen is never read and no listing goes with the question.
         val chat = Routing.chatRoute(question)
 
+        // A fact about the user ("I use Jupiter for swaps") is kept alongside the question.
+        val saving = scope.async { memoryDesk.autoSave(question) }
+
         inFlight = scope.launch {
             val snapshot = if (chat != null) {
                 HeylanaLog.state("ask: screen not read why=chat")
@@ -629,6 +633,8 @@ class BuddyOverlayService : Service() {
             mode(null)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
+            // Runs once the answer below is on the strip.
+            scope.launch { if (saving.await()) flashRemembered() }
             if (reply is BrainReply.Say) {
                 HeylanaLog.state(
                     "answer: task=${reply.task != null} done=${reply.task?.done} pointed=${reply.pointAt != null} " +
@@ -885,7 +891,16 @@ class BuddyOverlayService : Service() {
     /** The chip on the strip or HUD: what Heylana is doing now. */
     private fun mode(mode: BuddyMode?) {
         HeylanaLog.state("mode: ${mode?.label ?: "none"}")
+        shownMode = mode
         overlayView?.showMode(mode)
+    }
+
+    private var shownMode: BuddyMode? = null
+
+    /** "Remembered" on the strip for two seconds, unless something else has taken the chip by then. */
+    private fun flashRemembered() {
+        mode(BuddyMode.REMEMBERED)
+        main.postDelayed({ if (shownMode == BuddyMode.REMEMBERED) mode(null) }, REMEMBERED_MS)
     }
 
     /**
@@ -1952,6 +1967,9 @@ class BuddyOverlayService : Service() {
     }
 
     companion object {
+        /** How long the "Remembered" chip stays on the strip. */
+        private const val REMEMBERED_MS = 2_000L
+
         /** Debug builds only; see registerDebugQuickAction. */
         const val DEBUG_QUICK_ACTION = "xyz.heylana.app.debug.QUICK_ACTION"
         const val DEBUG_PANEL = "xyz.heylana.app.debug.PANEL"

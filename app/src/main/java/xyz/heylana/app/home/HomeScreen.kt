@@ -205,6 +205,9 @@ fun HomeScreen(
     }
 }
 
+/** How strongly the "Remembered" chip takes the accent. */
+private const val REMEMBERED_ALPHA = 0.28f
+
 /** The orb on Home. */
 private const val ORB_DP = 200
 
@@ -229,6 +232,13 @@ fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
         Column(Modifier.padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 14.dp)) {
             // While a lesson runs: which one, and how far along.
             chat.lessonProgress?.let { Text("Lesson · $it", Modifier.padding(bottom = 6.dp), style = HeylanaType.label, color = palette.inkSecondary) }
+            // A fact the user stated was kept: two seconds, then gone.
+            if (chat.remembered) Text(
+                xyz.heylana.app.memory.MemoryWords.REMEMBERED,
+                Modifier.padding(bottom = 6.dp).clip(CircleShape).background(palette.accent.copy(alpha = REMEMBERED_ALPHA))
+                    .padding(horizontal = 10.dp, vertical = 3.dp),
+                style = HeylanaType.label, color = palette.ink
+            )
             Column(
                 Modifier.heightIn(max = if (history) 260.dp else 22.dp * 6).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)

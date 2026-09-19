@@ -249,7 +249,8 @@ object QuickActions {
     private val ALARM = Regex("\\b(set|make|create|add|put)\\b[^.?!]*\\balarm\\b|\\bwake me\\b|\\balarm (for|at)\\b", OPTIONS)
     private val TIMER = Regex("\\b(set|start|make|put)\\b[^.?!]*\\btimer\\b|\\btimer (for|of)\\b|\\bcount ?down\\b", OPTIONS)
     private val OPEN = Regex(LEAD + "(open|launch)\\s+\\S", OPTIONS)
-    private val DIAL = Regex(LEAD + "(call|dial|ring|phone)\\s+\\S", OPTIONS)
+    /** "Call me Minos" is what to call the user, never a phone call: "me" is not someone to ring. */
+    private val DIAL = Regex(LEAD + "(call|dial|ring|phone)\\s+(?!me\\b)\\S", OPTIONS)
     private val NAVIGATE = Regex("\\b(directions|navigate|take me|route|drive me|walk me) to\\b|\\bhow do i get to\\b", OPTIONS)
 
     private val YOUTUBE = Regex("\\byoutube\\b|\\b(find|search|look up|show me|watch)\\b[^.?!]*\\bvideos?\\b", OPTIONS)

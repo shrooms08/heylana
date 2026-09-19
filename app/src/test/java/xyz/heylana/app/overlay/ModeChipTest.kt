@@ -11,7 +11,7 @@ class ModeChipTest {
     @Test
     fun `the chip says one of seven things`() {
         assertEquals(
-            listOf("reading", "thinking", "preparing", "simulating", "approve in wallet", "sent", "working"),
+            listOf("reading", "thinking", "preparing", "simulating", "approve in wallet", "sent", "working", "Remembered"),
             BuddyMode.entries.map { it.label }
         )
     }

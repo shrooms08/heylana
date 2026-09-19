@@ -595,7 +595,18 @@ never content. On the phone, `memory/MemoryDesk` (buddy and in-app chat, before 
 call): "remember that…" (`MemoryWords.explicit`; not "do you remember", "remember when",
 "remember to") saves at once and says "Got it, I'll remember."; a short remark like
 "shorter answers please", "slow down", "stop explaining" is offered once per phone ("Sure.
-Want me to remember that?") and kept only on yes within a minute. Opt-in is one switch on
+Want me to remember that?") and kept only on yes within a minute. **Kept without being asked:** while memory is on, a
+sentence the user states about themselves (`MemoryWords.aboutUser`: "I'm new to…", "I'm a
+developer", "I use/prefer/live in…", "my name is…", "call me…"; not passing moods, reactions to
+"it/this", questions, or anything with an address or an amount) is saved as a fact in their
+words (consent explicit, `said` = what they said, so the worker's checks are unchanged) by
+`MemoryDesk.autoSave`, alongside the question, which still goes to the model; never for a
+quick action, a message or a send. The strip shows a "Remembered" chip for two seconds
+(`BuddyMode.REMEMBERED` on the overlay, `AppChat.remembered` on Home; `memory: auto-saved
+category=fact chars=N`). "Forget that" (`MemoryWords.isForget`; not "forget it", which stops
+a task) deletes the line kept last, by the buddy or the app, within ten minutes, with no
+model call ("Okay, forgotten."). "Call me X" is never a phone call (the dial rule skips "me").
+Opt-in is one switch on
 the first-run name card (`FirstRunText.MEMORY_OPT_IN`), wallet only;
 `HeylanaSettings.memoryOn` mirrors it. Menu → Memory (`home/MemoryScreen`) reads the list
 from the worker on open: the on switch (off deletes everything kept), each line with its

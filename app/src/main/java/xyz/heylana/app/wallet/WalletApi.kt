@@ -107,12 +107,12 @@ class WalletApi(private val settings: HeylanaSettings) {
         consent: String,
         said: String?,
         source: String
-    ): Answer<Unit> =
+    ): Answer<String?> =
         post(
             "memory",
             JSONObject().put("category", category).put("content", content).put("consent", consent)
                 .put("source_turn", source).apply { if (said != null) put("said", said) }
-        ) { }
+        ) { it.optJSONObject("record")?.optString("id")?.takeIf { id -> id.isNotEmpty() } }
 
     suspend fun forget(id: String): Answer<xyz.heylana.app.memory.MemoryState> =
         post("memory/delete", JSONObject().put("id", id)) { memoryOf(it) }

@@ -9,6 +9,8 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.actions.ConfirmGate
@@ -62,6 +64,9 @@ class AppChat(
     var speaking by mutableStateOf(false)
         private set
     var level by mutableFloatStateOf(0f)
+        private set
+    /** True for two seconds after a line was kept without being asked. */
+    var remembered by mutableStateOf(false)
         private set
 
     private var inFlight: Job? = null
@@ -128,10 +133,14 @@ class AppChat(
         thinking = true
         HeylanaLog.state("app: ask chars=${question.length} screen=not_read")
         inFlight = scope.launch {
+            val claimed = memoryDesk.claims(question)
+            // A fact about the user ("I use Jupiter for swaps") is kept alongside, while the
+            // words still go on as a question.
+            val saving = if (!claimed && !QuickActions.isQuickAction(question)) async { memoryDesk.autoSave(question) } else null
             val answer = when {
                 xyz.heylana.app.lessons.LessonWords.wantsTopicList(question) -> xyz.heylana.app.lessons.LessonText.PICK
-                // "Remember that…", a preference, or the yes that keeps it: no question to the model.
-                memoryDesk.claims(question) -> memoryDesk.handle(question)
+                // "Remember that…", a preference, the yes that keeps it, "forget that": no question to the model.
+                claimed -> memoryDesk.handle(question)
                 QuickActions.isQuickAction(question) -> action(question)
                 else -> chat(question)
             }
@@ -142,6 +151,16 @@ class AppChat(
                 while (exchanges.size > MAX_EXCHANGES) exchanges.removeAt(0)
                 if (!settings.voiceMuted) voice.speak(answer)
             }
+            if (saving?.await() == true) flashRemembered()
+        }
+    }
+
+    /** "Remembered" over the answer for two seconds. */
+    private fun flashRemembered() {
+        remembered = true
+        scope.launch {
+            delay(REMEMBERED_MS)
+            remembered = false
         }
     }
 
@@ -221,5 +240,8 @@ class AppChat(
     companion object {
         /** The strip's chevron reaches back this far. */
         const val MAX_EXCHANGES = 3
+
+        /** How long the "Remembered" chip stays. */
+        const val REMEMBERED_MS = 2_000L
     }
 }

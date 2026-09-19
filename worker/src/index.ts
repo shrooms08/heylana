@@ -33,6 +33,7 @@ import { buildAndSimulate, labelFor, needsAccount, tokenAccountRent, type Built 
 import type { TransferPlan } from './tx.ts'
 import { rpcCall, short, unitsToDecimal } from './solana.ts'
 import { checkedBody } from './say.ts'
+import { addCacheUse, noCacheUse, withCache, withCacheTotals } from './cache.ts'
 import {
   GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, deepgramSpeakUrl, deepgramVoiceFor, geminiPcmStream, geminiRequest,
   geminiVoiceFor, providerOf, rawPcmStream, voiceInfo,
@@ -341,16 +342,21 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       memoryRecords = relevant(kept.records).length
     }
   }
-  const callModel = (payload: unknown) =>
-    fetch(ANTHROPIC_URL, {
+  // Every round of this question: the system prompt and tools marked cacheable, the cache use added up.
+  const cacheUse = noCacheUse()
+  const callModel = async (payload: unknown) => {
+    const upstream = await fetch(ANTHROPIC_URL, {
       method: 'POST',
       headers: {
         'x-api-key': env.ANTHROPIC_API_KEY,
         'anthropic-version': ANTHROPIC_VERSION,
         'content-type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(withCache(payload as Record<string, unknown>)),
     })
+    addCacheUse(cacheUse, await upstream.clone().text())
+    return upstream
+  }
 
   // Tools go only with the questions the app marked as Solana ones. Everything
   // else is sent exactly as it always was, at exactly the size it always was.
@@ -498,12 +504,18 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       : {}),
     ...(quickAction ? { action_class: actionRisk(quickAction.intent) } : {}),
     ...(actionsRemoved > 0 ? { actions_removed: actionsRemoved } : {}),
+    // Prompt caching: tokens read from the cache and written to it, over every round.
+    cache_read: cacheUse.read,
+    cache_write: cacheUse.write,
     ...(memoryRecords > 0 ? { memory_records: memoryRecords } : {}),
     ...(saySegments > 1 ? { say_segments: saySegments } : {}),
     status,
     tokens_in: tokensIn,
     tokens_out: tokensOut,
   })
+
+  // The phone's usage line (and the eval) see the cache too: tokens read and written over every round.
+  if (status >= 200 && status < 300) text = withCacheTotals(text, cacheUse)
 
   return new Response(scrub(text, env), {
     status,

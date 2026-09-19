@@ -457,7 +457,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         HeylanaLog.state(
             "usage: mode=$mode input_tokens=${usage.optInt("input_tokens", -1)} " +
                 "output_tokens=${usage.optInt("output_tokens", -1)} " +
-                "tool_ms=${usage.optInt("tool_ms", 0)} tools=${usage.optString("tools").ifEmpty { "none" }}"
+                "tool_ms=${usage.optInt("tool_ms", 0)} tools=${usage.optString("tools").ifEmpty { "none" }} " +
+                "cache_read=${usage.optInt("cache_read_input_tokens", 0)} cache_write=${usage.optInt("cache_creation_input_tokens", 0)}"
         )
     }
 

@@ -725,6 +725,37 @@ alone. Settings → Debug states has "box from left dock" and "box from right do
 **Only a plain question greets.** The greeting is decided after routing, and a
 send, a signing explanation, or anything on a wallet or swap screen never carries it.
 
+**Prompt caching (worker).** Every model call goes through one wrapper in `chat()`
+(`worker/src/cache.ts`): the system prompt becomes a text block with `cache_control:
+{type: "ephemeral"}` and the last tool definition carries the same mark (the cached prefix
+is tools, then system, then messages). Cache reads and writes are summed over every round
+of a question and logged on the chat line (`cache_read`, `cache_write`), put on the reply's
+usage (`cache_read_input_tokens`, `cache_creation_input_tokens`) and shown in the phone's
+`usage:` line. Anthropic caches only above a model's minimum: 1,024 tokens for the task
+model (Sonnet 5), 4,096 for the quick model (Haiku 4.5). So the task model's Solana, wallet,
+send and walk-through requests (about 1,700 to 3,900 tokens) are cached — on Sept 19 the
+second and third wallet questions read 1,992 cached tokens and the second and third sends
+1,907 — while chat, lessons and quick actions on the quick model are too short to cache at
+all (`0/0`), silently and with no error. `test/cache.test.ts`.
+
+**The eval.** `python3 scripts/eval.py` replays 20 questions against the deployed worker —
+10 chat, 5 screen, 3 send-prepares on devnet, 2 lesson turns — and prints a pass table
+(case, kind, result, words, cache read/write, ms, failed checks). The questions are
+`scripts/eval/cases.json`, written by the unit test `EvalCasesTest` from the app's own
+prompt code, so they are byte for byte what the phone sends; screen listings are written in
+the phone's listing format from screens walked on the Seeker, with made-up balances. It
+checks properties: the reply is the JSON the app reads, say is within its cap, no full
+address, on a wallet screen every number is one the screen shows, point_at is a real id,
+the needed facts are named (Minos, Abuja, Argentina, Tokyo's hour), a lesson turn has a
+check question and a verdict, and a send proposes exactly what was said and `/send/prepare`
+answers it (never confirm, build or sign). It signs in as its own throwaway wallet — an
+ed25519 key made by the script (RFC 8032, standard library) and kept with a random device id
+in the git-ignored `scripts/eval/.state.json` — so its talks and memory are never the
+phone's; Free gives it 20 welcome talks and 30 a month, `HEYLANA_JUDGE_CODE` lifts that.
+Cloudflare refuses Python's default User-Agent (error 1010), so it sends `heylana-eval/1`.
+Twenty /chat calls a full run; `--skip` and `--only` take case ids. First live run, Sept 19:
+19 of 19 passed (chat-opinion left out to keep the task within its call budget).
+
 **Answers have a word cap, enforced once.** `brain/AnswerLength`: a signing
 explanation is two sentences under 40 words (the prompt asks for it); everything else
 keeps 1 to 3 short sentences with 60 words as the app's line. A `say` over its cap is

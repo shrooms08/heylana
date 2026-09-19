@@ -54,6 +54,22 @@ work in the app and over any app; over Solana's docs or Playground in the browse
 this" explains the paragraph or code in view and "why" goes one level deeper. Each lesson
 is taught only from Heylana's own hand-checked notes, never from the screen.
 
+When an answer comes from somewhere you can read — Heylana's Solana library, the table of
+known errors, a lesson's topic, or the web page you are on — up to two small chips sit under
+it with the source's name ("Solana Cookbook: priority fees", "Anchor docs: account
+constraints"); a tap opens that page in the browser. The link is only ever on the chip:
+Heylana never reads a web address aloud, and says "the Anchor docs have more" instead. An
+answer with chips stays up ten seconds after it is said, so there is time to tap one.
+
+Asked about a long page, Heylana answers from the part on screen and says so: "That's what's
+on screen; there's more below." It never claims to have read the whole page; if the answer
+is further down, it says it can only see what's on screen and offers the page's own chip.
+
+When something fails, Heylana says one of five plain things and nothing else: "I can't reach
+my brain right now. Try again in a moment.", "Voice is over its limit; text only for now.",
+"I didn't catch that.", "No connection." or "Something went wrong on my side." A
+provider's own error text never reaches the screen or the voice.
+
 On the buddy, a small label on its box says what it is doing — reading, thinking,
 preparing, simulating, approve in wallet, sent, working — and touching the buddy while it
 talks stops it mid-sentence.
@@ -120,10 +136,13 @@ Exactly what leaves the phone, and where it goes:
    600 characters, forgotten after ten minutes or when the buddy stops) and, on
    the first answer after the buddy starts, the name you asked to be called.
    Questions asked in the app itself carry no screen at all.
-2. **Your voice, only while you hold the buddy or use the mic in the app** — to **Deepgram**, to be written
-   down. The phone connects to Deepgram directly with a key that stops working
-   after two minutes. Deepgram is also sent a fixed list of Solana words to listen
-   for; never anything from your screen.
+2. **Your voice, only while you hold the buddy or use the mic in the app** — to **Deepgram**
+   and, when it is listening (it is unless switched off on Heylana's server or in a debug
+   build), **AssemblyAI**, to be written down. The phone connects to each directly with a
+   pass that stops working within two minutes (AssemblyAI's opens one session only); the
+   phone's own recogniser listens too, and the best transcript is used. Both are also sent
+   a fixed list of Solana words to listen for; never anything from your screen. The app's
+   Privacy screen names AssemblyAI exactly when it is listening.
 3. **The text of the spoken answer** — through Heylana's server to **Deepgram**
    (Aura), to become speech. (Heylana's server can be set to use Google's Gemini
    instead; the app's own privacy line always names the one in use.) Conversation mode, when enabled, uses Gemini Live's
@@ -184,7 +203,7 @@ yet (it never sends a second copy); or not found — check your wallet.
     phone model. No screen text, no screenshots, no taps, no name, and every Solana
     address and key is removed before it leaves.
 
-Never: the screen never goes to Deepgram or Google's voice. None of Heylana's own keys is
+Never: the screen never goes to Deepgram, AssemblyAI or Google's voice. None of Heylana's own keys is
 ever on the phone; the only key it ever holds is one you typed in yourself. What Heylana reads off the screen is used for one request and then
 dropped — never logged, never saved. With "use my own key" (Advanced), your questions
 still go through Heylana's server: your key goes with each one, kept encrypted on the phone
@@ -223,13 +242,18 @@ the wallet's own screen.)
 3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model, holds every key, and for Solana questions runs lookups first (balances, prices, addresses, activity, names, send checks).
 4. The model replies with strict JSON: what to say, which element to point at, and whether this is a multi-step task.
 5. A separate, untouchable window draws the pointer; during a task each step re-reads the screen.
-6. Both Deepgram and the phone's recogniser listen from the long press and the better transcript wins; answers stream back as audio from Gemini TTS, and if the voice cannot be had the answer is shown as text instead.
+6. Deepgram, AssemblyAI and the phone's recogniser all listen from the long press (the two cloud ears share one microphone); the first cloud final waits a moment for the other and the more confident wins, the phone's words are the fallback; answers stream back as audio from Deepgram Aura, and if the voice cannot be had the answer is shown as text instead.
 7. Wallets connect over Mobile Wallet Adapter to Seed Vault; signing a message earns a 30-day session sealed by the worker.
 8. Plans, talks and profiles live in Workers KV, keyed by wallet, or by install id without one.
 9. Pro: the phone builds a USDC or SKR transfer with a unique reference, Seed Vault signs and sends it, and the worker verifies it on chain before extending Pro.
 10. The worker enforces the daily caps and monthly talk limits, and scrubs every error of anything secret.
 
 ## Known issues
+
+- **The knowledge base's search runs on Workers AI's free allowance** (10,000 "neurons" a
+  day). When it is used up, searches fail until midnight UTC: answers still come, without a
+  source chip, and the worker's log says `kb_error: "4006"`. Moving the Cloudflare account to
+  Workers Paid removes the limit.
 
 - **.skr names are not looked up.** Solana Mobile documents no public reverse-lookup
   API (names are AllDomains records read on mainnet), so the "What should I call

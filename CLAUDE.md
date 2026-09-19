@@ -48,7 +48,8 @@ xyz.heylana.app
 │   ├── HeylanaAccessibilityService  on-demand screen reads, no continuous work
 │   ├── ScreenSnapshot       the element list + its text rendering for the model
 │   ├── Keyterms             the names the ears are told to expect
-│   └── TapWatch             the rule for noticing the user act on what is pointed at
+│   ├── TapWatch             the rule for noticing the user act on what is pointed at
+│   └── PageExtent           whether the page carries on below the screen, and the line that says so
 ├── wallet/                  the user's wallet, their plan, and paying for Pro
 │   ├── SeedVault            Mobile Wallet Adapter: connect + sign-in message, sign-and-send the payment
 │   ├── WalletApi            /wallet/challenge, /wallet/verify, /me, /judge, /pay/*
@@ -74,6 +75,8 @@ xyz.heylana.app
 │   ├── SendGuard            recipient and amount from the user's own words; the 25% rule
 │   ├── AddressText          every address shortened to first4…last4 before it is shown or spoken
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
+│   ├── Source               Sources: the chips under an answer (title, page), and no URL ever spoken
+│   ├── PlainError           the five plain lines every failure becomes
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
 │                            (plus Conversation, the short-term memory)
 ├── skills/                  per-app reference notes, loaded only while that app is in front
@@ -107,7 +110,8 @@ xyz.heylana.app
 │   ├── VoiceFailure         why it stayed silent: 429 daily_cap, quota, timeout, error
 │   ├── DeepgramEars         PCM16 over a websocket while the buddy is held, with keyterms
 │   ├── Listener             the phone's own recogniser, behind the same Ears interface
-│   ├── EarsRace             both ears listen from the long press; this picks whose words win
+│   ├── AssemblyEars         the third ear: AssemblyAI streaming, fed by Deepgram's microphone
+│   ├── EarsRace             all three ears listen from the long press; this picks whose words win
 │   └── MicPermissionActivity  invisible one-shot prompt for the microphone
 ├── ui/                      how everything looks
 │   ├── HeylanaTokens        every colour, size, radius, duration and typeface
@@ -366,6 +370,10 @@ knows one address — `heylana.proxyUrl` in `local.properties`, into `BuildConfi
   phone can start playing before the sentence is finished.
 - `/stt-token` — a Deepgram key that stops working after two minutes, so the
   phone can open the listening socket itself without holding the real one.
+- `/stt-token-aai` — a single-use AssemblyAI streaming token (`ASSEMBLYAI_API_KEY`
+  secret; good for 60 seconds, one session of at most 120), minted at every touch
+  of the disc; 600 a device a day. Without the secret it answers `503 not_set_up`
+  and the third ear sits out. `/me`'s `voice.ears` says which ears the worker lends.
 
 Every request carries `X-Heylana-Device`. On **Free** each device gets 150 questions,
 150 spoken answers and 300 pairs of ears a day; on **Pro and Judge** questions and spoken
@@ -511,7 +519,11 @@ worker's `/kb/ingest`, which embeds each chunk (its title in front) with Workers
 dimensions, cosine; bindings `AI` and `KB` in wrangler.toml), then tries three searches.
 `/kb/ingest` and `/kb/search` exist only with `KB_ADMIN_SECRET` in `X-Heylana-KB-Admin`
 (git-ignored copy in `scripts/kb/.admin_secret`); nothing a user says or reads is ever
-written to the index. Built on Sept 19: 798 answers, 404 doc pages, 150 release entries →
+written to the index. Every search embeds the query on Workers AI's free allowance
+(10,000 neurons a day, the account's, shared with anything else on it): once it is spent
+(Sept 19 afternoon), searches fail with `4006` until midnight UTC — answers still come, with
+no source chip, the chat log says `kb_error: "4006"` and the admin search `503
+kb_unavailable`. Workers Paid lifts it. Built on Sept 19: 798 answers, 404 doc pages, 150 release entries →
 3,300 chunks, about 956k tokens. `search_solana_kb(query, k=3)` (`worker/src/kb.ts`, R0) is
 in the default Solana tool set — so it is offered whenever Solana knowledge is loaded (a
 Solana app, Solana words, a wallet or swap screen) — and on every lesson turn
@@ -524,8 +536,8 @@ the tool tells the model to name the title in one short phrase. The chat log car
 "Error Code: … Error Number: …" line, a bare name like AccountDidNotDeserialize, "custom
 program error: 0x…", a runtime message like "Blockhash not found", an MWA `ERROR_…` or a Seed
 Vault `RESULT_…` — is looked up in a built-in table first and answered on the phone with no
-model call and no screen read: "<name> (<code>): <cause> Usual fix: <fix> More: <one link>"
-(`error: table hit name=… where=said model=not_asked`). Asked about an error ("explain this
+model call and no screen read: "<name> (<code>): <cause> Usual fix: <fix> The Anchor docs have
+more." — the link is the answer's chip (`ErrorTable.source`), never words (`error: table hit name=… where=said model=not_asked`). Asked about an error ("explain this
 error", "why did it fail", "what causes…"), the buddy looks for one on the screen the same way
 (`where=screen`). The table's codes and messages were copied from source on Sept 19: all 82
 Anchor framework errors (otter-sec/anchor v1.2.0 `lang/error/src/lib.rs`, the same as
@@ -536,10 +548,53 @@ runtime's instruction and transaction error texts (solana-sdk `instruction-error
 client's session errors, and Seed Vault's `RESULT_*` codes (`WalletContractV1.java`); causes
 and fixes are Heylana's words, every link checked to answer. Text that reads like an error
 but isn't in the table (a program log, a failed simulation) goes to the quick model with
-`search_solana_kb` alone and `HeylanaPrompt.ERROR_LINE` — cause, usual fix, one link from the
-result used, or, if nothing fits, to ask on solana.stackexchange.com with the full error, the
-program id and the instruction that failed (`brain: mode=quick why=explain_error`).
-`ErrorTableTest`.
+`search_solana_kb` alone and `HeylanaPrompt.ERROR_LINE` — cause, usual fix, where to read more
+named in a few words with its url in `cite`, or, if nothing fits, to ask on Solana Stack
+Exchange with the full error, the program id and the instruction that failed (`brain:
+mode=quick why=explain_error`). `ErrorTableTest`.
+
+**Source chips (`brain/Source`).** An answer that used the knowledge base, the error table, a
+lesson or the web page in front gets up to two chips under it — the source's name, at most 40
+characters ("Solana Cookbook: How to Add…", "Anchor docs: account constraints", "Page:
+solana.stackexchange.com/…") — and a tap opens the page in the browser (`source: opened
+host=…`). The model is told to name a source in a few words in `say` and put the urls it used
+in `cite`; the worker turns `cite` into `sources` (`withSources`, `worker/src/kb.ts`), keeping
+only urls the knowledge base really returned for this question, at most two, and — when it
+searched but cited nothing — the closest result scoring at least 0.7 (`sources`,
+`sources_from: cite|top|none`, `kb_error` in the chat log). The error table's line names the
+docs ("The Anchor docs have more.") and its link is the chip; every lesson note has `link` and
+`link_title` in its front matter (checked on Sept 19) and that chip rides under every turn; a
+browser's address bar (`ScreenSnapshot.pageAddress`) gives the page's chip on a one-shot
+answer. No URL is ever spoken or shown in the words: `Sources.spoken` strips them from every
+parsed reply and in `HeylanaVoice.speak`, and a docs-site link the model wrote anyway becomes a
+chip. Overlay chips are glass pills under the answer (`ChatPanelView.showSources`, cleared by
+every close and every new question); the app's are flat chips in the answer strip. An answer
+with chips stays up `SOURCE_LINGER_MS` (10s) after it is said instead of 1s, and a teaching
+flight shows them with its last sentence and lingers before flying home. `SourcesTest`.
+
+**Long pages (`screen/PageExtent`).** A read notes `more_below` (`screen: … more_below=`) when
+the app in front's page carries on past the screen: a scrolling node at least 40% of the
+window's height that can still scroll down or forward, or an element the tree reports below
+the window (only its bounds are looked at; it is never read). Asked about such a page (anything
+over a browser, or page/article/thread words elsewhere), the question carries
+`HeylanaPrompt.MORE_BELOW_LINE`; the phone appends "That's what's on screen; there's more
+below." to the answer, or, when the model sets `unseen: true` (the answer is not in the part on
+screen), puts the page's chip first instead (`page: more below line=added|not_added
+why=unseen page_chip=…`). It never claims to have read the whole page. `PageExtentTest`.
+
+**Plain errors (`brain/PlainError`).** No upstream text ever reaches the screen or the voice.
+Every failure is one of five lines: "I can't reach my brain right now. Try again in a moment."
+(the model down, over its limit, overloaded, a 429 or 529, or a timeout), "Voice is over its
+limit; text only for now." (`/tts` 429 daily_cap or quota, under the answer), "I didn't catch
+that." (an ear's error; the microphone-permission line is kept, a recogniser network error is
+"No connection."), "No connection." (no network) and "Something went wrong on my side." (the
+worker's own failures and any other refusal). Heylana's own caps (talks_cap, daily_cap), an
+ended session and the own-key refusals keep their lines (`QuotaMessage`). The worker no longer
+relays the model's error body: a failed model is `502 brain_unavailable` with `upstream_status`
+only, and an unhandled error is `500 internal`. What happened goes to Logcat (`chat: error:
+kind=… status=… reason=…`) and Sentry (a `problem` breadcrumb, and an event for Heylana's
+side) — never a body. `PlainErrorTest`; the stub's `--brain-down`, `--server-error` and
+`--voice-limit` show each line without spending.
 
 **Solana knowledge costs nothing when it is not needed.** `SolanaCore` (about 350
 tokens plus its rules) and the tool definitions go only when the app in front is a
@@ -864,7 +919,8 @@ tools still run on Heylana's RPC. The voice and the ears keep Heylana's keys.
 the whole app can be exercised without spending anything. It also fakes the
 wallet, `/me`, `/judge` (code `stub-judge`) and `/pay/*` routes — without checking
 any signature or reading any chain — and `--talks-cap` makes `/chat` answer
-`429 talks_cap`; `--skr-name <name>` prefills the profile as a .skr lookup would; `--send-reply` makes `/chat` propose sending 0.05 USDC to a fixed treasury address and answers `/send/*`, so the strip can be checked without a model — never tap confirm against it. Never approve a Seed Vault payment against the stub: the wallet
+`429 talks_cap`; `--brain-down` (`/chat` 502 brain_unavailable), `--server-error` (`/chat` 500
+internal) and `--voice-limit` (`/tts` 429 quota) show the plain error lines; `--skr-name <name>` prefills the profile as a .skr lookup would; `--send-reply` makes `/chat` propose sending 0.05 USDC to a fixed treasury address and answers `/send/*`, so the strip can be checked without a model — never tap confirm against it. Never approve a Seed Vault payment against the stub: the wallet
 would send a real transaction to the stub's made-up treasury. Debug builds carry a
 network config that lets them reach it on loopback and nothing else.
 
@@ -896,16 +952,29 @@ after the release (the Mac's speaker waking). "Stop" with nothing running now ju
 Heylana and puts the box away, with no model call (`ask: stop with nothing running
 model=not_asked`).
 
-**Both ears listen, every time.** At the long press the phone's own recogniser
-starts, and so does Deepgram — whose key and socket were already being fetched
-from the first touch of the disc, and whose microphone buffers until the socket
-is up. On this Seeker the two share the microphone (`deepgram: microphone open
-silenced=false`). Once the user lets go, `voice/EarsRace` decides: Deepgram's
-words win if they arrive within 1.5 seconds of the release; otherwise the phone's
-are used as soon as Deepgram is known to have nothing, or when that window closes;
-neither is nothing heard; nothing waits past 4 seconds. A Deepgram that cannot
-work is simply out of the race — never a reason to hear nothing. The trace says
-`ears=deepgram|android won reason=…`.
+**All three ears listen, every time.** At the long press the phone's own recogniser
+starts, and so do Deepgram and AssemblyAI — whose passes and sockets were already being
+fetched from the first touch of the disc. There is one recorder: `DeepgramEars` owns it and
+hands every piece, pre-roll first, to `AssemblyEars.feed` as well (`tap`), gathered into
+100ms messages; a failed Deepgram socket leaves it recording for AssemblyAI, and with
+Deepgram switched off it runs `micOnly`. On this Seeker the recorder and the recogniser share
+the microphone (`deepgram: microphone open silenced=false`). On release AssemblyAI gets the
+same 400ms of trailing audio, waits up to 1.5s for a socket still opening (a cold token and
+socket take about 1.7s; what was said is kept meanwhile), then `ForceEndpoint` and up to
+1.5s for the turn, then `Terminate` (`assemblyai: final after_ms=… words=… confidence=…`).
+Once the user lets go, `voice/EarsRace` decides: a cloud final within 2 seconds of the
+release waits up to 400ms (`COMPARE_MS`) for the other cloud ear's, and the higher
+confidence wins (Deepgram's is its phrases' mean, AssemblyAI's its words'; a tie goes to the
+first); otherwise the phone's words are used as soon as both cloud ears are known to have
+nothing, or when that window closes; none is nothing heard; nothing waits past 4 seconds. An
+ear that cannot work is simply out of the race. The trace says `ears=deepgram|assemblyai|android
+won reason=… confidence=… ms=… all=[deepgram=0.91/820ms assemblyai=0.95/640ms android=…]`.
+Debug: Settings → Ears cycles auto, Deepgram, AssemblyAI, Phone (`forceEar`; the one chosen is
+the only ear that listens), and `adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es ears
+assemblyai` does the same; `--ez ears_capture true` keeps every ear's words from the last hold
+in the app's private `files/ears_capture.txt` for counting word errors (`false` deletes it) —
+never in a log. Measured Sept 19, ten holds through the Mac's speaker: AssemblyAI won 6,
+Deepgram 4, the phone 0; the winning words had no errors.
 
 **One voice queue.** `HeylanaVoice` plays its lines one at a time, in order
 (`voice/VoiceQueue`, a mutex so there is only ever one writer on one `AudioTrack`): a new line

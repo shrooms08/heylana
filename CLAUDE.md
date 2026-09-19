@@ -128,6 +128,28 @@ xyz.heylana.app
 
 ## Look and feel
 
+**The palette (polish-4) is Glance's colour rules**, from `design/refs/glance-design-guide.md`
+(its colours only; not its fonts or components): background `#0A0A0E`; one accent `#5B8CFF`
+(hover `#7BA3FF`, words on it `#08122C` — never white, which would be 3.16:1 — accent words
+`#93B3FF`, soft fill accent 14%); words `#F4F4F6`, `#C8C8D2`, muted `#8B8B96`; status only
+`#6FE39F`, `#FF9F45`, `#FF7E6E`; borders white 9%, white 13% and solid `#2F2F3A`; chip fill
+`#1D1D25`. Everything that was purple follows the accent: the mic, the listening ring, the
+beam, the progress rail, the pointer's box and arrow, selected states, the glass streak (the
+shader takes it as the `streakColour` uniform; `auroraStops` is the accent's family). The
+values exist only in `ui/HeylanaTokens` and `ui/theme/Theme.kt` (which reads the tokens); the
+unused template `res/values/colors.xml` is gone, and the launcher icon's XML is the only other
+colour in the repo. In-app screens (`FlatPage`) sit on two fixed, dithered radial glows —
+the accent at 8% on the top-right corner (60% × 40% of the screen), 5% on the bottom-left
+(`AppGlow`); the overlay has none. The orb is white everywhere — Home, the voice screen and the
+disc in every live state: the ink (`orbInk`) with the library's depth shading and a faint accent
+cast (`ORB_CAST` 30%, from `ORB_CAST_FROM` 0.78 of the way out) on the outermost ring only
+(`AppOrb.inkAt`, `OrbPainter.inkAt`; `OrbCastTest`). Numbers — balances, amounts, prices,
+counts, the plan's talks, the voice timer — are the platform monospace with tabular figures
+inside Outfit text (`NumberRuns` finds them, `monoNumbers` for Compose, `NumberText` for the
+overlay's TextViews; digits inside a word or a shortened address are left alone;
+`NumberRunsTest`). Contrast on `#0A0A0E`: text 17.99, text-2 11.90, muted 5.86 (4.97 on a chip,
+the worst place), accent 6.25, accent text 9.54, on-accent on the accent 5.86 — all AA.
+
 **Tokens live in `ui/HeylanaTokens`, and nothing that draws carries its own
 values.** Colours, radii, spacing, durations, type sizes and weights all come
 from there. A magic number in a view is a bug: if a value is a design decision,
@@ -176,8 +198,8 @@ over black 9.6:1. With "Darker glass" (30% more black) over white: text 2.61:1, 
 into `GlassSpec.darkerGlass` at start and when the switch changes, read by each surface
 as it draws). Debug states has a "darker glass" button and `-e darker on` for adb.
 
-**A purple light streak lies behind the glass.** Variant C with motion
-(`design/refs/liquid_glass_motion_render.py`, the GIF): #8F5BFF at 75% added into the
+**A light streak in the accent lies behind the glass.** Variant C with motion
+(`design/refs/liquid_glass_motion_render.py`, the GIF, where it was purple): the accent at 75% added into the
 surface's own backing, in the shader, where the lens samples — so the rim bends it like
 everything else. Its lines run at 122° and it travels along 32°: a gaussian 30dp wide
 breathing ±8dp once a pass, plus a trail 90dp behind at 35% and 55dp wide, from fully
@@ -197,11 +219,11 @@ geometry (MIT): `borderPathCoord` (arc length clockwise from the top centre, dis
 inside the border, perimeter — a circle is a rounded rect whose corners meet), the
 piecewise `stopsAlpha`, and the rotate family's `beamMaskStops` window (fully lit 52% to
 80% of a lap, soft tails from 30% and to 95%), in AGSL as `BeamShader`. The lit window
-carries the aurora tokens (#8F5BFF → #6B3BFF → #35E0E8 → #FF9A4D) with a gaussian glow
+carries the aurora tokens (the accent's family: #5B8CFF → #7BA3FF → #93B3FF → #5B8CFF) with a gaussian glow
 across the rim (6dp on panels, 4dp on the disc) that spills a little outside, one lap
 every 1.6s. Listening, thinking and working light it on the box, the strip, the task
 HUD and the disc; speaking lights it at 35% plus 65% of the playback level. While it is
-lit the purple streak gives way; idle-open, no beam and the streak drifts. The overlay
+lit the streak gives way; idle-open, no beam and the streak drifts. The overlay
 hands the panel its state from the disc's look (`BuddyOverlayView.updateBeam`); the disc
 works out its own. border-beam has no golden vectors (its ports were checked by pixel
 harness), so `BorderBeamTest` is a phase test plus the spec's stops. Debug states:
@@ -259,12 +281,12 @@ with two corrections: Home says "Hi, <name>. What do you need?", and the Advance
 Debug builds open any screen with `-e screen home|sign_in|permissions|voice|skills|advanced|privacy|settings|learn|memory`.
 
 **Colours live in `ui/theme/HeylanaTheme` and nowhere else; the type is Outfit only.**
-`HeylanaPalette` has Dark (the default: pure black) and Light (white); Settings →
+`HeylanaPalette` has Dark (the default: `#0A0A0E` with its two glows) and Light (white); Settings →
 Appearance switches them (`HeylanaSettings.glassMode`), and the status and navigation icons
 follow.
 
 **The app is flat, in the style of the Gemini Android app; the liquid glass is the
-overlay's alone.** Every in-app surface is `ui/app/FlatSurface`: white 6% on black, 16dp
+overlay's alone.** Every in-app surface is `ui/app/FlatSurface`: white 6% on the background, 16dp
 corners, and no border, blur, rim, shadow, streak, beam or goo. Rows are a 24dp icon and a
 16sp label; chips and the message bar are flat pills at white 8%; the accent mic is
 unchanged. The greeting is "Hi, <name>." small above "What do you need?" at 32/300. The menu
@@ -278,8 +300,8 @@ the goo; the one `GlassSpec` line in Settings is the overlay's "Darker buddy gla
 SwiftUI port draws a `displaySize`: the 64px tuning's frame, scaled inside the canvas, every
 dot a filled circle in the engine's z-order with its radius and alpha, coloured by the
 library's ink ramp (`inkColor` in core.ts: 8-bit grey mirrored on a dark page, or a tint
-faded toward the page with depth). The app's tint is the aurora, by each dot's angle,
-turning once every 12 seconds. States: idle is `breathing` at half its preset pace,
+faded toward the page with depth). The app's tint is the ink, white, with a faint accent
+cast on the outermost ring. States: idle is `breathing` at half its preset pace,
 thinking is `working`, speaking is `composing`, listening is `listening`; each keeps its own
 clock, speeded and swelled by the playback or microphone level, and a change of state
 cross-fades over 300ms. It is 200dp on Home and 48dp in the voice screen's header; no mark
@@ -1584,12 +1606,11 @@ its layout params, never detaches it. Debug states shows both sizes side by side
 
 **The mark dissolves into an orb.** Idle and pointing show the mark. Listening,
 thinking, working and speaking dissolve it (300ms, `ORB_DISSOLVE_MS`) into a
-thinking-orbs state: listening is `listening` (wave, glow tint) with the mic ring
-breathing; thinking is `breathing` (the ring, coloured by the aurora stops turning
-once every six seconds); working — a task's next step being worked out, or a send
+thinking-orbs state, white with a faint accent cast on its outermost ring in every
+state: listening is `listening` (wave) with the mic ring breathing; thinking is
+`breathing` (the ring); working — a task's next step being worked out, or a send
 from prepare to landed (`BuddyOverlayView.setWorking`, `DiscLook.WORKING`) — is
-`working` (orbits, accent lifted toward white); speaking is `composing` (ribbon,
-glow lifted toward white) and swells with the playback level, which
+`working` (orbits); speaking is `composing` (ribbon) and swells with the playback level, which
 `HeylanaVoice` measures from the PCM (`PlaybackLevel`) and hands out as the speaker's
 play head reaches it. Back to idle, the orb reassembles into the mark.
 `orbs/OrbEngine` is a line-for-line port of the library's TypeScript frame

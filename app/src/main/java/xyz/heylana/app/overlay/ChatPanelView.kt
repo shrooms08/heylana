@@ -560,7 +560,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         )
         done.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
-            HeylanaTokens.purpleBand
+            HeylanaTokens.accentBand
         )
         confirm.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
@@ -568,7 +568,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         )
         cancel.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
-            HeylanaTokens.purpleBand
+            HeylanaTokens.accentBand
         )
         for (chip in sourceChips) {
             chip.background = GlassDrawable(context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL)
@@ -745,7 +745,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
      * question was spoken, only if the user has asked to see the words at all.
      */
     private fun say(text: String) {
-        answer.text = text
+        answer.text = xyz.heylana.app.ui.NumberText.spanned(text)
         val wanted = text.isNotBlank() && (!isVoiceMode || voiceShowsText)
         answer.visibility = if (wanted) View.VISIBLE else View.GONE
         answer.scrollTo(0, 0)
@@ -787,7 +787,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     fun showNotice(text: String) {
         streakThinking = false
         // A problem is always worth reading, whatever the user asked for.
-        answer.text = text
+        answer.text = xyz.heylana.app.ui.NumberText.spanned(text)
         answer.visibility = if (text.isBlank()) View.GONE else View.VISIBLE
         answer.scrollTo(0, 0)
         enable(true)
@@ -820,7 +820,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     fun showSession(stepNumber: Int, ofSteps: Int, withNext: Boolean = true) {
         next.visibility = if (withNext) View.VISIBLE else View.GONE
         val firstStep = shape != Shape.HUD
-        stepChip.text = context.getString(R.string.step_label, stepNumber)
+        stepChip.text = xyz.heylana.app.ui.NumberText.spanned(context.getString(R.string.step_label, stepNumber))
         rail.progress = if (ofSteps > 0) stepNumber.toFloat() / ofSteps else 0f
         morphTo(Shape.HUD) {
             if (firstStep) growEdges()

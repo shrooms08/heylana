@@ -119,14 +119,12 @@ object GlassSpec {
     // ------------------------------------------------------ purple streak
 
     /**
-     * A purple light streak behind the glass (variant C with motion, from
-     * design/refs/liquid_glass_motion_render.py): #8F5BFF at 75%, added into the
+     * A light streak in the accent behind the glass (variant C with motion, from
+     * design/refs/liquid_glass_motion_render.py, which drew it purple): [HeylanaTokens.accent]
+     * at 75%, handed to the shader as `streakColour` ([ClearGlass]), added into the
      * surface's own backing and bent by the same lens. Its lines run at 122°, so it
      * travels along 32° from off the top-left to off the bottom-right.
      */
-    const val STREAK_R = 0x8F / 255f
-    const val STREAK_G = 0x5B / 255f
-    const val STREAK_B = 0xFF / 255f
     const val STREAK_MIX = 0.75f
     const val STREAK_ANGLE_DEG = 122f
     const val STREAK_WIDTH_DP = 30f
@@ -279,6 +277,7 @@ uniform float streakWidth;
 uniform float streakTrailBehind;
 uniform float streakTrailWidth;
 uniform float streakStrength;
+uniform half3 streakColour;
 
 const float2 LIGHT = float2(-0.45, -0.89);
 
@@ -334,7 +333,7 @@ half4 main(float2 fragCoord) {
         float a = (u - streakCentre) / streakWidth;
         float b = (u - streakCentre + streakTrailBehind) / streakTrailWidth;
         float k = streakStrength * 0.75 * (exp(-a * a) + 0.35 * exp(-b * b));
-        col.rgb += half3(0.560784, 0.356863, 1.0) * k;
+        col.rgb += streakColour * k;
         col.a = clamp(col.a + k, 0.0, 1.0);
         col.rgb = min(col.rgb, half3(col.a));
     }
@@ -379,7 +378,14 @@ half4 main(float2 fragCoord) {
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 class ClearGlass {
-    private val shader = RuntimeShader(GlassSpec.AGSL)
+    private val shader = RuntimeShader(GlassSpec.AGSL).apply {
+        // The streak is the accent, from the tokens: nothing in the shader carries a colour.
+        val c = HeylanaTokens.accent
+        setFloatUniform(
+            "streakColour", android.graphics.Color.red(c) / 255f, android.graphics.Color.green(c) / 255f,
+            android.graphics.Color.blue(c) / 255f
+        )
+    }
     val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { shader = this@ClearGlass.shader }
 
     /**

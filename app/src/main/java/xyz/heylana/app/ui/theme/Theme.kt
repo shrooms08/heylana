@@ -22,76 +22,111 @@ data class HeylanaPalette(
     val mode: GlassMode,
     /** The page. */
     val ground: Color,
-    /** Words: primary, then the two quieter steps the export uses (62% and 50%). */
+    /** Words: primary (foreground), second-rank (text-2), and muted (labels, hints). */
     val ink: Color,
     val inkSecondary: Color,
     val inkTertiary: Color,
-    /** Heylana purple, and the lighter purple the export uses for icons and labels. */
+    /** Heylana's one accent, its hover and deeper shades, and accent words on the page. */
     val accent: Color,
+    val accentHover: Color,
+    val accentText: Color,
+    /** The accent at 14%: soft backgrounds, a selected row. */
     val accentSoft: Color,
     /** The accent's shaded side: the far edge of the voice screen's mic. */
     val accentDeep: Color,
-    /** Words on the accent. */
+    /** Words on the accent: never white. */
     val onAccent: Color,
-    /** Flat surfaces: cards and rows (6%), chips and the message bar (8%), the menu drawer. */
+    /** Flat surfaces: cards and rows (6%), chips and the message bar (the chip fill), the menu drawer. */
     val surface: Color,
     val surfaceHigh: Color,
     val drawer: Color,
+    /** Edges: a hairline (white 9%), a stronger one (13%), and a solid one for chips. */
+    val hairline: Color,
+    val borderStrong: Color,
+    val borderSolid: Color,
     /** The menu's dim over home. */
     val dim: Color,
-    /** The orb's aurora tint, and the glow that rises behind the voice screen. */
+    /** The voice screen's wave and glow: the accent's family. */
     val aurora: List<Color>,
+    /** The orb's dots, and the faint cast on its outermost ring. */
+    val orbInk: Color,
+    val orbCast: Color,
+    /** The two fixed glows under every in-app screen: top-right and bottom-left. */
+    val glowTop: Color,
+    val glowBottom: Color,
     /** A switch that is off. */
     val switchOff: Color,
-    /** A row that is done, and one that is not. */
+    /** Status only, never decoration: done, needs attention, failed. */
     val good: Color,
-    val warn: Color
+    val warn: Color,
+    val danger: Color
 )
 
 private fun c(argb: Int) = Color(argb)
 
-private val auroraColours = listOf(
-    c(HeylanaTokens.accent), Color(0xFFE250BE), Color(0xFFFF8A40), c(HeylanaTokens.auroraStops[2])
-)
+private val accent = c(HeylanaTokens.accent)
+
+private val auroraColours = HeylanaTokens.auroraStops.map { c(it) }
 
 val DarkGlass = HeylanaPalette(
     mode = GlassMode.DARK,
-    ground = Color(0xFF000000),
-    ink = Color(0xFFFFFFFF),
-    inkSecondary = Color(0x9EFFFFFF),
-    inkTertiary = Color(0x80FFFFFF),
-    accent = c(HeylanaTokens.accent),
-    accentSoft = Color(0xFFC9B2FF),
-    accentDeep = Color(0xFF5B2BC9),
-    onAccent = Color(0xFFFFFFFF),
+    ground = c(HeylanaTokens.bg),
+    ink = c(HeylanaTokens.textPrimary),
+    inkSecondary = c(HeylanaTokens.text2),
+    inkTertiary = c(HeylanaTokens.textSecondary),
+    accent = accent,
+    accentHover = c(HeylanaTokens.accentHover),
+    accentText = c(HeylanaTokens.accentText),
+    accentSoft = c(HeylanaTokens.accentSoft),
+    accentDeep = Color(0xFF2F5FD6),
+    onAccent = c(HeylanaTokens.onAccent),
     surface = Color(0x0FFFFFFF),
-    surfaceHigh = Color(0x14FFFFFF),
-    drawer = Color(0xFF131315),
+    surfaceHigh = c(HeylanaTokens.chipFill),
+    drawer = Color(0xFF121218),
+    hairline = c(HeylanaTokens.borderHairline),
+    borderStrong = c(HeylanaTokens.borderStrong),
+    borderSolid = c(HeylanaTokens.borderSolid),
     dim = Color(0x99000000),
     aurora = auroraColours,
-    switchOff = Color(0x33FFFFFF),
-    good = c(HeylanaTokens.ack),
-    warn = Color(0xFFFFB86B)
+    orbInk = c(HeylanaTokens.orbInk),
+    orbCast = accent,
+    glowTop = accent.copy(alpha = HeylanaTokens.APP_GLOW_TOP_ALPHA),
+    glowBottom = accent.copy(alpha = HeylanaTokens.APP_GLOW_BOTTOM_ALPHA),
+    switchOff = c(HeylanaTokens.borderStrong),
+    good = c(HeylanaTokens.success),
+    warn = c(HeylanaTokens.warn),
+    danger = c(HeylanaTokens.error)
 )
 
+/** The same flat screens on white: the accent darkened until its words read on white. */
 val LightGlass = HeylanaPalette(
     mode = GlassMode.LIGHT,
     ground = Color(0xFFFFFFFF),
     ink = Color(0xFF14121C),
-    inkSecondary = Color(0xB314121C),
-    inkTertiary = Color(0x8C14121C),
-    accent = c(HeylanaTokens.accent),
-    accentSoft = Color(0xFF6B3BFF),
-    accentDeep = Color(0xFF5B2BC9),
-    onAccent = Color(0xFFFFFFFF),
+    inkSecondary = Color(0xFF3E3E4A),
+    inkTertiary = Color(0xFF6A6A76),
+    accent = accent,
+    accentHover = c(HeylanaTokens.accentHover),
+    accentText = Color(0xFF2A56C6),
+    accentSoft = c(HeylanaTokens.accentSoft),
+    accentDeep = Color(0xFF2F5FD6),
+    onAccent = c(HeylanaTokens.onAccent),
     surface = Color(0x0F14121C),
-    surfaceHigh = Color(0x1414121C),
+    surfaceHigh = Color(0xFFF1F1F5),
     drawer = Color(0xFFF4F4F7),
+    hairline = Color(0x1714121C),
+    borderStrong = Color(0x2114121C),
+    borderSolid = Color(0xFFDADAE2),
     dim = Color(0x6614121C),
     aurora = auroraColours,
+    orbInk = Color(0xFF14121C),
+    orbCast = accent,
+    glowTop = accent.copy(alpha = HeylanaTokens.APP_GLOW_TOP_ALPHA),
+    glowBottom = accent.copy(alpha = HeylanaTokens.APP_GLOW_BOTTOM_ALPHA),
     switchOff = Color(0x2914121C),
     good = Color(0xFF15A77A),
-    warn = Color(0xFFC96A00)
+    warn = Color(0xFFC96A00),
+    danger = Color(0xFFD13B2E)
 )
 
 fun paletteFor(mode: GlassMode): HeylanaPalette = if (mode == GlassMode.LIGHT) LightGlass else DarkGlass

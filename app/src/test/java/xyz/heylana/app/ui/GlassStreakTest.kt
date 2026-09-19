@@ -41,16 +41,16 @@ class GlassStreakTest {
     }
 
     @Test
-    fun `colour is #8F5BFF mixed at 75 percent, and the shader's constants agree`() {
-        assertEquals(0x8F / 255f, GlassSpec.STREAK_R, 1e-6f)
-        assertEquals(0x5B / 255f, GlassSpec.STREAK_G, 1e-6f)
-        assertEquals(1f, GlassSpec.STREAK_B, 1e-6f)
+    fun `colour is the accent from the tokens mixed at 75 percent, and the shader's constants agree`() {
         assertEquals(0.75f, GlassSpec.STREAK_MIX)
         val agsl = GlassSpec.AGSL
         assertTrue(agsl.contains("float u = local.x * 0.848048 + local.y * 0.529919;"))
         assertEquals(0.848048f, GlassSpec.STREAK_COS, 1e-6f)
         assertEquals(0.529919f, GlassSpec.STREAK_SIN, 1e-6f)
-        assertTrue(agsl.contains("half3(0.560784, 0.356863, 1.0)"))
+        // No colour written into the shader: the streak's comes in as a uniform, set from the accent.
+        assertTrue(agsl.contains("uniform half3 streakColour;"))
+        assertTrue(agsl.contains("col.rgb += streakColour * k;"))
+        assertTrue(!agsl.contains("0.560784"))
         assertTrue(agsl.contains("streakStrength * 0.75 * (exp(-a * a) + 0.35 * exp(-b * b))"))
     }
 

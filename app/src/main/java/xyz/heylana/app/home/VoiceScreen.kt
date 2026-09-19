@@ -55,6 +55,7 @@ import xyz.heylana.app.ui.app.Icon
 import xyz.heylana.app.ui.app.LibraryOrb
 import xyz.heylana.app.ui.app.OrbMode
 import xyz.heylana.app.ui.app.tap
+import xyz.heylana.app.ui.theme.HeylanaMono
 import xyz.heylana.app.ui.theme.HeylanaType
 import xyz.heylana.app.ui.theme.LocalHeylana
 import kotlin.math.PI
@@ -132,7 +133,7 @@ fun VoiceScreen(
             val h = size.height
             drawRect(
                 Brush.radialGradient(
-                    0f to palette.accentSoft.copy(alpha = 0.95f),
+                    0f to palette.accentHover.copy(alpha = 0.95f),
                     0.38f to palette.accent.copy(alpha = 0.55f),
                     0.62f to palette.accentDeep.copy(alpha = 0.22f),
                     0.82f to palette.accent.copy(alpha = 0f),
@@ -171,7 +172,8 @@ fun VoiceScreen(
             Text(
                 MicPress.clock(shownMs),
                 Modifier.fillMaxWidth(),
-                style = HeylanaType.display,
+                // A ticking number: monospace with tabular figures, so it does not jitter.
+                style = HeylanaType.display.copy(fontFamily = HeylanaMono, fontFeatureSettings = "tnum"),
                 color = palette.ink,
                 textAlign = TextAlign.Center
             )
@@ -249,7 +251,7 @@ private fun BigMic(voice: VoiceSession, level: Float, label: VoiceLabel, onNeedM
             .drawBehind {
                 drawRect(
                     Brush.radialGradient(
-                        0f to palette.accentSoft,
+                        0f to palette.accentHover,
                         0.52f to palette.accent,
                         1f to palette.accentDeep,
                         center = Offset(size.width * 0.36f, size.height * 0.30f),

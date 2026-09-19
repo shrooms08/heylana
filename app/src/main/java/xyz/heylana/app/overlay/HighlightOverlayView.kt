@@ -57,16 +57,16 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
     }
 
     private val boxPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = PURPLE
+        color = POINTER
         style = Paint.Style.STROKE
     }
     private val arrowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = PURPLE
+        color = POINTER
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
     }
     private val headPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = PURPLE
+        color = POINTER
         style = Paint.Style.FILL
     }
 
@@ -272,7 +272,7 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
 
         val alpha = ((MIN_ALPHA + (1f - MIN_ALPHA) * pulse) * fade * 255f).toInt().coerceIn(0, 255)
 
-        val colour = if (acknowledged) HeylanaTokens.ack else PURPLE
+        val colour = if (acknowledged) HeylanaTokens.ack else POINTER
         boxPaint.color = colour
         arrowPaint.color = colour
         headPaint.color = colour
@@ -362,7 +362,7 @@ class HighlightOverlayView(context: Context) : FrameLayout(context) {
     )
 
     private companion object {
-        val PURPLE = HeylanaTokens.accent
+        val POINTER = HeylanaTokens.accent
         const val MIN_ALPHA = 0.6f
         const val PULSE_HALF_CYCLE_MS = 500L
         const val VISIBLE_MS = 8_000L

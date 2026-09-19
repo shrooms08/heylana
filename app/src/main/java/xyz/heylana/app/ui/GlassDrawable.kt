@@ -60,7 +60,7 @@ class GlassDrawable(
     private val blurBehind: Boolean,
     private val kind: Kind = Kind.PANEL,
     /** The refraction band. [HeylanaTokens.bandPrimary] makes a button primary. */
-    private val bandColor: Int = HeylanaTokens.purpleBand,
+    private val bandColor: Int = HeylanaTokens.accentBand,
     /**
      * Draws a shadow under the pane, inset far enough into the view that it is
      * not clipped. The view must carry [shadowPadding] on every side. The shadow is

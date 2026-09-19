@@ -16,15 +16,57 @@ object HeylanaTokens {
 
     // ------------------------------------------------------------- colour
 
-    val bg = Color.BLACK
-    val textPrimary = Color.parseColor("#F4F3F8")
-    val textSecondary = Color.parseColor("#8B89A0")
-    val accent = Color.parseColor("#8F5BFF")
-    val success = Color.parseColor("#37D9A6")
-    val error = Color.parseColor("#FF5C71")
+    /**
+     * The palette (polish-4, after the sibling product Glance's colour rules): one blue
+     * accent, three greys for words, and green, orange and red for status only. The
+     * Compose screens read the same values through `ui/theme/Theme.kt`.
+     */
+    val bg = Color.parseColor("#0A0A0E")
+    val textPrimary = Color.parseColor("#F4F4F6")
+    /** Second-rank words: summaries, chip labels. */
+    val text2 = Color.parseColor("#C8C8D2")
+    /** Labels, hints, detail lines. */
+    val textSecondary = Color.parseColor("#8B8B96")
+    val accent = Color.parseColor("#5B8CFF")
+    val accentHover = Color.parseColor("#7BA3FF")
+    /** Words on an accent fill: never white. */
+    val onAccent = Color.parseColor("#08122C")
+    /** Links and accent words on dark. */
+    val accentText = Color.parseColor("#93B3FF")
+    /** Soft accent backgrounds: a selected row. */
+    val accentSoft = withAlpha(accent, 0.14f)
+    val success = Color.parseColor("#6FE39F")
+    val warn = Color.parseColor("#FF9F45")
+    val error = Color.parseColor("#FF7E6E")
+
+    /** Hairlines and edges, glass buttons, and the solid border of chips; the unselected chip's fill. */
+    val borderHairline = withAlpha(Color.WHITE, 0.09f)
+    val borderStrong = withAlpha(Color.WHITE, 0.13f)
+    val borderSolid = Color.parseColor("#2F2F3A")
+    val chipFill = Color.parseColor("#1D1D25")
 
     /** The bloom behind an active buddy. */
-    val glow = withAlpha(Color.parseColor("#B98BFF"), 0.55f)
+    val glow = withAlpha(accentHover, 0.55f)
+
+    /**
+     * The orb's dots: the ink, shaded by depth as the library does, with a faint accent
+     * cast on the outermost ring only ([ORB_CAST], from [ORB_CAST_FROM] of the way out).
+     */
+    val orbInk = textPrimary
+    const val ORB_CAST = 0.30f
+    const val ORB_CAST_FROM = 0.78f
+
+    /**
+     * The two fixed glows under the app's screens (never the overlay): the accent at 8%
+     * centred on the top-right corner, reaching 60% of the width and 40% of the height,
+     * and at 5% on the bottom-left, each fading out so gently the page reads blue-black.
+     */
+    const val APP_GLOW_TOP_ALPHA = 0.08f
+    const val APP_GLOW_BOTTOM_ALPHA = 0.05f
+    const val APP_GLOW_TOP_RX = 0.60f
+    const val APP_GLOW_TOP_RY = 0.40f
+    const val APP_GLOW_BOTTOM_RX = 0.60f
+    const val APP_GLOW_BOTTOM_RY = 0.35f
 
     /**
      * Smoked glass. Light text on a white-tinted pane disappears over a bright
@@ -73,7 +115,7 @@ object HeylanaTokens {
     val pillHighlight = withAlpha(Color.WHITE, 0.35f)
 
     /** The refraction band that sits inside the glass near its top-left corner. */
-    val purpleBand = withAlpha(accent, 0.20f)
+    val accentBand = withAlpha(accent, 0.20f)
 
     /** The same band at full strength: what makes a button read as primary. */
     val bandPrimary = withAlpha(accent, 0.50f)
@@ -81,19 +123,14 @@ object HeylanaTokens {
     val discBorder = withAlpha(Color.WHITE, 0.12f)
 
     /** The aurora that drifts inside the thinking capsule. */
-    val auroraStops = intArrayOf(
-        Color.parseColor("#8F5BFF"),
-        Color.parseColor("#6B3BFF"),
-        Color.parseColor("#35E0E8"),
-        Color.parseColor("#FF9A4D")
-    )
+    val auroraStops = intArrayOf(accent, accentHover, accentText, accent)
 
     /**
      * The dim over the app behind the message box. Enough to hold the pane away
      * from a bright page without reading as a modal.
      */
     /** The pointer turns this colour for a moment when the user does the thing. */
-    val ack = Color.parseColor("#37D9A6")
+    val ack = success
 
     val scrim = withAlpha(Color.BLACK, 0.35f)
 

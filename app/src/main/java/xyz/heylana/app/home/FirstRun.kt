@@ -142,7 +142,7 @@ fun SignInScreen(
             if (!signedIn && !withoutWallet) {
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Continue without a wallet", style = HeylanaType.label, color = palette.accentSoft,
+                    "Continue without a wallet", style = HeylanaType.label, color = palette.accentText,
                     modifier = Modifier.tap { withoutWallet = true }.padding(8.dp)
                 )
             }
@@ -236,7 +236,7 @@ fun PermissionsScreen(rows: List<PermissionRow>, required: Boolean, onRow: (Perm
                     if (row.on) {
                         Icon(Glyph.CHECK, palette.good, size = 20.dp)
                     } else {
-                        Text(if (row.optional) "Optional" else "Allow", style = HeylanaType.label, color = palette.accentSoft)
+                        Text(if (row.optional) "Optional" else "Allow", style = HeylanaType.label, color = palette.accentText)
                     }
                 }
             }

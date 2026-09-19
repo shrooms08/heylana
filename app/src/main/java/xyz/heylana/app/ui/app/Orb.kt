@@ -51,7 +51,7 @@ object OrbDebug {
  * density, dot sizes, depth and alpha are the library's at any size. Each dot's colour is
  * the library's ink ramp: grey quantised to 8 bits and mirrored on a dark page, or, with a
  * tint, the tint faded toward the page with depth (`inkColor` in core.ts). The app's tint
- * is the aurora, by the dot's angle around the centre, turning slowly.
+ * is the ink (white on the dark page), with a faint accent cast on the outermost ring.
  */
 object AppOrb {
 
@@ -90,6 +90,19 @@ object AppOrb {
     fun tinted(c: Int, white: Double, dark: Boolean): Int {
         val w = white.coerceIn(0.0, 1.0)
         return jsRound(if (dark) c * (1 - w) else c + (255 - c) * w)
+    }
+
+    /**
+     * A dot's colour before the library's depth shading: the ink, with the faint accent
+     * cast mixed in only on the outermost ring — from [HeylanaTokens.ORB_CAST_FROM] of the
+     * way out, easing in to [HeylanaTokens.ORB_CAST] at the very edge. [outward] is the
+     * dot's distance from the centre over the outermost dot's.
+     */
+    fun inkAt(ink: Color, cast: Color, outward: Float): Color {
+        val from = HeylanaTokens.ORB_CAST_FROM
+        val x = ((outward - from) / (1f - from)).coerceIn(0f, 1f)
+        val f = x * x * (3f - 2f * x) * HeylanaTokens.ORB_CAST
+        return Color(ink.red + (cast.red - ink.red) * f, ink.green + (cast.green - ink.green) * f, ink.blue + (cast.blue - ink.blue) * f)
     }
 
     /** The aurora stops around the circle, blended and wrapping; [turn] in turns. */
@@ -162,8 +175,8 @@ fun LibraryOrb(
         val seconds = tick
         val swell = 1f + AppOrb.LEVEL_SWELL * level
         val t = { m: OrbMode -> pinnedT ?: clocks[m.ordinal] }
-        leaving?.let { drawOrb(OrbEngine.frame(AppOrb.stateFor(it), AppOrb.GEOMETRY_SIZE, t(it)), 1f - fade.value, swell, dark, plain, palette.aurora, seconds) }
-        drawOrb(OrbEngine.frame(AppOrb.stateFor(shown), AppOrb.GEOMETRY_SIZE, t(shown)), fade.value, swell, dark, plain, palette.aurora, seconds)
+        leaving?.let { drawOrb(OrbEngine.frame(AppOrb.stateFor(it), AppOrb.GEOMETRY_SIZE, t(it)), 1f - fade.value, swell, dark, plain, palette.orbInk, palette.orbCast) }
+        drawOrb(OrbEngine.frame(AppOrb.stateFor(shown), AppOrb.GEOMETRY_SIZE, t(shown)), fade.value, swell, dark, plain, palette.orbInk, palette.orbCast)
     }
 }
 
@@ -173,15 +186,16 @@ private fun DrawScope.drawOrb(
     swell: Float,
     dark: Boolean,
     mono: Boolean,
-    aurora: List<Color>,
-    seconds: Double
+    ink: Color,
+    cast: Color
 ) {
     if (alpha <= 0.01f) return
     val zoom = size.minDimension / AppOrb.GEOMETRY_SIZE * swell
     val half = AppOrb.GEOMETRY_SIZE / 2.0
     val cx = size.width / 2f
     val cy = size.height / 2f
-    val turn = seconds / AppOrb.AURORA_TURN_S
+    // How far out the outermost dot sits: the cast is measured against it.
+    val outer = frame.maxOfOrNull { kotlin.math.hypot(it.x - half, it.y - half) }?.toFloat()?.takeIf { it > 0f } ?: 1f
     for (d in frame) {
         val dx = (d.x - half).toFloat()
         val dy = (d.y - half).toFloat()
@@ -190,7 +204,7 @@ private fun DrawScope.drawOrb(
             val g = AppOrb.grey(d.white, dark)
             Color(g, g, g)
         } else {
-            val tint = AppOrb.auroraAt(aurora, atan2(dy, dx) / (2 * PI) + turn)
+            val tint = AppOrb.inkAt(ink, cast, kotlin.math.hypot(dx, dy) / outer)
             Color(
                 AppOrb.tinted((tint.red * 255).toInt(), d.white, dark),
                 AppOrb.tinted((tint.green * 255).toInt(), d.white, dark),

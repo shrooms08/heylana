@@ -605,7 +605,7 @@ private fun PlanCard(standing: Standing?, problem: String, connected: Boolean, o
             PlanText.until(standing).takeIf { standing.plan == "pro" }
         )
         lines.forEach {
-            Text(text = it, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+            Text(text = xyz.heylana.app.ui.theme.monoNumbers(it), style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
         }
 
         if (standing.plan == "free") {
@@ -709,9 +709,9 @@ private fun GoProSheet(
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
 
             quote?.let { shown ->
-                Text(text = PlanText.send(shown), style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary))
+                Text(text = xyz.heylana.app.ui.theme.monoNumbers(PlanText.send(shown)), style = glassText(HeylanaTokens.BODY_SP, HeylanaTokens.textPrimary))
                 PlanText.worth(shown)?.let {
-                    Text(text = it, style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
+                    Text(text = xyz.heylana.app.ui.theme.monoNumbers(it), style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary))
                 }
                 Text(
                     text = "Plus a small network fee, paid in SOL.",

@@ -142,7 +142,7 @@ fun AdvancedScreen(settings: HeylanaSettings, onBack: () -> Unit) {
                         inUse = false
                         line = AdvancedText.STOPPED
                         HeylanaLog.state("app: own key switched off")
-                    }, style = HeylanaType.label, color = palette.accentSoft)
+                    }, style = HeylanaType.label, color = palette.accentText)
                 }
                 if (line.isNotEmpty()) Text(line, style = HeylanaType.small, color = palette.inkSecondary)
                 Row(verticalAlignment = Alignment.Top) {

@@ -121,6 +121,55 @@ and speaks is a port of his [border-beam](https://github.com/Jakubantalik/Librar
 [liquid-gooey](https://github.com/Jakubantalik/Libraries.dev/tree/main/packages/liquid-gooey)
 (MIT licence).
 
+## Design tokens
+
+One palette, after the colour rules of Minos's sibling product Glance (its fonts and
+components are not used). The values live in two places only — `ui/HeylanaTokens` for the
+overlay and `ui/theme/Theme.kt` for the app, which reads the same tokens — and nothing else
+in the code writes a colour down.
+
+| Token | Value | Use |
+|---|---|---|
+| Background | `#0A0A0E` | Every in-app screen, under two fixed glows: the accent at 8% centred on the top-right corner (60% of the width, 40% of the height) and at 5% on the bottom-left, fading smoothly and dithered, so the page reads blue-black and never as a gradient. The overlay has no glows. |
+| Accent | `#5B8CFF` | The one brand colour: the mic button, the listening ring, the border beam, the task progress rail, the pointer's box and arrow on screen, selected rows and switches, the streak inside the glass. |
+| Accent hover | `#7BA3FF` | The lit side of the voice screen's mic and glow, and the bloom behind an active disc. |
+| On accent | `#08122C` | Words and icons on an accent fill — never white. |
+| Accent text | `#93B3FF` | Accent words on the page ("Continue without a wallet", "Allow"). |
+| Accent soft | accent at 14% | A selected row. |
+| Text | `#F4F4F6` | Primary words; the orb's dots. |
+| Text 2 | `#C8C8D2` | Second-rank words: summaries, subtitles. |
+| Muted | `#8B8B96` | Labels, hints, section heads. |
+| Success / warn / danger | `#6FE39F` / `#FF9F45` / `#FF7E6E` | Status only, never decoration: a passed simulation and a done tick, a warning, a failure. |
+| Hairline / strong / solid border | white 9% / white 13% / `#2F2F3A` | Edges; the chips' 1dp outline is the solid one. |
+| Chip fill | `#1D1D25` | Suggestion chips and the message bar. |
+
+**The orb is white.** On Home, in the voice screen and on the buddy's disc in every live state,
+the dots are the text colour with the library's own depth shading, and only the outermost ring
+takes a faint accent cast (at most 30% toward `#5B8CFF`, easing in over the outer fifth).
+
+**The glass is unchanged except its accent**: the overlay's material, smoke, rim and light
+are as before; its streak, beam and bands follow the accent.
+
+**Numbers are monospace.** Balances, amounts, prices, percentages, counts, the plan's talks
+and the voice timer are set in the phone's monospace face with tabular figures, inside
+otherwise-Outfit text (in answers, the strip, row subtitles, the Go Pro sheet and the
+overlay's box), so figures line up and ticking values don't jitter. Everything else is Outfit.
+
+**Contrast on `#0A0A0E`** (WCAG), with the worst case beside it:
+
+| Colour | On the page | Worst place | |
+|---|---|---|---|
+| Text `#F4F4F6` | 17.99 | 15.24 on a chip | AA |
+| Text 2 `#C8C8D2` | 11.90 | 10.08 on a chip | AA |
+| Muted `#8B8B96` | 5.86 | 4.97 on a chip | AA |
+| Accent `#5B8CFF` | 6.25 | 5.29 on a chip | AA |
+| Accent text `#93B3FF` | 9.54 | 8.08 on a chip | AA |
+| Success / warn / danger | 12.39 / 9.69 / 7.96 | 10.49 / 8.21 / 6.74 on a chip | AA |
+| On accent `#08122C` on the accent | 5.86 | — | AA (white on the accent would be 3.16, which is why it is not white) |
+
+The top-right glow's centre, the brightest point of the page, is `#101421`; everything above
+still clears 4.5 there (muted 5.45, accent 5.80).
+
 ## Privacy promises
 
 Nothing is read unless you ask. Heylana reads the screen only when you ask, and

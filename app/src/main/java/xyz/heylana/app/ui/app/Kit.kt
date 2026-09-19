@@ -2,6 +2,7 @@ package xyz.heylana.app.ui.app
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Text
 import xyz.heylana.app.R
 import xyz.heylana.app.ui.theme.HeylanaType
+import xyz.heylana.app.ui.theme.monoNumbers
 import xyz.heylana.app.ui.theme.LocalHeylana
 
 /** A tap with no ripple. */
@@ -65,16 +67,19 @@ fun MarkPill(subtitle: String, subtitleAccent: Boolean = false) {
         Spacer(Modifier.width(10.dp))
         Column {
             Text("Heylana", style = HeylanaType.label, color = palette.ink)
-            Text(subtitle, style = HeylanaType.tiny, color = if (subtitleAccent) palette.accentSoft else palette.inkSecondary)
+            Text(subtitle, style = HeylanaType.tiny, color = if (subtitleAccent) palette.accentText else palette.inkSecondary)
         }
     }
 }
 
-/** A suggestion chip: a flat pill, white 8%, white words. */
+/** A suggestion chip: a flat pill in the chip fill with a solid 1dp edge, white words. */
 @Composable
 fun FlatChip(glyph: Glyph, label: String, onClick: () -> Unit) {
     val palette = LocalHeylana.current
-    FlatSurface(Modifier.height(44.dp).tap(onClick = onClick), radius = 22.dp, fill = palette.surfaceHigh) {
+    FlatSurface(
+        Modifier.height(44.dp).border(1.dp, palette.borderSolid, RoundedCornerShape(22.dp)).tap(onClick = onClick),
+        radius = 22.dp, fill = palette.surfaceHigh
+    ) {
         Row(Modifier.padding(horizontal = 16.dp).align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically) {
             Icon(glyph, palette.ink, size = 18.dp)
             Spacer(Modifier.width(8.dp))
@@ -83,7 +88,7 @@ fun FlatChip(glyph: Glyph, label: String, onClick: () -> Unit) {
     }
 }
 
-/** The accent button: "Go Pro", "Save key", "Continue". A solid purple pill. */
+/** The accent button: "Go Pro", "Save key", "Continue". A solid accent pill with dark words. */
 @Composable
 fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, height: Dp = 48.dp) {
     val palette = LocalHeylana.current
@@ -121,7 +126,7 @@ fun FlatRow(
 ) {
     val palette = LocalHeylana.current
     val fill = when {
-        selected -> palette.accent.copy(alpha = SELECTED_ALPHA)
+        selected -> palette.accentSoft
         card -> palette.surface
         else -> palette.ground.copy(alpha = 0f)
     }
@@ -141,15 +146,13 @@ fun FlatRow(
             ) { Text(letter, style = HeylanaType.label, color = palette.ink) }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = HeylanaType.body, color = palette.ink)
-                if (subtitle != null) Text(subtitle, style = HeylanaType.small, color = palette.inkSecondary)
+                if (subtitle != null) Text(monoNumbers(subtitle), style = HeylanaType.small, color = palette.inkSecondary)
             }
             trailing()
         }
     }
 }
 
-/** How strongly a selected row takes the accent. */
-private const val SELECTED_ALPHA = 0.16f
 
 /** A switch: 46 × 27, accent when on. */
 @Composable

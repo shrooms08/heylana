@@ -60,6 +60,7 @@ import xyz.heylana.app.ui.app.OrbDebug
 import xyz.heylana.app.ui.app.OrbMode
 import xyz.heylana.app.ui.app.tap
 import xyz.heylana.app.ui.theme.HeylanaType
+import xyz.heylana.app.ui.theme.monoNumbers
 import xyz.heylana.app.ui.theme.LocalHeylana
 
 /**
@@ -231,7 +232,7 @@ fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
     FlatSurface(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(start = 20.dp, end = 12.dp, top = 16.dp, bottom = 14.dp)) {
             // While a lesson runs: which one, and how far along.
-            chat.lessonProgress?.let { Text("Lesson · $it", Modifier.padding(bottom = 6.dp), style = HeylanaType.label, color = palette.inkSecondary) }
+            chat.lessonProgress?.let { Text(monoNumbers("Lesson · $it"), Modifier.padding(bottom = 6.dp), style = HeylanaType.label, color = palette.inkSecondary) }
             // A fact the user stated was kept: two seconds, then gone.
             if (chat.remembered) Text(
                 xyz.heylana.app.memory.MemoryWords.REMEMBERED,
@@ -244,8 +245,8 @@ fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 shown.forEach { exchange ->
-                    if (history) Text(exchange.question, style = HeylanaType.small, color = palette.inkSecondary)
-                    Text(exchange.answer, style = HeylanaType.body, color = palette.ink)
+                    if (history) Text(monoNumbers(exchange.question), style = HeylanaType.small, color = palette.inkSecondary)
+                    Text(monoNumbers(exchange.answer), style = HeylanaType.body, color = palette.ink)
                 }
             }
             // The voice could not speak it: say why, once, under the words.

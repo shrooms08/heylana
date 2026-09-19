@@ -42,7 +42,7 @@ fun GlassCard(
             cornerRadiusDp = radiusDp,
             blurBehind = false,
             kind = GlassDrawable.Kind.PANEL,
-            bandColor = if (primary) HeylanaTokens.bandPrimary else HeylanaTokens.purpleBand
+            bandColor = if (primary) HeylanaTokens.bandPrimary else HeylanaTokens.accentBand
         )
     }
     Column(
@@ -75,7 +75,7 @@ fun GlassButton(
             cornerRadiusDp = HeylanaTokens.RADIUS_FULL_DP,
             blurBehind = false,
             kind = GlassDrawable.Kind.PILL,
-            bandColor = if (primary) HeylanaTokens.bandPrimary else HeylanaTokens.purpleBand,
+            bandColor = if (primary) HeylanaTokens.bandPrimary else HeylanaTokens.accentBand,
             selected = primary
         )
     }

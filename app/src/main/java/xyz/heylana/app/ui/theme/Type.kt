@@ -1,7 +1,10 @@
 package xyz.heylana.app.ui.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
@@ -16,6 +19,22 @@ val Outfit = FontFamily(
     Font(R.font.outfit_variable, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(400))),
     Font(R.font.outfit_variable, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500)))
 )
+
+/**
+ * Numbers only — balances, amounts, prices, counts, the plan's talks, the voice timer: the
+ * platform's monospace face with tabular figures, so columns line up and ticking values
+ * don't jitter. Everything else is Outfit.
+ */
+val HeylanaMono: FontFamily = FontFamily.Monospace
+
+/** The style laid over each number in a line of Outfit ([monoNumbers]). */
+val NumberStyle = SpanStyle(fontFamily = HeylanaMono, fontFeatureSettings = "tnum")
+
+/** [text] with every number in it drawn in [HeylanaMono], and the words left as they are. */
+fun monoNumbers(text: String): AnnotatedString = buildAnnotatedString {
+    append(text)
+    for (r in xyz.heylana.app.ui.NumberRuns.ranges(text)) addStyle(NumberStyle, r.first, r.last + 1)
+}
 
 /** The export's type, by name: sizes and weights from Heylana_App_Screens. */
 object HeylanaType {

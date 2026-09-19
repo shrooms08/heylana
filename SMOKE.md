@@ -1,14 +1,15 @@
-# Smoke test — polish-1
+# Smoke test — polish-2-knowledge
 
-For Minos, on the Seeker, with a wallet connected, the worker on **devnet** (deployed with
-prompt caching). Claude Code ran every item on the Seeker already (see the report); this is
-the final confirmation.
+For Minos, on the Seeker, with the worker deployed (it is: the knowledge base is bound and
+filled, 3,300 chunks).
 
-**Live calls this test spends: about 28 chat, about 12 tts, and ears on every hold** —
-1 for step 1, 1 for step 2, about 4 for step 4, 1 for step 5's text, 1 for step 6, and 20
-for step 7's eval. Holds for "flashlight on/off", "turn it off" and "stop" cost no chat at
-all: the phone does them itself. Never tap **Swap**, **confirm** or **Continue** on a
-review or deposit screen, and never approve anything in Seed Vault.
+**Before you start:** Heylana's Anthropic account has hit its spending limit ("You have
+reached your specified API usage limits… 2026-10-01"). Steps 1, 4 and 5 need the model:
+raise the limit in the Anthropic console first. Steps 2 and 3 work without it — the error
+table answers on the phone.
+
+**Live calls this test spends: about 4 chat (1 of them on your own key), about 5 tts.**
+Never tap Confirm or Pay.
 
 ## 0. Set up
 
@@ -19,84 +20,63 @@ Install this build, run `./scripts/a11y.sh`, open **Heylana**. Watch along with
 
 On Home, type **who made you** and tap the arrow.
 
-Expected: one line naming **Minos, an independent developer in Lagos**. Menu → **Settings**,
-scroll to the bottom: an **About** row with the same facts.
+Expected: "Minos, an independent developer in Lagos…" — Minos only, no surname. Menu →
+**Settings**, scroll to **About**: "Made by Minos, an independent developer in Lagos…".
 
-## 2. Memory keeps what you say (1 chat)
+## 2. An error on Solana Stack Exchange (no chat)
 
-1. Menu → **Memory**. If it says "Hold to turn on", hold the brain button until its ring fills.
-2. Back to Home. Type **I'm new to solana** and tap the arrow.
+1. Menu → hold **Start buddy** until its ring fills.
+2. In Chrome, open **solana.stackexchange.com**.
+3. Tap the disc, type **what causes AccountDidNotDeserialize**, tap **ask**.
 
-Expected: Heylana answers, and a small **Remembered** chip sits above the answer for about
-two seconds, then goes.
+Expected, at once and with no "Thinking…": "AccountDidNotDeserialize (3003): The account's
+data doesn't fit the struct the program reads it as. Usual fix: … More:
+https://www.anchor-lang.com/docs/features/errors". The log says `error: table hit
+name=AccountDidNotDeserialize where=said model=not_asked`.
 
-3. Menu → **Memory**. Expected: **I'm new to solana**, "You said · <today>".
-4. Back to Home. Type **forget that** and tap the arrow. Expected: **"Okay, forgotten."** at
-   once, with no "Thinking…". Menu → **Memory**: the line is gone.
+## 3. Paste an Anchor error (no chat)
 
-## 3. Hold to start, stop and remember (no chat)
+Back in Heylana, paste (or type) **Error Code: ConstraintSeeds. Error Number: 2006** into the
+message bar and tap the arrow.
 
-1. Menu. Next to **Start buddy** is a round power button. Press it and let go straight
-   away. Expected: the ring starts filling clockwise, then unwinds; nothing starts.
-2. Press and **hold** it. Expected: the ring fills all the way round in just over a second,
-   the phone ticks, and the disc pops out from the right edge of the screen. The line under
-   Start buddy says "On. Hold to stop."
-3. Look at the docked disc: it sits a finger-nail's width (6dp) from the edge, not a
-   thumb's width in.
-4. Menu → **Settings** → **Stop buddy**: hold its power button. Expected: the ring fills, a
-   tick, the disc disappears, and the row says "The buddy isn't running."
-5. Menu → **Memory**: hold the brain button. Expected: memory turns off ("Memory is off.
-   Nothing is kept."). Hold it again to turn it back on.
+Expected: "ConstraintSeeds (2006): The PDA passed doesn't match the seeds and bump… Usual
+fix: Derive it on the client with the same seeds… More:
+https://www.anchor-lang.com/docs/references/account-constraints".
 
-## 4. Teach me how to swap, to the review screen (about 4 chat)
+Also try **custom program error: 0xbbb** — the same as 3003, AccountDidNotDeserialize.
 
-1. Menu → hold **Start buddy**. Open the **Wallet** (on Mainnet if you want the real swap
-   screens; it says "Switch to Mainnet" on devnet).
-2. Hold the disc and say **teach me how to swap**, or tap it and type that.
+## 4. An answer that cites a source (1–2 chat)
 
-Expected: the disc flies next to **Swap** with a ring round it and a short reason, then
-"Tap Swap to start." Wait twenty seconds without touching anything: **nothing moves on** —
-the Wallet's prices refreshing no longer count as you doing the step.
+On Home, type **how do priority fees work** and tap the arrow.
 
-3. Tap **Swap**. Expected: the next step, with the box clear of whatever it points at.
-4. Type an amount on the keypad (for example 0.00001), then tap the **Swap** button at the
-   bottom. Expected: the review sheet opens and Heylana explains it ("Check the amounts and
-   network fee, then tap Swap to confirm").
-5. **Do not tap Swap.** Say or type **stop**. Expected: the session ends and the disc flies
-   home. Close the review with its **X**.
+Expected: a short answer that names where it came from in a few words, for example "the
+Solana docs on fees…" or "the Cookbook's 'How to Add Priority Fees to a Transaction'…". In
+the worker's log (`cd worker && npx wrangler tail --format pretty`) the chat line shows
+`"kb_hits": 3` (or 1–3).
 
-## 5. Short phrases, and texting by name (1 chat)
+## 5. Your own key (1 chat, on your key)
 
-Five short holds on the disc, saying each as your finger lands:
-**flashlight on**, **turn it off**, **stop**, **flashlight on**, **flashlight off**.
+1. Menu → **Advanced**. The note says the key is "Kept encrypted in the phone's keystore. It
+   goes to Heylana's server with each question, is used for that question only, and is never
+   stored or logged there."
+2. Enter your Anthropic key and save.
+3. In another terminal: `cd worker && npx wrangler tail --format pretty`.
+4. Start the buddy, open the Wallet, tap the disc, ask **what's my SOL balance**.
 
-Expected: each is done first time — the torch goes on and off within a moment of letting
-go, and "stop" puts the box away — with no "Thinking…" for any of them.
+Expected: an answer with your balance (the lookup tool still ran). In the tail, the chat line
+says `"key": "user"` and `"tool_calls": ["get_balances"]`, and your key appears nowhere —
+search the tail for `sk-ant`: nothing. If your key is on the same Anthropic account as
+Heylana's, it will be refused while that account is over its limit: Heylana then says
+"Anthropic refused your own key…" or shows the limit message.
 
-Then hold and say **text Ada I'm on my way** (use a real contact's first name).
-Expected the first time: Heylana asks for access to contacts; allow it. Then Messages opens
-on that person with "I'm on my way" written, and Heylana says "Your message to … is ready.
-Check it and tap send." **Don't send it**; delete the draft. "message my brother I'm
-outside" works the same way if a contact is saved as your brother (by name, nickname, or
-on your own contact card).
-
-## 6. The Kamino earn thing (1 chat)
-
-Open the **Wallet**, tap the disc, type **what does the Kamino earn thing do**, tap ask.
-
-Expected: a short answer from the real screens — your USDC goes into Kamino's lending
-market, the rate moves, you can withdraw any time, and to start it's **Start** under Earn.
-
-## 7. The eval (20 chat)
-
-On the Mac, in the repo: `python3 scripts/eval.py`
-
-Expected: a table of 20 questions, every row **PASS**, ending "20 of 20 passed, 20 /chat
-calls". The **cache r/w** column shows numbers on the screen and send rows (the task model
-reading its cached prompt) and 0/0 on the chat and lesson rows (too short to cache). The
-eval signs in as its own throwaway wallet; its key is in `scripts/eval/.state.json`.
+5. Menu → **Advanced** → switch your own key off again if you don't want to keep using it.
 
 ## Put it back
 
-Menu → hold **Start buddy** to stop it, if you want it off. Switch the Wallet back to
-devnet if you moved it (Wallet → the wallet icon → gear → Network → Devnet → Continue).
+Menu → hold **Start buddy** to stop it if you want it off.
+
+## The knowledge base, for later
+
+`./scripts/kb/build.sh` rebuilds it (fetch, chunk, embed, store) and prints the counts; it
+needs `scripts/kb/.admin_secret` (on this Mac) or `KB_ADMIN_SECRET`. To add X threads, put
+them in `scripts/kb/x_threads/` as its README says, then run `./scripts/kb/build.sh`.

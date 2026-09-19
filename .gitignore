@@ -28,3 +28,7 @@ dist/
 
 # The eval's throwaway wallet key and device id
 scripts/eval/.state.json
+
+# The knowledge base: fetched text (other people's, rebuilt by scripts/kb/build.sh) and the admin secret
+scripts/kb/data/
+scripts/kb/.admin_secret

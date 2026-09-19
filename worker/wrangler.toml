@@ -54,3 +54,14 @@ JUDGE_UNTIL = "2026-11-09"
 [[kv_namespaces]]
 binding = "CAPS"
 id = "ed3f3ca828524b4a99f10cb45cf14bcd"
+
+# The Solana knowledge base behind search_solana_kb: Workers AI embeds
+# (@cf/baai/bge-base-en-v1.5) and Vectorize keeps the chunks. Created with
+# `wrangler vectorize create heylana-kb --dimensions=768 --metric=cosine`;
+# filled by scripts/kb/build.sh through /kb/ingest (secret KB_ADMIN_SECRET).
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "KB"
+index_name = "heylana-kb"

@@ -34,6 +34,7 @@ import type { TransferPlan } from './tx.ts'
 import { rpcCall, short, unitsToDecimal } from './solana.ts'
 import { checkedBody } from './say.ts'
 import { addCacheUse, noCacheUse, withCache, withCacheTotals } from './cache.ts'
+import { ingest, searchKb, type Ai, type Kb, type VectorIndex } from './kb.ts'
 import {
   GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, deepgramSpeakUrl, deepgramVoiceFor, geminiPcmStream, geminiRequest,
   geminiVoiceFor, providerOf, rawPcmStream, voiceInfo,
@@ -76,6 +77,11 @@ export interface Env {
   MAINNET_RPC_URL?: string
   /** Optional: where unhandled errors are reported, scrubbed. Unset means nowhere. */
   SENTRY_DSN?: string
+  /** Workers AI and the Vectorize index behind search_solana_kb. Unbound means no knowledge base. */
+  AI?: Ai
+  KB?: VectorIndex
+  /** Lets scripts/kb/build.sh write to the knowledge base. Unset means nobody can. */
+  KB_ADMIN_SECRET?: string
   /** Signing certificate SHA-256 fingerprints for assetlinks.json, comma-separated. */
   ASSETLINKS_SHA256?: string
 
@@ -239,6 +245,9 @@ export default {
       return fail(405, 'method', 'GET or HEAD to this.')
     }
 
+    // The knowledge base's own door, for scripts/kb/build.sh: a secret, no device, no caps.
+    if (route === 'kb/ingest' || route === 'kb/search') return await kbAdmin(route, request, env)
+
     const methods = ROUTES[route]
     if (!methods) {
       return fail(404, 'unknown_route', 'No such route.')
@@ -342,6 +351,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       memoryRecords = relevant(kept.records).length
     }
   }
+  // How many knowledge-base chunks this question was handed, for the log.
+  const kbStats = { kbHits: 0 }
   // Every round of this question: the system prompt and tools marked cacheable, the cache use added up.
   const cacheUse = noCacheUse()
   const callModel = async (payload: unknown) => {
@@ -413,7 +424,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       text = forcedAnswer(null, tokensIn, tokensOut)
     }
   } else if (withTools) {
-    const context = toolContext(env, who)
+    const context = { ...toolContext(env, who), stats: kbStats }
     const signing = body.signing as { short?: unknown; typed?: unknown } | undefined
     if (signing && typeof signing === 'object') {
       const checkStarted = clock.now()
@@ -505,6 +516,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     ...(quickAction ? { action_class: actionRisk(quickAction.intent) } : {}),
     ...(actionsRemoved > 0 ? { actions_removed: actionsRemoved } : {}),
     // Prompt caching: tokens read from the cache and written to it, over every round.
+    kb_hits: kbStats.kbHits,
     cache_read: cacheUse.read,
     cache_write: cacheUse.write,
     ...(memoryRecords > 0 ? { memory_records: memoryRecords } : {}),
@@ -1435,8 +1447,38 @@ async function findLandedSend(env: Env, sent: PreparedSend, id: string): Promise
 }
 
 /** What the tools may use: the cluster's RPC, prices, the mints, and whose wallet. */
+/** The knowledge base, when both its bindings are there. */
+function kbOf(env: Env): Kb | undefined {
+  return env.AI && env.KB ? { ai: env.AI, index: env.KB } : undefined
+}
+
+/**
+ * /kb/ingest (a batch of chunks to embed and store) and /kb/search (what a query finds,
+ * with no model involved), for scripts/kb/build.sh. Both need KB_ADMIN_SECRET in
+ * X-Heylana-KB-Admin; without the secret set, or with a wrong one, the route does not exist.
+ */
+async function kbAdmin(route: string, request: Request, env: Env): Promise<Response> {
+  const given = request.headers.get('X-Heylana-KB-Admin') ?? ''
+  if (!env.KB_ADMIN_SECRET || !sameText(given, env.KB_ADMIN_SECRET)) return fail(404, 'unknown_route', 'No such route.')
+  if (request.method !== 'POST') return fail(405, 'method', 'POST to this.')
+  const kb = kbOf(env)
+  if (!kb) return fail(503, 'not_configured', 'The knowledge base is not bound.')
+  const body = await readJson(request)
+  if (route === 'kb/ingest') {
+    const result = await ingest(kb, body.chunks)
+    log({ route, ...('error' in result ? { error: result.error } : { upserted: result.upserted }) })
+    return 'error' in result ? fail(400, result.error, 'Bad batch.') : json(200, result)
+  }
+  const query = typeof body.query === 'string' ? body.query.trim().slice(0, 200) : ''
+  if (!query) return fail(400, 'no_query', 'query is required.')
+  const results = await searchKb(kb, query, Number(body.k ?? 3))
+  log({ route, kb_hits: results.length })
+  return json(200, { results })
+}
+
 function toolContext(env: Env, who: Who) {
   return {
+    kb: kbOf(env),
     rpcUrl: env.RPC_URL,
     mainnetRpcUrl: env.MAINNET_RPC_URL,
     jupiterKey: env.JUPITER_API_KEY,

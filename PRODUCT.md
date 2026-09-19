@@ -138,6 +138,13 @@ Exactly what leaves the phone, and where it goes:
    name in your question or on a signing screen, go to the **Solana RPC provider
    (Helius)**; token prices come from **Jupiter**; .sol names from **Bonfida's**
    public resolver. Nothing else from the screen goes to them.
+   For how Solana works, and for error messages, Heylana can search its own **Solana
+   library**: the Solana, Anchor and Solana Mobile docs, the Solana Cookbook, top answers
+   from **Solana Stack Exchange** (shared under CC BY-SA, kept with each author's name and a
+   link, and named when an answer uses one) and Agave and Anchor release notes. The few
+   search words Heylana writes go to **Cloudflare Workers AI**, inside Heylana's server, to be
+   matched against the library. The library holds public text only: nothing you say, no
+   screen and nothing about you is ever added to it.
 
 **Heylana prepares, you sign. Always.** Heylana never signs and never sends: every
 transfer is shown in Seed Vault, and only you can approve it there. Every send needs your

@@ -10,6 +10,7 @@ import { isAddress } from './base58.ts'
 import { decimalToUnits, mintInfo } from './pay.ts'
 import { resolveName } from './names.ts'
 import { LOOKUP_TOOLS } from './registry.ts'
+import { searchTool, type Kb } from './kb.ts'
 import {
   BPF_UPGRADEABLE_LOADER,
   COMPUTE_BUDGET_PROGRAM,
@@ -43,6 +44,10 @@ export interface ToolContext {
   treasury?: string
   signal?: AbortSignal
   now: () => number
+  /** The knowledge base, when this worker has one bound. */
+  kb?: Kb
+  /** Counts for the log: how many knowledge-base chunks this question was handed. */
+  stats?: { kbHits: number }
 }
 
 /**
@@ -68,6 +73,12 @@ export async function runTool(name: string, input: any, context: ToolContext): P
         return await resolveName(String(input?.name ?? ''), context)
       case 'prepare_send':
         return await prepareSend(input, context)
+      case 'search_solana_kb': {
+        const found = await searchTool(context.kb, input)
+        const hits = Array.isArray((found as any)?.results) ? (found as any).results.length : 0
+        if (context.stats) context.stats.kbHits += hits
+        return found
+      }
       default:
         return { error: 'unknown_tool' }
     }

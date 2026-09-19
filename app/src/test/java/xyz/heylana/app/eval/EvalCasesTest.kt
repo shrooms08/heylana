@@ -117,7 +117,8 @@ class EvalCasesTest {
         Case(
             id, "lesson", "quick", HeylanaPrompt.LESSON_SYSTEM,
             HeylanaPrompt.lessonMessage(pdas, 1, slices.size, slices[0], slices.getOrNull(1), instruction),
-            emptyMap(), mapOf("cap" to 39)
+            // As the app sends a lesson turn: the knowledge base for a fact the note lacks.
+            mapOf("tools" to true, "tool_names" to listOf(xyz.heylana.app.brain.ProxyClient.SEARCH_KB)), mapOf("cap" to 39)
         )
     }
 

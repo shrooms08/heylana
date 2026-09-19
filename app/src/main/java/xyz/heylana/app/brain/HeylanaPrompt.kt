@@ -133,7 +133,8 @@ object HeylanaPrompt {
             "know more. Never greet, never promote anything, never ask more than the one check question.\n\n" +
             "Reply with ONLY this JSON, no fences, no prose:\n" +
             "{\"say\":\"...\",\"check\":\"one short question\"|null,\"verdict\":\"right\"|\"partly\"|\"wrong\"|null}\n" +
-            "say never contains the check question; check is answerable in a few words, spoken or typed."
+            "say never contains the check question; check is answerable in a few words, spoken or typed. " +
+            "If the note lacks a fact you need, search_solana_kb may have it; name the source in a short phrase."
 
     /** One lesson turn: the note (the only context), the chunk in hand, and what to do now. */
     fun lessonMessage(

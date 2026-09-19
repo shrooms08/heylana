@@ -207,7 +207,9 @@ object PrivacyCopy {
             "Heylana's server looks things up before answering: your connected wallet's address, and any address " +
                 "or .skr/.sol name in your question or on a signing screen, go to the Solana RPC provider (Helius); " +
                 "token prices come from Jupiter; .sol names from Bonfida's public resolver. Nothing else from the " +
-                "screen goes to them."
+                "screen goes to them. For how Solana works and for errors, Heylana searches its own library of public " +
+                "docs, Solana Stack Exchange answers (credited to their authors) and release notes: the search words go " +
+                "to Cloudflare Workers AI, and nothing about you is ever added to the library."
         )
     )
 

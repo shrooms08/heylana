@@ -171,8 +171,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
      * no tools and no skill. The lesson caps the words itself, so nothing is sent to shorten.
      */
     suspend fun lessonTurn(message: String, topic: String, step: Int): BrainReply {
-        HeylanaLog.state("brain: mode=$MODE_QUICK why=lesson lesson=$topic step=$step screen=not_read")
-        return send(message, MODE_QUICK, system = HeylanaPrompt.LESSON_SYSTEM)
+        HeylanaLog.state("brain: mode=$MODE_QUICK why=lesson lesson=$topic step=$step screen=not_read tools=sent names=$SEARCH_KB")
+        // The note leads; the knowledge base is there for a fact it lacks.
+        val extra = JSONObject().put("tool_names", JSONArray(listOf(SEARCH_KB)))
+        return send(message, MODE_QUICK, tools = true, extra = extra, system = HeylanaPrompt.LESSON_SYSTEM)
     }
 
     /** "Why?" on the step in hand: its reason and the step again. Quick model, no screen. */
@@ -592,6 +594,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         private const val SHORTEN_MAX_CHARS = 1_200
         private const val EXPLAIN_ADDRESS = "explain_address"
         private const val RECENT_ACTIVITY = "recent_activity"
+        /** Heylana's Solana knowledge base: docs, Stack Exchange answers, release notes. */
+        const val SEARCH_KB = "search_solana_kb"
         /** The most of an unreadable raw reply the debug log carries. */
         private const val RAW_LOG_CHARS = 600
 

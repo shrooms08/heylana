@@ -493,6 +493,33 @@ it has. Usage is summed across rounds and logged with `model`, `rounds` and
 explain_address, recent_activity, resolve_name and prepare_send; their results
 never carry the RPC address, and wallets are shortened to their ends.
 
+**The Solana knowledge base (search_solana_kb).** `scripts/kb/build.sh` fetches, chunks, embeds
+and stores Heylana's Solana library: `fetch.py` writes `scripts/kb/data/*.jsonl` (git-ignored:
+other people's text, rebuilt at will) — Solana Stack Exchange (the 800 highest-scoring
+questions, each with its accepted answer else its top-voted one, question title plus answer
+as plain text, licence and author kept: CC BY-SA), solana.com/docs in English (core, programs,
+tokens, rpc) and the Cookbook from solana-foundation/solana-com (GPL-3.0), Anchor's docs from
+otter-sec/anchor (Apache-2.0; solana-foundation/anchor redirects there), the Solana Mobile docs
+(Seed Vault, MWA, dApp Store, Android; the repo states no licence, so they are quoted with a
+link), Agave's GitHub releases from the last 12 months and its CHANGELOG headings, and
+Anchor's CHANGELOG; plus the hand-picked X threads in `scripts/kb/x_threads/` (Minos supplies
+them; the README there gives the format). `chunk.py` cuts ~400-token chunks (1,600
+characters, whole paragraphs, 240 characters of overlap), leaves out legal pages, cuts code
+blocks to 30 lines and drops fragments; `upload.py` posts them in batches of 50 to the
+worker's `/kb/ingest`, which embeds each chunk (its title in front) with Workers AI
+`@cf/baai/bge-base-en-v1.5` and upserts it into the Vectorize index `heylana-kb` (768
+dimensions, cosine; bindings `AI` and `KB` in wrangler.toml), then tries three searches.
+`/kb/ingest` and `/kb/search` exist only with `KB_ADMIN_SECRET` in `X-Heylana-KB-Admin`
+(git-ignored copy in `scripts/kb/.admin_secret`); nothing a user says or reads is ever
+written to the index. Built on Sept 19: 798 answers, 404 doc pages, 150 release entries →
+3,300 chunks, about 956k tokens. `search_solana_kb(query, k=3)` (`worker/src/kb.ts`, R0) is
+in the default Solana tool set — so it is offered whenever Solana knowledge is loaded (a
+Solana app, Solana words, a wallet or swap screen) — and on every lesson turn
+(`tool_names`), never on chat or a quick action, which carry no tools. It returns up to
+three chunks at cosine ≥ 0.6 with title, url, source, licence and a 1,200-character excerpt;
+the tool tells the model to name the title in one short phrase. The chat log carries
+`kb_hits` (chunks handed over), never their text. `test/kb.test.ts`.
+
 **Solana knowledge costs nothing when it is not needed.** `SolanaCore` (about 350
 tokens plus its rules) and the tool definitions go only when the app in front is a
 known Solana app, the question has Solana words, an address or a .skr/.sol name, or

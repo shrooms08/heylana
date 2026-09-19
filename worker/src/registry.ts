@@ -93,6 +93,21 @@ export const REGISTRY: Entry[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'search_solana_kb', version: '1', risk: 'R0', kind: 'tool',
+    description: "Search Heylana's Solana knowledge base: the Solana, Anchor and Solana Mobile docs, the Solana Cookbook, " +
+      'top Solana Stack Exchange answers, and Agave and Anchor release notes. Use it for how things work, how to build ' +
+      'something, and what an error means. When you use a result, name its title in one short phrase.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', maxLength: 200, description: 'What to look up, in a few words: "priority fees", "AccountDidNotDeserialize"' },
+        k: { type: 'integer', minimum: 1, maximum: 5 },
+      },
+      required: ['query'],
+      additionalProperties: false,
+    },
+  },
   // --------------------------------------------------------- R1: user data
   {
     name: 'get_balances', version: '1', risk: 'R1', kind: 'tool',
@@ -224,7 +239,7 @@ export function definition(name: string): { name: string; description: string; i
 }
 
 /** The lookups offered with Solana questions, in the order they have always been offered. */
-export const LOOKUP_TOOLS = ['get_balances', 'get_price', 'explain_address', 'recent_activity', 'resolve_name', 'prepare_send'].map(definition)
+export const LOOKUP_TOOLS = ['get_balances', 'get_price', 'explain_address', 'recent_activity', 'resolve_name', 'prepare_send', 'search_solana_kb'].map(definition)
 
 export type Decision =
   | { decision: 'allowed'; tool: string; class: Risk }

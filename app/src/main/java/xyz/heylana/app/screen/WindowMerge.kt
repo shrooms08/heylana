@@ -36,7 +36,11 @@ object WindowMerge {
         val words: String get() = listOfNotNull(text, description).joinToString(" ")
     }
 
-    data class Window(val packageName: String, val layer: Int, val nodes: List<Raw>, val truncated: Boolean = false)
+    data class Window(
+        val packageName: String, val layer: Int, val nodes: List<Raw>, val truncated: Boolean = false,
+        /** The window's page carries on below the screen ([PageExtent]). */
+        val moreBelow: Boolean = false
+    )
 
     /** For the log: which window, how much was read from it, how much was kept. */
     data class WindowCount(val packageName: String, val layer: Int, val read: Int, val kept: Int)
@@ -50,7 +54,9 @@ object WindowMerge {
         /** The topmost window that says sending, network fee, approve and the like. */
         val signingWordsFrom: WindowCount?,
         /** Windows never read: the system's own (the shade, quick settings, the lock screen). */
-        val skipped: List<WindowCount> = emptyList()
+        val skipped: List<WindowCount> = emptyList(),
+        /** The app in front's page carries on below the screen. */
+        val moreBelow: Boolean = false
     )
 
     /**
@@ -109,7 +115,8 @@ object WindowMerge {
             truncated = all.size > cap || readable.any { it.truncated },
             windows = counts,
             signingWordsFrom = counts.getOrNull(signingWindow),
-            skipped = skipped
+            skipped = skipped,
+            moreBelow = readable.firstOrNull()?.let { top -> readable.any { it.packageName == top.packageName && it.moreBelow } } == true
         )
     }
 }

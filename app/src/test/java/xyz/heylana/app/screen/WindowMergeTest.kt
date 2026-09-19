@@ -34,6 +34,17 @@ class WindowMergeTest {
     private val heylana = WindowMerge.Window(own, layer = 30, nodes = listOf(raw(text = "ask about this screen")))
 
     @Test
+    fun `more below is the app in front's, never a window behind it or Heylana's`() {
+        val chrome = WindowMerge.Window("com.android.chrome", 2, listOf(raw("answer")), moreBelow = true)
+        assertEquals(true, WindowMerge.merge(listOf(chrome), "xyz.heylana.app").moreBelow)
+        val sheet = WindowMerge.Window("com.solanamobile.wallet", 5, listOf(raw("Send")))
+        val behind = WindowMerge.Window("com.android.chrome", 2, listOf(raw("page")), moreBelow = true)
+        assertEquals(false, WindowMerge.merge(listOf(sheet, behind), "xyz.heylana.app").moreBelow)
+        val own = WindowMerge.Window("xyz.heylana.app", 9, listOf(raw("box")), moreBelow = true)
+        assertEquals(false, WindowMerge.merge(listOf(own, sheet), "xyz.heylana.app").moreBelow)
+    }
+
+    @Test
     fun `a sheet on top is read before the activity behind it, and Heylana is never read`() {
         val merged = WindowMerge.merge(listOf(activity, heylana, sheet), ownPackage = own)
         assertEquals(wallet, merged.packageName)

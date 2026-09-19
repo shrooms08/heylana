@@ -178,6 +178,9 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     private val sourceChips = List(Sources.MAX_CHIPS) { TextView(context) }
     private var sources: List<Source> = emptyList()
 
+    /** True while chips are up: the box then waits longer before it settles, so they can be tapped. */
+    val hasSources: Boolean get() = sources.isNotEmpty()
+
     /** A source chip was tapped: open its page. */
     var onSourceTapped: ((Source) -> Unit)? = null
 

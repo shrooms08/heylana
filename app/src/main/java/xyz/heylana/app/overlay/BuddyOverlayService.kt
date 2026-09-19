@@ -223,8 +223,8 @@ class BuddyOverlayService : Service() {
                 }
                 if (!speaking && session != null) stepSpeaking(false)
                 if (!speaking && exchange.maySettle) {
-                    HeylanaLog.state("settle: scheduled")
-                    main.postDelayed(settleToIdle, SETTLE_MS)
+                    HeylanaLog.state("settle: scheduled${if (overlayView?.showingSources == true) " linger=sources" else ""}")
+                    main.postDelayed(settleToIdle, settleDelay())
                 }
             }
         }
@@ -696,8 +696,17 @@ class BuddyOverlayService : Service() {
                 else -> null
             }
             if (docs) HeylanaLog.state("docs: solana docs in front lens=${when (lens) { null -> "none"; HeylanaPrompt.DOCS_EXPLAIN_LINE -> "explain"; else -> "deeper" }}")
+            // A page that carries on below the screen: answered from the part on screen, and said so.
+            val longPage = chat == null && !walkThrough && snapshot.moreBelow &&
+                route.why != Routing.Why.SEND_QUESTION && route.why != Routing.Why.QUICK_ACTION &&
+                xyz.heylana.app.screen.PageExtent.aboutThePage(question, snapshot.packageName)
+            val lenses = listOfNotNull(lens, if (longPage) HeylanaPrompt.MORE_BELOW_LINE else null)
             mode(BuddyMode.THINKING)
-            val reply = brain.ask(question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough, lens)
+            val asked = brain.ask(
+                question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough,
+                lenses.joinToString("\n\n").ifEmpty { null }
+            )
+            val reply = if (longPage && asked is BrainReply.Say) onScreenOnly(asked, snapshot) else asked
             mode(null)
             // The answer is here: from now on settling back to idle is allowed.
             exchange.over()
@@ -1223,6 +1232,8 @@ class BuddyOverlayService : Service() {
     private inner class TeachingRun(
         private val segments: List<SaySegment>,
         private val snapshot: ScreenSnapshot,
+        /** Shown beside the last sentence, which then stays up long enough to tap one. */
+        private val sources: List<Source> = emptyList(),
         /** Debug only: dwell as if spoken, with no voice call and no tap watch. */
         private val silent: Boolean = false
     ) {
@@ -1242,6 +1253,8 @@ class BuddyOverlayService : Service() {
             val segment = segments.getOrNull(index) ?: return finish()
             val node = segment.pointAt?.let { snapshot.node(it) }
             HeylanaLog.state("teach: segment ${index + 1}/${segments.size} element=${if (node != null) "yes" else "none"}")
+            // The chips go up with the last sentence, before the window is measured and placed.
+            view.showSources(if (index == segments.lastIndex) sources else emptyList())
             if (node == null) {
                 // Nothing to fly to: said from where the disc stands.
                 view.showAnswer(segment.text)
@@ -1259,17 +1272,20 @@ class BuddyOverlayService : Service() {
 
         /** Spoken, or — with no voice — left up long enough to read. */
         private fun speakSegment(text: String) {
-            if (silent || !speak(text)) main.postDelayed(advance, readingMs(text))
+            if (silent || !speak(text)) main.postDelayed(advance, readingMs(text) + linger())
         }
+
+        /** After the last sentence, chips keep the strip up a while before the disc flies home. */
+        private fun linger(): Long = if (index == segments.lastIndex && sources.isNotEmpty()) SOURCE_LINGER_MS else 0L
 
         /** The segment finished speaking: a breath, then the next one. */
         fun spoken() {
-            main.postDelayed(advance, BETWEEN_SEGMENTS_MS)
+            main.postDelayed(advance, BETWEEN_SEGMENTS_MS + linger())
         }
 
         /** The voice could not speak this one: read it instead, then carry on. */
         fun unspoken(text: String) {
-            main.postDelayed(advance, readingMs(text))
+            main.postDelayed(advance, readingMs(text) + linger())
         }
 
         private fun finish() {
@@ -1289,7 +1305,7 @@ class BuddyOverlayService : Service() {
     }
 
     /** Starts a teaching answer if it has anywhere to fly; false when it is an ordinary answer. */
-    private fun runTeaching(reply: BrainReply.Say, snapshot: ScreenSnapshot): Boolean {
+    private fun runTeaching(reply: BrainReply.Say, snapshot: ScreenSnapshot, sources: List<Source> = emptyList()): Boolean {
         val segments = reply.segments
         if (!reply.teaches) return false
         if (segments.none { it.pointAt?.let { id -> snapshot.node(id) } != null }) {
@@ -1297,22 +1313,39 @@ class BuddyOverlayService : Service() {
             return false
         }
         teaching?.cancel()
-        val run = TeachingRun(segments, snapshot)
+        val run = TeachingRun(segments, snapshot, sources)
         teaching = run
         run.start()
         return true
     }
 
+    /**
+     * An answer about a page that continues below: from the part on screen, with the line that
+     * says so; or, when the model said the answer isn't on screen, the page's own chip first.
+     */
+    private fun onScreenOnly(reply: BrainReply.Say, snapshot: ScreenSnapshot): BrainReply.Say {
+        val page = snapshot.pageAddress?.let(Sources::forPage)
+        HeylanaLog.state("page: more below line=${if (reply.unseen) "not_added why=unseen" else "added"} page_chip=${page != null}")
+        if (reply.unseen) return reply.copy(sources = listOfNotNull(page) + reply.sources)
+        val text = xyz.heylana.app.screen.PageExtent.withLine(reply.text, moreBelow = true, unseen = false)
+        // One piece again when it was one; a walk keeps its pieces and gains the line as the last.
+        val segments = if (reply.segments.size <= 1) listOf(SaySegment(text, reply.segments.firstOrNull()?.pointAt ?: reply.pointAt))
+        else reply.segments + SaySegment(xyz.heylana.app.screen.PageExtent.LINE, null)
+        return reply.copy(text = text, segments = segments)
+    }
+
     /** An ordinary answer: say it, point once, let the box time out by itself. */
     private fun showOneShot(reply: BrainReply.Say, snapshot: ScreenSnapshot) {
+        // Where it came from, and the page in front when that is a web page.
+        val sources = Sources.chips(reply.sources + listOfNotNull(snapshot.pageAddress?.let(Sources::forPage)))
         // An answer that walks the screen is played segment by segment instead.
-        if (runTeaching(reply, snapshot)) return
+        if (runTeaching(reply, snapshot, sources)) return
         val view = overlayView ?: return
         // A spoken answer normally leaves nothing on screen; the Settings switch
         // is what puts its words in a box.
         if (view.wasSpoken && settings.showTextForVoice) view.ensurePanelOpen()
         view.showAnswer(reply.text)
-        view.showSources(reply.sources + listOfNotNull(snapshot.pageAddress?.let(Sources::forPage)))
+        view.showSources(sources)
         // The snapshot is still in hand, so the id resolves to real bounds.
         snapshot.node(reply.pointAt)?.let { node ->
             view.avoidOverlap(node.bounds)
@@ -1328,8 +1361,11 @@ class BuddyOverlayService : Service() {
     /** Puts everything back to rest a beat from now, cancelling any earlier one. */
     private fun settleSoon() {
         main.removeCallbacks(settleToIdle)
-        main.postDelayed(settleToIdle, SETTLE_MS)
+        main.postDelayed(settleToIdle, settleDelay())
     }
+
+    /** A beat after an answer; long enough to reach a chip when the answer has source chips. */
+    private fun settleDelay(): Long = if (overlayView?.showingSources == true) SOURCE_LINGER_MS else SETTLE_MS
 
     /**
      * Debug builds only: how big the screen listing is before it is sent, so the
@@ -2073,6 +2109,8 @@ class BuddyOverlayService : Service() {
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
+        /** How long an answer with source chips stays up after it has been said, so a chip can be tapped. */
+        private const val SOURCE_LINGER_MS = 10_000L
 
         /** Debug only: time for the box to open before a broadcast question is sent. */
         private const val DEBUG_ASK_DELAY_MS = 700L

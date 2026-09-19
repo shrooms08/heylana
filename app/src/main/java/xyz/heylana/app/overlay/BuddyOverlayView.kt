@@ -346,6 +346,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         applyPosition()
     }
 
+    /** Source chips are up under the answer. */
+    val showingSources: Boolean get() = panel.hasSources
+
     /** The chips under the answer; an empty list takes them away. */
     fun showSources(sources: List<xyz.heylana.app.brain.Source>) {
         panel.showSources(sources)

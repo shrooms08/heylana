@@ -48,7 +48,9 @@ sealed interface BrainReply {
         /** A lesson turn's check question and its verdict on the last answer. */
         val lesson: LessonReply? = null,
         /** Where the answer came from, as up to two chips under it; never read aloud. */
-        val sources: List<Source> = emptyList()
+        val sources: List<Source> = emptyList(),
+        /** On a page that continues below: the model said the answer isn't in the part on screen. */
+        val unseen: Boolean = false
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -499,7 +501,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
         return Attempt.Done(
             BrainReply.Say(
                 Sources.spoken(AddressText.shorten(parsed.say)), pointAt, task, action, quick, segments, clarify, quickId,
-                readLesson(json), sources
+                readLesson(json), sources, unseen = json.optBoolean("unseen", false)
             )
         )
     }

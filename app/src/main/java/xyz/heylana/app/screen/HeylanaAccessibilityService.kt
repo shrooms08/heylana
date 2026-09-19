@@ -195,7 +195,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
         val merged = WindowMerge.merge(readWindows(), ownPackage = packageName)
         HeylanaLog.state(
             "screen: windows=${runCatching { windows.size }.getOrDefault(-1)} read=${merged.windows.size} " +
-                "kept=${merged.nodes.size} truncated=${merged.truncated}"
+                "kept=${merged.nodes.size} truncated=${merged.truncated} more_below=${merged.moreBelow}"
         )
         for (window in merged.windows) {
             HeylanaLog.state("screen: window pkg=${window.packageName} layer=${window.layer} nodes=${window.read} kept=${window.kept}")
@@ -227,7 +227,8 @@ class HeylanaAccessibilityService : AccessibilityService() {
             packageName = target,
             appLabel = appLabel(target),
             nodes = nodes,
-            truncated = merged.truncated
+            truncated = merged.truncated,
+            moreBelow = merged.moreBelow
         )
     }
 
@@ -242,8 +243,9 @@ class HeylanaAccessibilityService : AccessibilityService() {
             .mapNotNull { window ->
                 val root = window.root ?: return@mapNotNull null
                 val nodes = ArrayList<WindowMerge.Raw>()
-                val truncated = collect(root, depth = 0, out = nodes)
-                WindowMerge.Window(root.packageName?.toString() ?: "unknown", window.layer, nodes, truncated)
+                val extent = Extent(Rect().also { window.getBoundsInScreen(it) })
+                val truncated = collect(root, depth = 0, out = nodes, extent = extent)
+                WindowMerge.Window(root.packageName?.toString() ?: "unknown", window.layer, nodes, truncated, extent.moreBelow)
             }
         if (found.any { !WindowMerge.isSkipped(it.packageName, packageName) }) return found
         val root = rootInActiveWindow ?: return found
@@ -255,15 +257,34 @@ class HeylanaAccessibilityService : AccessibilityService() {
             return found + WindowMerge.Window(active ?: "unknown", Int.MIN_VALUE, emptyList())
         }
         val nodes = ArrayList<WindowMerge.Raw>()
-        val truncated = collect(root, depth = 0, out = nodes)
-        return found + WindowMerge.Window(root.packageName?.toString() ?: "unknown", Int.MIN_VALUE, nodes, truncated)
+        val extent = Extent(Rect().also { root.getBoundsInScreen(it) })
+        val truncated = collect(root, depth = 0, out = nodes, extent = extent)
+        return found + WindowMerge.Window(root.packageName?.toString() ?: "unknown", Int.MIN_VALUE, nodes, truncated, extent.moreBelow)
+    }
+
+    /** One window's walk: its bounds, and whether its page was found to carry on below. */
+    private class Extent(val window: Rect) {
+        var moreBelow = false
+    }
+
+    /** Whether a scrolling node can still go down (or forward, which is down for a vertical list). */
+    private fun canScrollDown(node: AccessibilityNodeInfo): Boolean = node.actionList.any {
+        it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id ||
+            it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id
     }
 
     /** Depth-first walk. Returns true if the node cap was hit. */
     @Suppress("DEPRECATION") // isChecked has no pre-API-36 replacement
-    private fun collect(node: AccessibilityNodeInfo, depth: Int, out: MutableList<WindowMerge.Raw>): Boolean {
+    private fun collect(node: AccessibilityNodeInfo, depth: Int, out: MutableList<WindowMerge.Raw>, extent: Extent): Boolean {
         if (out.size >= MAX_READ_PER_WINDOW) return true
-        if (!node.isVisibleToUser) return false
+        if (!node.isVisibleToUser) {
+            // Never read: only noted, if the tree puts it below the screen.
+            if (!extent.moreBelow) {
+                val below = Rect().also { node.getBoundsInScreen(it) }
+                if (PageExtent.hiddenBelow(false, below.top, extent.window.bottom)) extent.moreBelow = true
+            }
+            return false
+        }
 
         var text = node.text?.toString()?.clean()
         var description = node.contentDescription?.toString()?.clean()
@@ -272,6 +293,10 @@ class HeylanaAccessibilityService : AccessibilityService() {
         val clickable = node.isClickable
         val checkable = node.isCheckable
         val scrollable = node.isScrollable
+        if (scrollable && !extent.moreBelow) {
+            val area = Rect().also { node.getBoundsInScreen(it) }
+            if (PageExtent.scrollsDown(true, canScrollDown(node), area.height(), extent.window.height())) extent.moreBelow = true
+        }
 
         // Whose children to walk next. Normally this node's own.
         var childSource = node
@@ -316,7 +341,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
 
         for (i in 0 until childSource.childCount) {
             val child = childSource.getChild(i) ?: continue
-            if (collect(child, childDepth, out)) return true
+            if (collect(child, childDepth, out, extent)) return true
         }
         return out.size >= MAX_READ_PER_WINDOW
     }

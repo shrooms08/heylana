@@ -112,6 +112,12 @@ object HeylanaPrompt {
         "They asked why about your last explanation of the docs on screen. Go one level deeper: the reason " +
             "underneath it (the design choice or constraint that makes it so), under 60 words, no repeat of the last answer."
 
+    /** The page continues below the screen: answer from what is listed, and say when that isn't enough. */
+    const val MORE_BELOW_LINE: String =
+        "The page carries on below the screen, and the listing is only the part on screen. Answer from it and never " +
+            "say or suggest you read the whole page. If the answer is not in what is listed, say you can only see what's " +
+            "on screen and add \"unseen\": true to your reply."
+
     // ------------------------------------------------------------ errors
 
     /** An error the built-in table doesn't know: the knowledge base, then cause, fix and one link. */

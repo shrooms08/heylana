@@ -69,7 +69,9 @@ data class ScreenSnapshot(
     val nodes: List<ScreenNode>,
     val truncated: Boolean,
     /** True when the listing is empty because screen reading is switched off. */
-    val readingOff: Boolean = false
+    val readingOff: Boolean = false,
+    /** The page carries on below the screen: what is listed is only the visible part ([PageExtent]). */
+    val moreBelow: Boolean = false
 ) {
 
     val isEmpty: Boolean get() = nodes.isEmpty()

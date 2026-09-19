@@ -7,6 +7,8 @@ aliases: token program, token-2022, token 2022, token extensions, spl token
 chunks: 4
 recap: The original Token program handles plain tokens; Token-2022 is a separate program with optional extensions like transfer fees, hooks and metadata.
 checked: 2026-09-18 against spl.solana.com/token-2022 and solana.com/docs/tokens/extensions
+link: https://solana.com/docs/tokens/extensions
+link_title: Solana docs: token extensions
 ---
 Two programs mint and move tokens on Solana.
 

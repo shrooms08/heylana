@@ -7,6 +7,8 @@ aliases: staking, stake, delegation, delegate, rewards, stake pools, liquid stak
 chunks: 5
 recap: You delegate SOL from a stake account to a validator; it activates at an epoch boundary and earns rewards each epoch, or you use a stake pool for a liquid token.
 checked: 2026-09-18 against solana.com/docs and the Stake program docs
+link: https://solana.com/docs/references/staking
+link_title: Solana docs: staking
 ---
 Staking secures Solana: stake decides a validator's weight in votes and leader slots.
 

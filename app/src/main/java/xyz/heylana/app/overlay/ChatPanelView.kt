@@ -21,7 +21,10 @@ import android.widget.TextView
 import androidx.dynamicanimation.animation.DynamicAnimation
 import androidx.dynamicanimation.animation.SpringAnimation
 import androidx.dynamicanimation.animation.SpringForce
+import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.R
+import xyz.heylana.app.brain.Source
+import xyz.heylana.app.brain.Sources
 import xyz.heylana.app.ui.GlassDrawable
 import xyz.heylana.app.ui.GlassSpec
 import xyz.heylana.app.ui.BorderBeam
@@ -170,6 +173,14 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     private val next = TextView(context)
     private val done = TextView(context)
 
+    /** Where the answer came from: up to two glass chips under it, each opening its page. */
+    private val sourceRow = LinearLayout(context)
+    private val sourceChips = List(Sources.MAX_CHIPS) { TextView(context) }
+    private var sources: List<Source> = emptyList()
+
+    /** A source chip was tapped: open its page. */
+    var onSourceTapped: ((Source) -> Unit)? = null
+
     private val confirmRow = LinearLayout(context)
     private val simStatus = TextView(context)
     private val confirm = TextView(context)
@@ -261,6 +272,30 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
             LayoutParams(dp(26f), dp(26f)).apply { marginStart = dp(HeylanaTokens.SPACE_3_DP) }
         )
         addView(topRow, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+        // ------------------------------------------------------- source chips
+        sourceRow.apply {
+            orientation = VERTICAL
+            visibility = View.GONE
+        }
+        sourceChips.forEachIndexed { i, chip ->
+            stylePill(chip, "", secondaryText) { sources.getOrNull(i)?.let { onSourceTapped?.invoke(it) } }
+            chip.maxLines = 1
+            chip.ellipsize = android.text.TextUtils.TruncateAt.END
+            chip.gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            sourceRow.addView(
+                chip,
+                LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                    if (i > 0) topMargin = dp(HeylanaTokens.SPACE_2_DP)
+                }
+            )
+        }
+        addView(
+            sourceRow,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(HeylanaTokens.SPACE_3_DP)
+            }
+        )
 
         // ------------------------------------------------------- task strip
         sessionRow.apply {
@@ -532,6 +567,9 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL,
             HeylanaTokens.purpleBand
         )
+        for (chip in sourceChips) {
+            chip.background = GlassDrawable(context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL)
+        }
         invalidate()
     }
 
@@ -710,7 +748,23 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         answer.scrollTo(0, 0)
     }
 
+    /**
+     * The chips under the answer: where it came from, at most [Sources.MAX_CHIPS]. The link
+     * is only ever here, never in the words. An empty list takes them away.
+     */
+    fun showSources(list: List<Source>) {
+        sources = Sources.chips(list)
+        sourceChips.forEachIndexed { i, chip ->
+            val source = sources.getOrNull(i)
+            chip.text = source?.let { "${it.title}  ${HeylanaTokens.SOURCE_ARROW}" } ?: ""
+            chip.visibility = if (source == null) View.GONE else View.VISIBLE
+        }
+        sourceRow.visibility = if (sources.isEmpty()) View.GONE else View.VISIBLE
+        if (sources.isNotEmpty()) HeylanaLog.state("panel: sources shown=${sources.size}")
+    }
+
     fun showThinking() {
+        showSources(emptyList())
         streakThinking = true
         // A spoken question has its own capsule beside the disc; the box shows
         // nothing at all until there is an answer to read.
@@ -836,6 +890,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
 
     override fun clearSignals() {
         modeChip.visibility = View.GONE
+        showSources(emptyList())
         streakThinking = false
         setBeam(Beam.NONE)
         gooeyRun?.cancel()

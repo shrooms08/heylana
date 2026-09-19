@@ -34,7 +34,7 @@ import type { TransferPlan } from './tx.ts'
 import { rpcCall, short, unitsToDecimal } from './solana.ts'
 import { checkedBody } from './say.ts'
 import { addCacheUse, noCacheUse, withCache, withCacheTotals } from './cache.ts'
-import { ingest, searchKb, type Ai, type Kb, type VectorIndex } from './kb.ts'
+import { ingest, searchKb, withSources, type Ai, type Kb, type KbResult, type VectorIndex } from './kb.ts'
 import {
   GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, deepgramSpeakUrl, deepgramVoiceFor, geminiPcmStream, geminiRequest,
   geminiVoiceFor, providerOf, rawPcmStream, voiceInfo,
@@ -358,7 +358,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     }
   }
   // How many knowledge-base chunks this question was handed, for the log.
-  const kbStats = { kbHits: 0 }
+  const kbStats: { kbHits: number; found: Map<string, KbResult>; kbError?: string } = { kbHits: 0, found: new Map<string, KbResult>() }
   // Every round of this question: the system prompt and tools marked cacheable, the cache use added up.
   const cacheUse = noCacheUse()
   const callModel = async (payload: unknown) => {
@@ -397,6 +397,8 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
   // The user's own words, sent apart from the screen: what a recipient must come from.
   const said = typeof body.said === 'string' ? body.said : null
   let actionsRemoved = 0
+  let sourcesSent = 0
+  let sourcesFrom = 'none'
   if (actionIntent) {
     // Never left to prose either: the action written down, and the app says the words.
     const result = await proposeAction({ callModel, base })
@@ -482,6 +484,11 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     const stripped = withoutActions(text)
     text = stripped.body
     actionsRemoved = stripped.removed
+    // The pages the answer cited, checked against what the knowledge base returned.
+    const cited = withSources(text, kbStats.found)
+    text = cited.body
+    sourcesSent = cited.sources
+    sourcesFrom = cited.from
   }
 
   if (status >= 200 && status < 300) {
@@ -523,6 +530,9 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
     ...(actionsRemoved > 0 ? { actions_removed: actionsRemoved } : {}),
     // Prompt caching: tokens read from the cache and written to it, over every round.
     kb_hits: kbStats.kbHits,
+    kb_error: kbStats.kbError,
+    sources: sourcesSent,
+    sources_from: sourcesFrom,
     // Whose key paid for the model: never the key itself.
     key: userKey ? 'user' : 'heylana',
     cache_read: cacheUse.read,

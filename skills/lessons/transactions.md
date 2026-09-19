@@ -7,6 +7,8 @@ aliases: transactions, instructions, transaction, instruction
 chunks: 5
 recap: A transaction is signed, atomic, and lists every account up front; each instruction names a program, its accounts and its data.
 checked: 2026-09-18 against solana.com/docs/core/transactions
+link: https://solana.com/docs/core/transactions
+link_title: Solana docs: transactions
 ---
 A transaction is how anything changes on Solana. It holds one or more instructions plus signatures, and it is atomic: either every instruction succeeds or none of them apply.
 

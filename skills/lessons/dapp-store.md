@@ -7,6 +7,8 @@ aliases: dapp store, dapp store publishing, publish an app, publishing
 chunks: 4
 recap: The Solana dApp Store takes a signed release APK through the Publisher Portal, with a publisher wallet, KYC and a few days of review.
 checked: 2026-09-18 against docs.solanamobile.com/dapp-publishing
+link: https://docs.solanamobile.com/dapp-store/intro
+link_title: Solana Mobile: dApp Store
 ---
 The Solana dApp Store is the app store on Saga and Seeker. It lists crypto apps that Google Play's policies can make hard to ship, with no store fee on in-app crypto transactions (unverified: check the current policy).
 

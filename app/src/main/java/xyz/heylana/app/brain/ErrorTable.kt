@@ -22,9 +22,13 @@ object ErrorTable {
     /** What a known error means. [code] is how it was named ("3003", "0x1", "-3"), when it has one. */
     data class Known(val name: String, val code: String?, val cause: String, val fix: String, val link: String)
 
-    /** The line Heylana says: the error, its cause, the usual fix, and one link. */
+    /** The line Heylana says: the error, its cause, the usual fix, and where to read more. The link is [source]'s chip. */
     fun line(known: Known): String =
-        "${known.name}${known.code?.let { " ($it)" } ?: ""}: ${known.cause} Usual fix: ${known.fix} More: ${known.link}"
+        "${known.name}${known.code?.let { " ($it)" } ?: ""}: ${known.cause} Usual fix: ${known.fix} " +
+            "${Sources.spokenName(known.link).replaceFirstChar { it.uppercase() }} have more."
+
+    /** The chip under that line: the error's doc page. */
+    fun source(known: Known): Source = Sources.forLink(known.link)
 
     // ------------------------------------------------------------------ Anchor
 

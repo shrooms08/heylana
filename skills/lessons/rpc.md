@@ -7,6 +7,8 @@ aliases: rpc, rpc nodes, helius, quicknode, websockets, geyser, grpc
 chunks: 5
 recap: Apps talk to Solana through RPC nodes: JSON-RPC for reads and sends, websockets for subscriptions, and Geyser plugins for streaming at scale.
 checked: 2026-09-18 against solana.com/docs/rpc
+link: https://solana.com/docs/rpc
+link_title: Solana docs: RPC
 ---
 An RPC node runs validator software without voting, and answers apps.
 

@@ -10,7 +10,7 @@ import { isAddress } from './base58.ts'
 import { decimalToUnits, mintInfo } from './pay.ts'
 import { resolveName } from './names.ts'
 import { LOOKUP_TOOLS } from './registry.ts'
-import { searchTool, type Kb } from './kb.ts'
+import { searchTool, type Kb, type KbResult } from './kb.ts'
 import {
   BPF_UPGRADEABLE_LOADER,
   COMPUTE_BUDGET_PROGRAM,
@@ -47,7 +47,7 @@ export interface ToolContext {
   /** The knowledge base, when this worker has one bound. */
   kb?: Kb
   /** Counts for the log: how many knowledge-base chunks this question was handed. */
-  stats?: { kbHits: number }
+  stats?: { kbHits: number; found?: Map<string, KbResult>; kbError?: string }
 }
 
 /**
@@ -74,9 +74,20 @@ export async function runTool(name: string, input: any, context: ToolContext): P
       case 'prepare_send':
         return await prepareSend(input, context)
       case 'search_solana_kb': {
-        const found = await searchTool(context.kb, input)
-        const hits = Array.isArray((found as any)?.results) ? (found as any).results.length : 0
-        if (context.stats) context.stats.kbHits += hits
+        let found: unknown
+        try {
+          found = await searchTool(context.kb, input)
+        } catch (error) {
+          // Workers AI or Vectorize failed (a spent daily allowance is "4006"): said in the log, never to the user.
+          if (context.stats) context.stats.kbError = String((error as Error)?.message ?? error).match(/^\d{4}/)?.[0] ?? (error as Error)?.name ?? 'error'
+          throw error
+        }
+        const results: KbResult[] = Array.isArray((found as any)?.results) ? (found as any).results : []
+        if (context.stats) {
+          context.stats.kbHits += results.length
+          // What the reply may cite: only what was really handed over.
+          for (const r of results) context.stats.found?.set(r.url, r)
+        }
         return found
       }
       default:

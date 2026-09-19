@@ -44,6 +44,16 @@ class LessonTest {
     }
 
     @Test
+    fun `every note has its doc page for a chip - https, a title that fits`() {
+        notes.forEach { note ->
+            val link = note.link
+            assertTrue(note.id, link != null && link.url.startsWith("https://"))
+            assertTrue(note.id, link!!.title.length <= xyz.heylana.app.brain.Sources.MAX_TITLE && !link.title.endsWith("…"))
+        }
+        assertEquals("https://solana.com/docs/core/pda", note("pdas").link?.url)
+    }
+
+    @Test
     fun `a note with too long a body, or chunks out of range, is refused`() {
         val head = "---\nid: x1\ntitle: X\ntrack: build\naliases: x\nrecap: r\n"
         assertEquals(LessonNote.Companion.Parsed.Bad("too_long"), LessonNote.parse("${head}chunks: 4\n---\n" + "word ".repeat(400)))

@@ -7,6 +7,8 @@ aliases: rent, fees, rent exempt, rent-exempt, transaction fees
 chunks: 4
 recap: Accounts hold a refundable rent-exempt deposit sized to their data; transactions pay a 5000-lamport base fee per signature, plus optional priority fees.
 checked: 2026-09-18 against solana.com/docs/core/fees
+link: https://solana.com/docs/core/fees
+link_title: Solana docs: fees
 ---
 Two different costs.
 

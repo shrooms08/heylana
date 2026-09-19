@@ -7,6 +7,8 @@ aliases: validators, validator, leaders, leader schedule, slots, epochs, epoch, 
 chunks: 5
 recap: Validators take turns as leader, four slots of about 400ms each; an epoch is 432,000 slots, about two days.
 checked: 2026-09-18 against solana.com/docs and docs.anza.xyz
+link: https://docs.anza.xyz/consensus/leader-rotation
+link_title: Agave docs: leader rotation
 ---
 Validators are the computers that run Solana: they process transactions, vote on blocks and keep the ledger. Their weight in consensus is the SOL staked to them.
 

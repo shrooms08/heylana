@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
-import { EMBEDDING_MODEL, MIN_SCORE, embeddingText, ingest, searchKb, type Ai, type VectorIndex } from '../src/kb.ts'
+import { EMBEDDING_MODEL, MIN_SCORE, embeddingText, ingest, searchKb, withSources, type Ai, type KbResult, type VectorIndex } from '../src/kb.ts'
 import { LOOKUP_TOOLS } from '../src/registry.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
@@ -118,6 +118,67 @@ test('a Solana question can look things up in the knowledge base; the log counts
   const line = logs.find((l) => l.includes('"route":"chat"'))!
   assert.equal(JSON.parse(line).kb_hits, 2)
   assert.ok(!line.includes('derived from seeds'), 'no chunk text in the log')
+})
+
+test('a cited result comes back as a source chip; a url the search never returned is dropped', async () => {
+  rounds = [
+    { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'search_solana_kb', input: { query: 'what is a PDA' } }], usage: { input_tokens: 10, output_tokens: 5 } },
+    { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ say: 'The Solana docs cover it.', point_at: null, task: null,
+      cite: ['https://solana.com/docs/core/pda', 'https://evil.test/phish'] }) }], usage: { input_tokens: 20, output_tokens: 10 } },
+  ]
+  const res = await worker.fetch(new Request('https://proxy.heylana.xyz/chat', {
+    method: 'POST', headers: { 'X-Heylana-Device': DEVICE },
+    body: JSON.stringify({ mode: 'task', system: 'S', tools: true, messages: [{ role: 'user', content: 'User asks: what is a PDA' }] }),
+  }), env)
+  const reply = JSON.parse((await res.json()).content[0].text)
+  assert.deepEqual(reply.sources, [{ title: 'Program Derived Address', source: 'solana.com docs', url: 'https://solana.com/docs/core/pda' }])
+  assert.equal(reply.cite, undefined)
+  assert.equal(JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!).sources, 1)
+  const toolResult = JSON.parse(bodies[1].messages.at(-1).content[0].content)
+  assert.match(toolResult.note, /Never write a url in say/)
+})
+
+test('withSources keeps at most two, each once, and leaves a reply alone when nothing was searched', () => {
+  const r = (url: string): KbResult => ({ title: url, url, source: 's', licence: 'l', excerpt: '', score: 0.9 })
+  const found = new Map(['https://a.test/1', 'https://a.test/2', 'https://a.test/3'].map((u) => [u, r(u)]))
+  const body = (reply: object) => JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(reply) }] })
+  const out = withSources(body({ say: 'x', cite: ['https://a.test/1', 'https://a.test/1', 'https://a.test/2', 'https://a.test/3'] }), found)
+  assert.equal(out.sources, 2)
+  assert.deepEqual(JSON.parse(JSON.parse(out.body).content[0].text).sources.map((s: any) => s.url), ['https://a.test/1', 'https://a.test/2'])
+  // No search this question: the reply is left exactly as it came.
+  const plain = body({ say: 'x', point_at: null })
+  assert.equal(withSources(plain, new Map()).body, plain)
+  // A sentence before the object, as the model sometimes writes: still found, the sentence kept.
+  const prose = JSON.stringify({ content: [{ type: 'text', text: 'Here is the answer. {"say":"x {curly}","cite":["https://a.test/2"]}' }] })
+  const withProse = withSources(prose, found)
+  assert.equal(withProse.sources, 1)
+  const text = JSON.parse(withProse.body).content[0].text
+  assert.ok(text.startsWith('Here is the answer. {'))
+  assert.equal(JSON.parse(text.slice(text.indexOf('{'))).sources[0].url, 'https://a.test/2')
+  const none = withSources(body({ say: 'x', cite: 'https://made.up' }), new Map([['https://weak.test', { ...r('https://weak.test'), score: 0.65 }]]))
+  assert.equal(none.sources, 0)
+  // Searched, answered, cited nothing: the strongest match stands in.
+  const top = withSources(body({ say: 'x' }), found)
+  assert.equal(top.from, 'top')
+  assert.equal(top.sources, 1)
+  assert.equal(JSON.parse(JSON.parse(none.body).content[0].text).sources, undefined)
+})
+
+test('a search that fails (the daily Workers AI allowance spent) is named in the log, and the answer still comes', async () => {
+  env.AI = { async run() { throw new Error('4006: you have used up your daily free allocation of 10,000 neurons') } }
+  rounds = [
+    { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'search_solana_kb', input: { query: 'priority fees' } }], usage: { input_tokens: 10, output_tokens: 5 } },
+    { stop_reason: 'end_turn', content: [{ type: 'text', text: '{"say":"Priority fees are tips.","point_at":null,"task":null}' }], usage: { input_tokens: 20, output_tokens: 10 } },
+  ]
+  const res = await worker.fetch(new Request('https://proxy.heylana.xyz/chat', {
+    method: 'POST', headers: { 'X-Heylana-Device': DEVICE },
+    body: JSON.stringify({ mode: 'quick', system: 'S', tools: true, messages: [{ role: 'user', content: 'User asks: how do priority fees work' }] }),
+  }), env)
+  assert.equal(res.status, 200)
+  const line = JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!)
+  assert.equal(line.kb_error, '4006')
+  assert.equal(line.sources, 0)
+  assert.equal(JSON.parse(bodies[1].messages.at(-1).content[0].content).error, 'lookup_failed')
 })
 
 test('chat and quick actions are never offered the knowledge base', async () => {

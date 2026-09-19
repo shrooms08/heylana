@@ -7,6 +7,8 @@ aliases: anchor, anchor framework, anchor basics
 chunks: 5
 recap: Anchor writes the boilerplate: #[program] for instructions, #[derive(Accounts)] to validate accounts, and an IDL for clients.
 checked: 2026-09-18 against anchor-lang.com docs
+link: https://www.anchor-lang.com/docs
+link_title: Anchor docs
 ---
 Anchor is the most used framework for Solana programs in Rust. It removes the boilerplate of decoding instructions and checking accounts.
 

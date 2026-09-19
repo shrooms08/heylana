@@ -1,5 +1,8 @@
 package xyz.heylana.app.lessons
 
+import xyz.heylana.app.brain.Source
+import xyz.heylana.app.brain.Sources
+
 /**
  * One topic of the Solana curriculum: `skills/lessons/<id>.md`, hand-written and checked
  * against the docs (lines that could not be checked say "unverified"). The body is the only
@@ -16,7 +19,9 @@ data class LessonNote(
     val chunks: Int,
     /** The one line said at the end. */
     val recap: String,
-    val body: String
+    val body: String,
+    /** The topic's doc page, shown as a chip under every turn of the lesson. */
+    val link: Source? = null
 ) {
     val tokens: Int get() = (body.length + 3) / 4
 
@@ -112,7 +117,10 @@ data class LessonNote(
                         aliases = fields["aliases"].orEmpty().split(',').map { it.trim().lowercase() }.filter { it.isNotEmpty() },
                         chunks = chunks,
                         recap = recap,
-                        body = body
+                        body = body,
+                        link = fields["link"]?.takeIf { it.startsWith("https://") }?.let { url ->
+                            Source(Sources.fit(fields["link_title"]?.takeIf { it.isNotEmpty() } ?: title), url)
+                        }
                     )
                 )
             }

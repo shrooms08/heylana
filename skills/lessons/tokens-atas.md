@@ -7,6 +7,8 @@ aliases: tokens, spl tokens, ata, atas, associated token account, associated tok
 chunks: 5
 recap: A mint defines a token; balances live in token accounts; the associated token account is the one standard account per wallet per mint.
 checked: 2026-09-18 against solana.com/docs/tokens
+link: https://solana.com/docs/tokens
+link_title: Solana docs: tokens
 ---
 Tokens on Solana are handled by the Token program (and Token-2022, its extended version), not by one contract per token.
 

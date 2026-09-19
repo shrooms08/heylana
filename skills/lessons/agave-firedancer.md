@@ -7,6 +7,8 @@ aliases: agave, firedancer, frankendancer, validator clients, clients, jito
 chunks: 4
 recap: Agave (Anza, Rust) and Firedancer (Jump, C) are independent validator clients; running more than one makes Solana harder to take down with one bug.
 checked: 2026-09-18 against docs.anza.xyz, firedancer docs and 2026 reports
+link: https://docs.anza.xyz/
+link_title: Agave docs
 ---
 A validator client is the software a validator runs. Solana now has more than one, which matters: a bug in one client no longer stops the whole network.
 

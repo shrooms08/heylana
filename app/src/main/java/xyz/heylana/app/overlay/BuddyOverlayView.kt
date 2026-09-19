@@ -99,6 +99,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
     /** The user cancelled the send on the strip. */
     var onCancelSend: (() -> Unit)? = null
 
+    /** The user tapped a source chip under the answer. */
+    var onSourceTapped: ((xyz.heylana.app.brain.Source) -> Unit)? = null
+
     /** Whether Heylana is speaking now; a touch on the disc then stops her. */
     var isSpeaking: () -> Boolean = { false }
 
@@ -235,6 +238,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         panel.onDone = { onDone?.invoke() }
         panel.onConfirm = { onConfirmSend?.invoke() }
         panel.onCancel = { onCancelSend?.invoke() }
+        panel.onSourceTapped = { onSourceTapped?.invoke(it) }
         panel.onInputTapped = { takeFocusForTyping() }
         panel.onStripTapped = {
             panel.morphTo(ChatPanelView.Shape.BOX) {
@@ -339,6 +343,12 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         // be readable, so this is the one thing that opens one uninvited.
         ensurePanelOpen()
         panel.showNotice(text)
+        applyPosition()
+    }
+
+    /** The chips under the answer; an empty list takes them away. */
+    fun showSources(sources: List<xyz.heylana.app.brain.Source>) {
+        panel.showSources(sources)
         applyPosition()
     }
 

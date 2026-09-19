@@ -58,12 +58,15 @@ class ErrorTableTest {
     }
 
     @Test
-    fun `the line gives cause, usual fix and one link`() {
-        val line = ErrorTable.line(ErrorTable.find("AccountDidNotDeserialize")!!)
+    fun `the line gives cause and usual fix, names the docs, and the link is a chip`() {
+        val known = ErrorTable.find("AccountDidNotDeserialize")!!
+        val line = ErrorTable.line(known)
         assertTrue(line.startsWith("AccountDidNotDeserialize (3003): "))
         assertTrue(line.contains("Usual fix: "))
-        assertTrue(line.endsWith("More: https://www.anchor-lang.com/docs/features/errors"))
-        assertEquals(1, Regex("https://").findAll(line).count())
+        assertTrue(line, line.endsWith("The Anchor docs have more."))
+        assertFalse(line.contains("http"))
+        assertEquals(Source("Anchor docs: errors", "https://www.anchor-lang.com/docs/features/errors"), ErrorTable.source(known))
+        assertEquals("Anchor docs: account constraints", ErrorTable.source(ErrorTable.find("ConstraintSeeds")!!).title)
     }
 
     @Test
@@ -83,7 +86,8 @@ class ErrorTableTest {
     fun `an unknown error goes to the model with the knowledge base and a way out`() {
         val message = HeylanaPrompt.errorMessage("Program log: Error: invalid swap route", "what does this mean")
         assertTrue(message.contains("search_solana_kb"))
-        assertTrue(message.contains("solana.stackexchange.com"))
+        assertTrue(message.contains("Solana Stack Exchange"))
+        assertTrue(message.contains("in cite, never in say"))
         assertTrue(message.endsWith("User asks: what does this mean"))
     }
 }

@@ -86,7 +86,9 @@ class HeylanaVoice(
      * voice is being asked, which is what tells the caller that either "finished speaking"
      * or [onFailed] will follow.
      */
-    fun speak(text: String): Boolean {
+    fun speak(said: String): Boolean {
+        // A web address is never read aloud: whatever line comes here, its links are chips.
+        val text = xyz.heylana.app.brain.Sources.spoken(said)
         if (text.isBlank()) return false
         if (!proxy.isConfigured) return false
         val length = lines.add(Line(text, settings.voice))

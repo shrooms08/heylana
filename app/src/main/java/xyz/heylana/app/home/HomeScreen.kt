@@ -248,6 +248,16 @@ fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
                     Text(exchange.answer, style = HeylanaType.body, color = palette.ink)
                 }
             }
+            // Where the latest answer came from: up to two flat chips, each opening its page.
+            val sources = chat.exchanges.lastOrNull()?.sources.orEmpty()
+            if (!history && sources.isNotEmpty()) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                Column(Modifier.padding(top = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    sources.forEach { source ->
+                        FlatChip(Glyph.DOC, source.title, onClick = { openSource(context, source) })
+                    }
+                }
+            }
             if (chat.exchanges.size > 1) {
                 Row(Modifier.fillMaxWidth().tap(onClick = onHistory).padding(top = 6.dp), horizontalArrangement = Arrangement.End) {
                     Text(if (history) "Latest" else "Earlier", style = HeylanaType.label, color = palette.inkTertiary)
@@ -257,4 +267,12 @@ fun AnswerStrip(chat: AppChat, history: Boolean, onHistory: () -> Unit) {
             }
         }
     }
+}
+
+/** A source chip's page, in the browser. The log has the host only. */
+private fun openSource(context: android.content.Context, source: xyz.heylana.app.brain.Source) {
+    val uri = android.net.Uri.parse(source.url)
+    if (uri.scheme != "https") return
+    xyz.heylana.app.HeylanaLog.state("app: source opened host=${uri.host}")
+    runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)) }
 }

@@ -46,7 +46,9 @@ sealed interface BrainReply {
         /** The worker's id for an R3 action it proposed (a message, a reminder), confirmed before it fires. */
         val quickId: String? = null,
         /** A lesson turn's check question and its verdict on the last answer. */
-        val lesson: LessonReply? = null
+        val lesson: LessonReply? = null,
+        /** Where the answer came from, as up to two chips under it; never read aloud. */
+        val sources: List<Source> = emptyList()
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -487,11 +489,29 @@ class ProxyClient(private val settings: HeylanaSettings) {
         if (parsed.segments.size > 1) {
             HeylanaLog.state("reply: segments=${parsed.segments.size} points=${parsed.segments.count { it.pointAt != null }}")
         }
-        // Every word the model says is shortened here, once, before it is shown or spoken.
-        val segments = parsed.segments.map { it.copy(text = AddressText.shorten(it.text)) }
+        // Every word the model says is shortened here, once, before it is shown or spoken,
+        // and loses any web address: a link is a chip, never words.
+        val segments = parsed.segments.map { it.copy(text = Sources.spoken(AddressText.shorten(it.text))) }
         // One piece keeps point_at as it always did; segments carry their own.
         val pointAt = if (parsed.segments.size <= 1) parsed.segments.firstOrNull()?.pointAt ?: readPointAt(json) else null
-        return Attempt.Done(BrainReply.Say(AddressText.shorten(parsed.say), pointAt, task, action, quick, segments, clarify, quickId, readLesson(json)))
+        val sources = Sources.chips(readSources(json) + Sources.inText(parsed.say))
+        if (sources.isNotEmpty()) HeylanaLog.state("reply: sources=${sources.size}")
+        return Attempt.Done(
+            BrainReply.Say(
+                Sources.spoken(AddressText.shorten(parsed.say)), pointAt, task, action, quick, segments, clarify, quickId,
+                readLesson(json), sources
+            )
+        )
+    }
+
+    /** The worker's checked sources: each a page the knowledge base returned and the answer cited. */
+    private fun readSources(json: JSONObject): List<Source> {
+        val array = json.optJSONArray("sources") ?: return emptyList()
+        return (0 until array.length()).mapNotNull { i ->
+            val o = array.optJSONObject(i) ?: return@mapNotNull null
+            val url = o.optString("url").trim()
+            if (!url.startsWith("https://")) null else Source(Sources.chipTitle(o.optString("source"), o.optString("title")), url)
+        }
     }
 
     /** A lesson turn's check and verdict, when the reply has either. Addresses shortened like every word said. */

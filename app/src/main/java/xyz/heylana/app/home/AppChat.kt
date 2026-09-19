@@ -23,14 +23,16 @@ import xyz.heylana.app.actions.QuickText
 import xyz.heylana.app.brain.BrainReply
 import xyz.heylana.app.brain.Conversation
 import xyz.heylana.app.brain.ErrorTable
+import xyz.heylana.app.brain.Source
+import xyz.heylana.app.brain.Sources
 import xyz.heylana.app.brain.ProxyClient
 import xyz.heylana.app.brain.Routing
 import xyz.heylana.app.brain.SolanaCore
 import xyz.heylana.app.settings.HeylanaSettings
 import xyz.heylana.app.voice.HeylanaVoice
 
-/** One exchange in the app: what was asked, and what came back. */
-data class Exchange(val question: String, val answer: String)
+/** One exchange in the app: what was asked, what came back, and the chips for where it came from. */
+data class Exchange(val question: String, val answer: String, val sources: List<Source> = emptyList())
 
 /**
  * The in-app conversation. **It never reads a screen**: a question goes as chat (`why=chat`
@@ -72,6 +74,8 @@ class AppChat(
 
     private var inFlight: Job? = null
     private var pendingClarify: String? = null
+    /** The chips for the answer being worked out, set by whichever path answers it. */
+    private var answerSources: List<Source> = emptyList()
 
     private val voice: HeylanaVoice by lazy {
         HeylanaVoice(
@@ -103,7 +107,8 @@ class AppChat(
         lessonProgress = lesson?.let { "${it.note.short}, ${it.step} of ${it.size}" }
         thinking = false
         asked = null
-        exchanges.add(Exchange(shownAs, line.text))
+        // The topic's doc page, under every turn of the lesson.
+        exchanges.add(Exchange(shownAs, line.text, listOfNotNull(current?.note?.link)))
         while (exchanges.size > MAX_EXCHANGES) exchanges.removeAt(0)
         if (!settings.voiceMuted) voice.speak(line.text)
     }
@@ -133,6 +138,7 @@ class AppChat(
         asked = typed
         thinking = true
         HeylanaLog.state("app: ask chars=${question.length} screen=not_read")
+        answerSources = emptyList()
         inFlight = scope.launch {
             val claimed = memoryDesk.claims(question)
             // A fact about the user ("I use Jupiter for swaps") is kept alongside, while the
@@ -145,6 +151,7 @@ class AppChat(
                 // An error the table knows is answered here; one it doesn't goes to the knowledge base.
                 ErrorTable.find(question) != null -> ErrorTable.find(question)!!.let { known ->
                     HeylanaLog.state("error: table hit name=${known.name} where=said model=not_asked")
+                    answerSources = listOf(ErrorTable.source(known))
                     ErrorTable.line(known).also { memory.record(question, it, null) }
                 }
                 ErrorTable.looksLikeError(question) -> explainError(question)
@@ -154,7 +161,7 @@ class AppChat(
             thinking = false
             asked = null
             if (answer != null) {
-                exchanges.add(Exchange(typed, answer))
+                exchanges.add(Exchange(typed, answer, Sources.chips(answerSources)))
                 while (exchanges.size > MAX_EXCHANGES) exchanges.removeAt(0)
                 if (!settings.voiceMuted) voice.speak(answer)
             }
@@ -179,7 +186,10 @@ class AppChat(
         } else Routing.CHAT
         val history = memory.asPromptText(null)
         return when (val reply = brain.ask(question, "", history, null, route)) {
-            is BrainReply.Say -> reply.text.also { memory.record(question, it, null) }
+            is BrainReply.Say -> reply.text.also {
+                answerSources = reply.sources
+                memory.record(question, it, null)
+            }
             is BrainReply.Failed -> reply.message
         }
     }
@@ -187,7 +197,10 @@ class AppChat(
     private suspend fun explainError(question: String): String {
         HeylanaLog.state("error: not in the table where=said")
         return when (val reply = brain.explainError(question, question)) {
-            is BrainReply.Say -> reply.text.also { memory.record(question, it, null) }
+            is BrainReply.Say -> reply.text.also {
+                answerSources = reply.sources
+                memory.record(question, it, null)
+            }
             is BrainReply.Failed -> reply.message
         }
     }

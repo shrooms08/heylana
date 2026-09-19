@@ -48,7 +48,15 @@ object SolanaCore {
             "in Seed Vault."
 
     /** Solana words that are not in the ears' list but mean the same thing here. */
-    private val EXTRA_WORDS = listOf("balance", "send", "signing", "transaction", "token")
+    private val EXTRA_WORDS = listOf(
+        "balance", "send", "signing", "transaction", "token",
+        // Solana's own ideas, so "how do priority fees work" can reach the knowledge base.
+        "priority fee", "priority fees", "compute unit", "compute units", "compute budget", "PDA", "PDAs",
+        "program derived address", "CPI", "Anchor", "Token-2022", "token account", "ATA", "ATAs",
+        "Mobile Wallet Adapter", "validator", "validators", "epoch", "blockhash", "lamports", "lamport",
+        "rent-exempt", "rent exempt", "Firedancer", "Agave", "Turbine", "Gulf Stream", "Sealevel",
+        "Proof of History", "Tower BFT", "Geyser", "SPL", "devnet", "mainnet",
+    )
 
     private val WORDS: List<Regex> = (Keyterms.ALWAYS + EXTRA_WORDS).distinct().map { word ->
         Regex("(?<![\\p{L}\\p{N}])${Regex.escape(word)}(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)

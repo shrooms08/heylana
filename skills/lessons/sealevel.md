@@ -7,6 +7,8 @@ aliases: sealevel, parallel execution, parallel, runtime
 chunks: 4
 recap: Because every transaction lists its accounts, Sealevel runs transactions that touch different writable accounts at the same time.
 checked: 2026-09-18 against solana.com/docs
+link: https://docs.anza.xyz/validator/runtime
+link_title: Agave docs: the runtime
 ---
 Sealevel is Solana's parallel runtime.
 

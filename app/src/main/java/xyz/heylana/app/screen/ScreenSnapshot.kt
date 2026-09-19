@@ -101,6 +101,15 @@ data class ScreenSnapshot(
         .filter { it.clickable }
         .map { Keyterms.Labelled(it.label, it.bounds.width() * it.bounds.height()) }
 
+    /**
+     * The address a browser's bar shows ("solana.stackexchange.com/questions/…"), when a
+     * browser is in front and its bar was read; null anywhere else. Used only for the page's
+     * chip, never logged.
+     */
+    val pageAddress: String?
+        get() = if (packageName !in xyz.heylana.app.lessons.LessonWords.BROWSERS) null
+        else nodes.firstOrNull { it.viewId in ADDRESS_BARS && !it.text.isNullOrBlank() }?.text?.trim()
+
     /** True if an element that was pointed at earlier is still on screen. */
     fun contains(key: String): Boolean = nodes.any { it.key == key }
 
@@ -137,6 +146,9 @@ data class ScreenSnapshot(
     }.trimEnd()
 
     companion object {
+        /** The address bar's view id in Chrome and its kin, Firefox, Brave and Samsung Internet. */
+        val ADDRESS_BARS = setOf("url_bar", "mozac_browser_toolbar_url_view", "location_bar_edit_text", "url")
+
         const val MAX_NODES = 120
         const val MAX_TEXT = 60
         private const val INDENT = " "

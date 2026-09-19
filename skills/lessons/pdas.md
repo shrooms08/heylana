@@ -7,6 +7,8 @@ aliases: pda, pdas, program derived address, program derived addresses, seeds, b
 chunks: 5
 recap: A PDA is an address derived from seeds and a program id, off the curve so no private key exists, that only its program can sign for.
 checked: 2026-09-18 against solana.com/docs/core/pda
+link: https://solana.com/docs/core/pda
+link_title: Solana docs: PDAs
 ---
 A Program Derived Address (PDA) is an address computed from seeds plus a program id, not from a keypair.
 

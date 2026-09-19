@@ -7,6 +7,8 @@ aliases: priority fees, priority fee, compute units, compute budget, local fee m
 chunks: 5
 recap: Work is measured in compute units; a priority fee in micro-lamports per CU buys earlier inclusion, and it rises only around busy accounts.
 checked: 2026-09-18 against solana.com/docs/core/fees
+link: https://solana.com/docs/core/fees
+link_title: Solana docs: fees
 ---
 Compute units (CU) measure how much work a transaction does.
 - Default budget: 200,000 CU per instruction, at most 1.4 million per transaction. Set a lower, accurate limit with the Compute Budget program's SetComputeUnitLimit.

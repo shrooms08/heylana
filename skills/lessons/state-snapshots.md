@@ -7,6 +7,8 @@ aliases: state, accounts db, accountsdb, snapshots, snapshot, ledger
 chunks: 4
 recap: Validators keep current state in AccountsDB and history in the ledger; snapshots let a new node start from recent state instead of replaying from genesis.
 checked: 2026-09-18 against docs.anza.xyz
+link: https://docs.anza.xyz/implemented-proposals/snapshot-verification
+link_title: Agave docs: snapshots
 ---
 A validator stores two different things.
 

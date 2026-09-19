@@ -7,6 +7,8 @@ aliases: proof of history, poh, tower bft, consensus
 chunks: 5
 recap: Proof of History is a verifiable clock of chained hashes; Tower BFT is the voting that uses it, with lockouts that double on each vote.
 checked: 2026-09-18 against the Solana whitepaper and docs.anza.xyz
+link: https://docs.anza.xyz/implemented-proposals/tower-bft
+link_title: Agave docs: Tower BFT
 ---
 Proof of History (PoH) is a clock, not a consensus mechanism on its own.
 - The leader runs SHA-256 in a loop, each hash taking the previous as input. The chain can only be made one step at a time, so its length proves time has passed.

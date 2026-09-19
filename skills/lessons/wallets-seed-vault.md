@@ -7,6 +7,8 @@ aliases: wallets, wallet, seed vault, keys, keypair, seed phrase
 chunks: 4
 recap: A wallet is a keypair; Seed Vault keeps the key in secure hardware and signs only after you approve on its own screen.
 checked: 2026-09-18 against docs.solanamobile.com
+link: https://docs.solanamobile.com/developers/seed-vault
+link_title: Solana Mobile: Seed Vault
 ---
 A wallet is an ed25519 keypair. The public key is your address; the private key signs. A seed phrase (usually 12 or 24 words, BIP-39) generates keys, so one phrase can back many addresses along derivation paths.
 

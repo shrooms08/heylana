@@ -7,6 +7,8 @@ aliases: programs, smart contracts, cpi, cross program invocation, cross-program
 chunks: 5
 recap: Programs are stateless code accounts; a CPI lets one program call another, passing accounts and signer rights along.
 checked: 2026-09-18 against solana.com/docs/core/programs and /docs/core/cpi
+link: https://solana.com/docs/core/cpi
+link_title: Solana docs: CPI
 ---
 Programs are Solana's smart contracts: executable accounts holding compiled SBF (Solana BPF) bytecode, usually written in Rust, often with Anchor. They are stateless; they read and write separate data accounts they own.
 

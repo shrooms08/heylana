@@ -39,6 +39,8 @@ import xyz.heylana.app.brain.Greeting
 import xyz.heylana.app.brain.Routing
 import xyz.heylana.app.brain.SaySegment
 import xyz.heylana.app.brain.AddressText
+import xyz.heylana.app.brain.Source
+import xyz.heylana.app.brain.Sources
 import xyz.heylana.app.brain.TypedAddresses
 import xyz.heylana.app.brain.SendAction
 import xyz.heylana.app.brain.SendGuard
@@ -427,6 +429,7 @@ class BuddyOverlayService : Service() {
             view.isSpeaking = { speakingNow }
             view.onInterrupt = { interruptSpeech() }
             view.onCancelSend = { cancelSend() }
+            view.onSourceTapped = { openSource(it) }
             view.onPanelClosed = {
                 HeylanaLog.state("panel: closed")
                 teaching?.cancel()
@@ -592,7 +595,7 @@ class BuddyOverlayService : Service() {
             exchange.over()
             view.endVoiceExchange()
             conversation.record(question, ErrorTable.line(known), null)
-            sayLine(ErrorTable.line(known))
+            sayLine(ErrorTable.line(known), listOf(ErrorTable.source(known)))
             return
         }
 
@@ -627,7 +630,7 @@ class BuddyOverlayService : Service() {
                 HeylanaLog.state("error: table hit name=${onScreen.name} where=screen model=not_asked")
                 exchange.over()
                 view.endVoiceExchange()
-                sayLine(ErrorTable.line(onScreen))
+                sayLine(ErrorTable.line(onScreen), listOf(ErrorTable.source(onScreen)))
                 return@launch
             }
             val errorText = when {
@@ -645,7 +648,7 @@ class BuddyOverlayService : Service() {
                 when (reply) {
                     is BrainReply.Say -> {
                         conversation.record(question, reply.text, snapshot.packageName)
-                        sayLine(reply.text)
+                        sayLine(reply.text, reply.sources)
                     }
                     is BrainReply.Failed -> view.showNotice(reply.message)
                 }
@@ -1172,21 +1175,39 @@ class BuddyOverlayService : Service() {
         HeylanaLog.state("ask: screen not read why=lesson")
         inFlight = scope.launch {
             mode(BuddyMode.THINKING)
+            // The topic's doc page rides under every turn, the last one included.
+            val link = lesson?.note?.link
             val line = block()
             mode(null)
             exchange.over()
             view.endVoiceExchange()
             if (line.ended) lesson = null
-            sayLine(line.text)
+            sayLine(line.text, listOfNotNull(link))
         }
     }
 
-    /** One of Heylana's own lines: shown, spoken, then back to rest. */
-    private fun sayLine(line: String) {
+    /** One of Heylana's own lines: shown with its chips, spoken, then back to rest. */
+    private fun sayLine(line: String, sources: List<Source> = emptyList()) {
         val view = overlayView ?: return
-        val shown = AddressText.shorten(line)
+        val shown = Sources.spoken(AddressText.shorten(line))
         view.showNotice(shown)
+        view.showSources(sources)
         if (!speak(shown)) settleSoon()
+    }
+
+    /**
+     * A source chip was tapped: its page opens in the browser, in front of Heylana, and the
+     * box goes. The log has the host only.
+     */
+    private fun openSource(source: Source) {
+        val uri = android.net.Uri.parse(source.url)
+        if (uri.scheme != "https") return
+        HeylanaLog.state("source: opened host=${uri.host}")
+        mouth?.stop()
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.onFailure { HeylanaLog.state("source: no browser ${it.javaClass.simpleName}") }
+        overlayView?.closePanel()
     }
 
     // ------------------------------------------------------------------ teaching
@@ -1291,6 +1312,7 @@ class BuddyOverlayService : Service() {
         // is what puts its words in a box.
         if (view.wasSpoken && settings.showTextForVoice) view.ensurePanelOpen()
         view.showAnswer(reply.text)
+        view.showSources(reply.sources + listOfNotNull(snapshot.pageAddress?.let(Sources::forPage)))
         // The snapshot is still in hand, so the id resolves to real bounds.
         snapshot.node(reply.pointAt)?.let { node ->
             view.avoidOverlap(node.bounds)

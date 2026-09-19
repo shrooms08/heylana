@@ -7,6 +7,8 @@ aliases: solana mobile, solana mobile stack, seeker, saga, seeker id, skr, guard
 chunks: 5
 recap: Seed Vault, Mobile Wallet Adapter and the dApp Store make the Seeker a crypto phone; Seeker ID gives a .skr name, and SKR is the ecosystem token staked to Guardians.
 checked: 2026-09-18 against docs.solanamobile.com and Solana Mobile announcements
+link: https://docs.solanamobile.com/solana-mobile-stack/overview
+link_title: Solana Mobile: the stack
 ---
 Solana Mobile builds Android phones for crypto: Saga (2023) and Seeker (2025). The software stack:
 

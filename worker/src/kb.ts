@@ -91,7 +91,89 @@ export async function searchTool(kb: Kb | undefined, input: any): Promise<unknow
   if (!query) return { error: 'no_query' }
   const results = await searchKb(kb, query, Number(input?.k ?? 3))
   if (results.length === 0) return { results: [], note: 'Nothing in the knowledge base fits. Answer from what you know, and say it is not from a source.' }
-  return { results, note: 'When you use a result, name its title in one short phrase. Give its url only if asked for a link.' }
+  return {
+    results,
+    note: 'When you use a result, name its source in a few words in say ("the Solana Cookbook has an example"). ' +
+      'Never write a url in say: add "cite": [the url of each result you used] to your reply, and the app shows it as a link.',
+  }
+}
+
+/** The most source chips an answer carries. */
+export const MAX_SOURCES = 2
+/** A result this close is shown as the source when the answer cited nothing itself. */
+export const TOP_SOURCE_SCORE = 0.7
+
+/**
+ * The reply with the model's "cite" swapped for "sources": each cited url that the knowledge
+ * base really returned for this question, with its title and source, at most [MAX_SOURCES].
+ * A url the model made up, or one it was never handed, is dropped. A body that isn't one of
+ * our replies is left as it is.
+ */
+export function withSources(body: string, found: Map<string, KbResult>): { body: string; sources: number; from: 'cite' | 'top' | 'none' } {
+  let parsed: any
+  try {
+    parsed = JSON.parse(body)
+  } catch {
+    return { body, sources: 0, from: 'none' as const }
+  }
+  const content = parsed?.content
+  if (!Array.isArray(content)) return { body, sources: 0, from: 'none' as const }
+  for (const block of content) {
+    if (block?.type !== 'text' || typeof block.text !== 'string') continue
+    // The reply object, wherever it sits: the model sometimes writes a sentence before it.
+    const located = replyObject(block.text)
+    if (!located) continue
+    const reply = located.reply
+    if (!('cite' in reply) && found.size === 0) return { body, sources: 0, from: 'none' as const }
+    const cited = (Array.isArray(reply.cite) ? reply.cite : [reply.cite]).filter((u: unknown) => typeof u === 'string')
+    let picked = [...new Set<string>(cited)].map((url) => found.get(url)).filter((r): r is KbResult => !!r)
+    let from: 'cite' | 'top' | 'none' = picked.length > 0 ? 'cite' : 'none'
+    // It searched and answered but cited nothing: the closest strong match is where it came from.
+    if (picked.length === 0) {
+      const top = [...found.values()].sort((a, b) => b.score - a.score)[0]
+      if (top && top.score >= TOP_SOURCE_SCORE) {
+        picked = [top]
+        from = 'top'
+      }
+    }
+    const sources = picked.slice(0, MAX_SOURCES).map((r) => ({ title: r.title, source: r.source, url: r.url }))
+    delete reply.cite
+    if (sources.length > 0) reply.sources = sources
+    block.text = block.text.slice(0, located.start) + JSON.stringify(reply) + block.text.slice(located.end)
+    return { body: JSON.stringify(parsed), sources: sources.length, from }
+  }
+  return { body, sources: 0, from: 'none' as const }
+}
+
+/** The first JSON object in [text] that has a say: where it starts and ends, and what it holds. */
+export function replyObject(text: string): { reply: Record<string, unknown>; start: number; end: number } | null {
+  for (let start = text.indexOf('{'); start >= 0; start = text.indexOf('{', start + 1)) {
+    const end = closingBrace(text, start)
+    if (end < 0) return null
+    try {
+      const reply = JSON.parse(text.slice(start, end + 1))
+      if (reply && typeof reply === 'object' && !Array.isArray(reply) && 'say' in reply) return { reply, start, end: end + 1 }
+    } catch {
+      // Not an object after all: look further on.
+    }
+  }
+  return null
+}
+
+/** Where the object opened at [start] closes, minding strings; -1 if it never does. */
+function closingBrace(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  for (let i = start; i < text.length; i++) {
+    const c = text[i]
+    if (inString) {
+      if (c === '\\') i++
+      else if (c === '"') inString = false
+    } else if (c === '"') inString = true
+    else if (c === '{') depth++
+    else if (c === '}' && --depth === 0) return i
+  }
+  return -1
 }
 
 /** Checks, embeds and stores one batch from scripts/kb/build.sh. */

@@ -7,6 +7,8 @@ aliases: turbine, gulf stream, mempool, no mempool, block propagation
 chunks: 4
 recap: Gulf Stream forwards transactions straight to upcoming leaders instead of a mempool; Turbine spreads blocks out as small shreds through a tree of validators.
 checked: 2026-09-18 against solana.com/docs and docs.anza.xyz
+link: https://docs.anza.xyz/consensus/turbine-block-propagation
+link_title: Agave docs: Turbine
 ---
 Two ways Solana moves data fast.
 

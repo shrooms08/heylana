@@ -281,6 +281,9 @@ object HeylanaTokens {
     /** Label tracking, as a fraction of the em, for TextView.letterSpacing. */
     const val LABEL_TRACKING_EM = 0.08f
 
+    /** After a source chip's title: it opens a page outside Heylana. */
+    const val SOURCE_ARROW = "↗"
+
     /**
      * Outfit at a given weight, or the platform's light sans if the font
      * resource cannot be loaded on this device.

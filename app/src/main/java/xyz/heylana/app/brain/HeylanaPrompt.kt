@@ -116,10 +116,11 @@ object HeylanaPrompt {
 
     /** An error the built-in table doesn't know: the knowledge base, then cause, fix and one link. */
     const val ERROR_LINE: String =
-        "Explain this error in at most three short sentences: what causes it, the usual fix, then one link. " +
-            "Search search_solana_kb first, and give the url of the result you used. If nothing you find fits, say you " +
-            "can't tell from here, and to ask on solana.stackexchange.com with the full error text, the program id and " +
-            "the instruction that failed."
+        "Explain this error in at most three short sentences: what causes it, the usual fix, then where to read more, " +
+            "named in a few words (\"the Anchor docs have the full list\"). Search search_solana_kb first, and put the url " +
+            "of the result you used in cite, never in say. If nothing you find fits, say you can't tell from here, and to " +
+            "ask on Solana Stack Exchange with the full error text, the program id and the " +
+            "instruction that failed."
 
     /** The most of an error's text that goes with the question. */
     private const val ERROR_CHARS = 1_500

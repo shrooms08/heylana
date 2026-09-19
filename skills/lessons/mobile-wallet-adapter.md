@@ -7,6 +7,8 @@ aliases: mwa, mobile wallet adapter, wallet adapter
 chunks: 5
 recap: MWA connects an Android app to the user's wallet app over a local session to authorize, sign messages and sign and send transactions.
 checked: 2026-09-18 against docs.solanamobile.com/android-native and the MWA spec
+link: https://docs.solanamobile.com/developers/mobile-wallet-adapter
+link_title: Solana Mobile: Mobile Wallet Adapter
 ---
 Mobile Wallet Adapter (MWA) is the protocol a dApp on Android uses to talk to any compatible wallet app, instead of every dApp embedding every wallet.
 

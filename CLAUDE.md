@@ -333,8 +333,16 @@ Advanced is the own key: Anthropic wired; OpenAI and Gemini shown, disabled, "so
 Privacy is PRODUCT.md's list (`PrivacyCopy`, naming the voice provider `/me` reports) and
 the no-pixels line; keep the two the same. Settings: voice (a pick says a short line),
 glass mode, show spoken answers as text, darker buddy glass, Permissions, judge code,
-Stop buddy, the version (long press crashes debug builds on purpose), and in debug builds
-the debug switches and Debug states.
+Stop buddy, About, the version (long press crashes debug builds on purpose), and in debug
+builds the debug switches and Debug states.
+
+**Who made Heylana.** `HeylanaPrompt.IDENTITY` is in the system prompt word for word: made
+by Minos (Oghenerukevwe Eminokanju), an independent developer in Lagos, for the Solana
+Seeker; not by Solana Mobile or Solana Labs, though hoping to be adopted by the Seeker; said
+in one line when asked. Settings → About (`SettingsText.ABOUT_DETAIL`) says the same facts,
+held together by `IdentityTest`. "Who made you", "who built you", "are you from Solana
+Mobile" and the like are chat (`ChatQuestions.isIdentity`, checked before the Solana-words
+rule), so no screen is read and, in the app, no Solana block or tools go with them.
 
 ## Where the keys are
 

@@ -9,6 +9,11 @@ before the instruction; ask "why?" on any step to hear the reason for that one. 
 it is over, "what did I just do?" gets a short recap — and for a swap, a send or
 anything else on chain, what your wallet's recent activity shows actually happened.
 
+Heylana was made by Minos (Oghenerukevwe Eminokanju), an independent developer in Lagos,
+for the Solana Seeker. It is not made by Solana Mobile or Solana Labs, though it hopes to
+be adopted by the Seeker and become part of it; ask "who made you" and it says so in one
+line, and Settings → About says the same.
+
 It is good company too: say hello, ask for a joke, what it thinks, or who won the
 World Cup, and it answers like a friend in a sentence or two — without reading your
 screen, since none of that needs it.

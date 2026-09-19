@@ -30,6 +30,20 @@ object ChatQuestions {
         OPTIONS
     )
 
+    /**
+     * Who made Heylana, in any words: answered from the identity line, never from the screen,
+     * even when the question names Solana Mobile or Solana Labs.
+     */
+    private val IDENTITY = Regex(
+        "\\bwho (made|built|created|developed|designed|owns|wrote|coded|programmed) you\\b|" +
+            "\\bwho('?s| is) (your|heylana'?s) (maker|creator|developer|builder|author|dev|team)\\b|\\bwho('?s| is) behind (you|heylana)\\b|" +
+            "\\bare you (from|made by|built by|by|part of|owned by|affiliated with|an? official) \\S+|" +
+            "\\b(did|does) \\S+( \\S+)? (make|build|own|create) you\\b|\\bwho made heylana\\b|\\bwho built heylana\\b",
+        OPTIONS
+    )
+
+    fun isIdentity(question: String): Boolean = IDENTITY.containsMatchIn(question)
+
     /** General knowledge asked as such. */
     private val KNOWLEDGE = Regex(
         "^\\s*(who (is|was|were|invented|wrote|discovered|won)|when (was|were|did|is)|" +
@@ -55,6 +69,7 @@ object ChatQuestions {
         if (q.isEmpty()) return false
         if (Routing.isSendQuestion(q) || Routing.isExplainQuestion(q) || QuickActions.isMessage(q)) return false
         if (QuickActions.isQuickAction(q)) return false
+        if (IDENTITY.containsMatchIn(q)) return true
         if (SolanaCore.mentionsSolana(q)) return false
         if (SCREEN.containsMatchIn(q)) return false
         return SMALL_TALK.containsMatchIn(q) || KNOWLEDGE.containsMatchIn(q)

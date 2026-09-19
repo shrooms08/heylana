@@ -47,4 +47,13 @@ class ChatQuestionsTest {
         assertNull(Routing.chatRoute("what does this button do"))
         assertFalse(Routing.PLAIN.skipsScreen)
     }
+
+    @Test
+    fun `who made you is chat in any words, even naming Solana Mobile`() {
+        for (q in listOf("who made you", "Who built you?", "are you from Solana Mobile", "are you made by Solana Labs?",
+            "did Solana Mobile build you", "who's your developer", "who is behind heylana")) {
+            assertTrue("\"$q\" should be chat", ChatQuestions.isChat(q))
+        }
+        assertFalse(ChatQuestions.isChat("who made this token"))
+    }
 }

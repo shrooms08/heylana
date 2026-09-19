@@ -147,7 +147,8 @@ class AppChat(
 
     private suspend fun chat(question: String): String {
         // Chat, always: the app has no screen to read. Solana words bring the lookups.
-        val route = if (SolanaCore.mentionsSolana(question)) {
+        // "Are you from Solana Mobile" is about Heylana, not Solana: no lookups for it.
+        val route = if (SolanaCore.mentionsSolana(question) && !xyz.heylana.app.brain.ChatQuestions.isIdentity(question)) {
             Routing.Route(ProxyClient.MODE_QUICK, Routing.Why.CHAT, SolanaCore.Load.WORDS)
         } else Routing.CHAT
         val history = memory.asPromptText(null)

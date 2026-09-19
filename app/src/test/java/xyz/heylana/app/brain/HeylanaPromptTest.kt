@@ -17,8 +17,8 @@ class HeylanaPromptTest {
     @Test
     fun `system prompt stays inside its character budget`() {
         assertTrue(
-            "system prompt is ${HeylanaPrompt.SYSTEM.length} chars, budget is $BUDGET",
-            HeylanaPrompt.SYSTEM.length <= BUDGET
+            "system prompt is ${HeylanaPrompt.SYSTEM.length} chars, budget is $BUDGET plus the identity line",
+            HeylanaPrompt.SYSTEM.length <= BUDGET + HeylanaPrompt.IDENTITY.length
         )
     }
 
@@ -53,9 +53,11 @@ class HeylanaPromptTest {
 
     @Test
     fun `system prompt names Solana only as context and to forbid mentioning it`() {
-        val prompt = HeylanaPrompt.SYSTEM
-        // Twice, and only twice: once to say which phone this is, once in the rule
-        // that stops it bringing Solana up unprompted.
+        // The identity line names Solana to say who did not make Heylana; outside it, twice,
+        // and only twice: once to say which phone this is, once in the rule that stops it
+        // bringing Solana up unprompted.
+        assertTrue(HeylanaPrompt.SYSTEM.contains(HeylanaPrompt.IDENTITY))
+        val prompt = HeylanaPrompt.SYSTEM.replace(HeylanaPrompt.IDENTITY, "")
         assertEquals(2, Regex("Solana").findAll(prompt).count())
         assertTrue(
             prompt.contains("mention Solana, Seeker or Heylana unless the question is about")

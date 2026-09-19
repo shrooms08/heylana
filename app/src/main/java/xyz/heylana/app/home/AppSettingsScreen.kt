@@ -79,6 +79,12 @@ object SettingsText {
     const val STOP_DETAIL_ON = "The disc leaves the screen until you start it again."
     const val STOP_DETAIL_OFF = "The buddy isn't running."
 
+    const val ABOUT = "About"
+    /** The same facts as the system prompt's identity line (`HeylanaPrompt.IDENTITY`). */
+    const val ABOUT_DETAIL = "Made by Minos (Oghenerukevwe Eminokanju), an independent developer in Lagos, for the " +
+        "Solana Seeker. Not made by Solana Mobile or Solana Labs, though Heylana hopes to be adopted by the Seeker " +
+        "and become part of it."
+
     fun version(name: String, code: Int): String = "Heylana $name ($code)"
 }
 
@@ -196,6 +202,9 @@ fun AppSettingsScreen(
                 if (BuildConfig.DEBUG) DebugRows(settings) {
                     context.startActivity(Intent().setComponent(ComponentName(context, DEBUG_STATES_ACTIVITY)))
                 }
+
+                Spacer(Modifier.height(6.dp))
+                FlatRow(SettingsText.ABOUT, subtitle = SettingsText.ABOUT_DETAIL, glyph = Glyph.STAR)
 
                 Spacer(Modifier.height(12.dp))
                 VersionLine()

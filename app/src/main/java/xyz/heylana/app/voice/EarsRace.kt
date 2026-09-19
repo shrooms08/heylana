@@ -1,33 +1,38 @@
 package xyz.heylana.app.voice
 
 /**
- * Two pairs of ears, one answer.
+ * Three pairs of ears, one answer.
  *
- * Both start at the long press, every time: the phone's own recogniser, which is
- * always there, and Deepgram, which hears names like Kamino properly but depends
- * on a borrowed key and a socket. Waiting to see whether Deepgram came up before
- * starting the phone's ears meant a hold with a failed socket heard nothing at
- * all. Running both means there is always something listening.
+ * All start at the long press, every time: the phone's own recogniser, which is always
+ * there, and the two cloud ears — Deepgram and AssemblyAI — which hear names like Kamino
+ * properly but depend on a borrowed key and a socket each. Running them all means there is
+ * always something listening.
  *
  * The rule, once the user lets go:
  *
- *  - Deepgram's words win if they arrive within [PREFER_DEEPGRAM_MS] of the
- *    release (its trailing audio and its finalize wait fit inside it).
- *  - Otherwise the phone's words are used — as soon as Deepgram is known to have
+ *  - A cloud ear's words win if they arrive within [PREFER_DEEPGRAM_MS] of the release. The
+ *    first cloud final waits up to [COMPARE_MS] for the other cloud ear's; with both in
+ *    hand, the higher confidence wins (a tie goes to the first). The other cloud ear known
+ *    to have nothing, the first is used at once.
+ *  - Otherwise the phone's words are used — as soon as every cloud ear is known to have
  *    nothing, or once that window has passed.
- *  - If neither heard a word, it was nothing heard; if the phone's recogniser
- *    reported a real problem and Deepgram has nothing either, that problem.
- *  - Nothing is decided before the release, and nothing waits past
- *    [GIVE_UP_MS] after it.
+ *  - If no ear heard a word, it was nothing heard; if the phone's recogniser reported a
+ *    real problem and the cloud has nothing either, that problem.
+ *  - Nothing is decided before the release, and nothing waits past [GIVE_UP_MS] after it.
+ *
+ * Only the ears in [racing] take part; one left out counts as having nothing. With
+ * Deepgram and the phone alone it is the old two-ear race exactly.
  *
  * Kept free of Android so every ordering can be tested.
  */
 class EarsRace(
     private val preferDeepgramMs: Long = PREFER_DEEPGRAM_MS,
-    private val giveUpMs: Long = GIVE_UP_MS
+    private val giveUpMs: Long = GIVE_UP_MS,
+    private val racing: Set<Ear> = setOf(Ear.DEEPGRAM, Ear.ANDROID),
+    private val compareMs: Long = COMPARE_MS
 ) {
 
-    enum class Ear { DEEPGRAM, ANDROID }
+    enum class Ear { DEEPGRAM, ASSEMBLYAI, ANDROID }
 
     sealed interface Verdict {
         /** Not yet. */
@@ -37,9 +42,9 @@ class EarsRace(
         data object Settled : Verdict
 
         /** Use these words. [reason] says why this ear won, for the log. */
-        data class Use(val ear: Ear, val text: String, val reason: String) : Verdict
+        data class Use(val ear: Ear, val text: String, val reason: String, val confidence: Float? = null) : Verdict
 
-        /** Neither ear heard a word. */
+        /** No ear heard a word. */
         data object NothingHeard : Verdict
 
         /** Something went wrong that the user should be told about. */
@@ -50,10 +55,16 @@ class EarsRace(
         var done = false
         var words: String? = null
         var failure: String? = null
+        var confidence: Float? = null
+        var at: Long? = null
     }
 
-    private val deepgram = Report()
-    private val android = Report()
+    private val reports = Ear.entries.associateWith { ear ->
+        Report().apply { if (ear !in racing) { done = true; failure = "not_racing" } }
+    }
+
+    private val cloud = listOf(Ear.DEEPGRAM, Ear.ASSEMBLYAI).filter { it in racing }
+
     private var releasedAt: Long? = null
 
     var settled = false
@@ -65,18 +76,23 @@ class EarsRace(
         return decide(at)
     }
 
-    /** [ear] has its final words. Empty words count as nothing heard. */
-    fun heard(ear: Ear, at: Long, words: String): Verdict {
+    /** [ear] has its final words, and how sure it was. Empty words count as nothing heard. */
+    fun heard(ear: Ear, at: Long, words: String, confidence: Float? = null): Verdict {
         report(ear).apply {
             done = true
             this.words = words.trim().ifEmpty { null }
+            this.confidence = confidence
+            this.at = at
         }
         return decide(at)
     }
 
     /** [ear] finished and heard nothing. */
     fun nothing(ear: Ear, at: Long): Verdict {
-        report(ear).done = true
+        report(ear).apply {
+            done = true
+            this.at = at
+        }
         return decide(at)
     }
 
@@ -93,42 +109,88 @@ class EarsRace(
     fun tick(at: Long): Verdict = decide(at)
 
     /** Why Deepgram did not win, if it did not — for the log. */
-    val deepgramFailure: String? get() = deepgram.failure
+    val deepgramFailure: String? get() = reports.getValue(Ear.DEEPGRAM).failure
 
-    private fun report(ear: Ear) = if (ear == Ear.DEEPGRAM) deepgram else android
+    /**
+     * Every ear's result for the log: confidence and milliseconds after the release, or why
+     * it had nothing. "deepgram=0.91/820ms assemblyai=0.95/640ms android=words/1200ms".
+     */
+    fun summary(): String = Ear.entries.filter { it in racing }.joinToString(" ") { ear ->
+        val r = report(ear)
+        val ms = r.at?.let { at -> releasedAt?.let { maxOf(0L, at - it) } }
+        val what = when {
+            r.words != null -> r.confidence?.let { "%.2f".format(it) } ?: "words"
+            r.failure != null -> "out:${r.failure}"
+            r.done -> "nothing"
+            else -> "pending"
+        }
+        "${ear.name.lowercase()}=$what${ms?.let { "/${it}ms" } ?: ""}"
+    }
+
+    /** Debug builds only, for the ears capture: what [ear] heard, if anything. */
+    fun wordsOf(ear: Ear): String? = report(ear).words
+
+    private fun report(ear: Ear) = reports.getValue(ear)
 
     private fun decide(at: Long): Verdict {
         if (settled) return Verdict.Settled
         val released = releasedAt ?: return Verdict.Wait
         val since = at - released
 
-        val deepgramWords = deepgram.words
-        val androidWords = android.words
+        val cloudWords = cloud.filter { report(it).words != null }
+        val android = report(Ear.ANDROID)
 
-        if (deepgramWords != null && since <= preferDeepgramMs) {
-            return settle(Verdict.Use(Ear.DEEPGRAM, deepgramWords, "deepgram_in_time"))
+        if (cloudWords.isNotEmpty() && since <= preferDeepgramMs) {
+            val waiting = cloud.filter { !report(it).done }
+            val first = cloudWords.minBy { report(it).at ?: Long.MAX_VALUE }
+            val firstAt = report(first).at ?: at
+            // The other cloud ear may be a moment behind: its words are worth a short wait.
+            if (waiting.isNotEmpty() && at - firstAt < compareMs) return Verdict.Wait
+            return settle(useCloud(cloudWords, inTime = true))
         }
-        if (androidWords != null && (since >= preferDeepgramMs || deepgram.done)) {
-            return settle(Verdict.Use(Ear.ANDROID, androidWords, androidReason(since)))
+        val cloudDone = cloud.all { report(it).done }
+        val androidWords = android.words
+        if (androidWords != null && (since >= preferDeepgramMs || cloudDone)) {
+            return settle(Verdict.Use(Ear.ANDROID, androidWords, androidReason(since), android.confidence))
         }
-        if (deepgramWords != null) {
+        if (cloudWords.isNotEmpty()) {
             // Late, but the phone has nothing to offer instead.
-            return settle(Verdict.Use(Ear.DEEPGRAM, deepgramWords, "deepgram_late_only_words"))
+            return settle(useCloud(cloudWords, inTime = false))
         }
-        if (deepgram.done && android.done) return settle(nobodyHeard())
+        if (Ear.entries.all { report(it).done }) return settle(nobodyHeard())
         if (since >= giveUpMs) return settle(nobodyHeard())
         return Verdict.Wait
     }
 
-    private fun androidReason(since: Long): String = when {
-        deepgram.failure != null -> "deepgram_failed_${deepgram.failure}"
-        deepgram.done -> "deepgram_heard_nothing"
-        since >= preferDeepgramMs -> "deepgram_late"
-        else -> "deepgram_late"
+    /** The cloud ear to use among those with words: the more confident, or the first on a tie. */
+    private fun useCloud(withWords: List<Ear>, inTime: Boolean): Verdict.Use {
+        val ranked = withWords.sortedWith(
+            compareByDescending<Ear> { report(it).confidence ?: -1f }.thenBy { report(it).at ?: Long.MAX_VALUE }
+        )
+        val pick = ranked.first()
+        val r = report(pick)
+        val name = pick.name.lowercase()
+        val reason = when {
+            withWords.size > 1 -> if ((report(ranked[0]).confidence ?: -1f) > (report(ranked[1]).confidence ?: -1f))
+                "${name}_higher_confidence" else "${name}_first_on_tie"
+            !inTime -> "${name}_late_only_words"
+            else -> "${name}_in_time"
+        }
+        return Verdict.Use(pick, r.words!!, reason, r.confidence)
+    }
+
+    private fun androidReason(since: Long): String {
+        val failed = cloud.firstOrNull { report(it).failure != null }
+        return when {
+            cloud.isEmpty() -> "only_ear"
+            failed != null && cloud.all { report(it).done } -> "${failed.name.lowercase()}_failed_${report(failed).failure}"
+            cloud.all { report(it).done } -> "${cloud.joinToString("_") { it.name.lowercase() }}_heard_nothing"
+            else -> "${cloud.joinToString("_") { it.name.lowercase() }}_late"
+        }
     }
 
     private fun nobodyHeard(): Verdict {
-        val problem = android.failure
+        val problem = report(Ear.ANDROID).failure?.takeUnless { it == "not_racing" }
         return if (problem != null) Verdict.Problem(problem) else Verdict.NothingHeard
     }
 
@@ -139,11 +201,14 @@ class EarsRace(
 
     companion object {
         /**
-         * How long after the release Deepgram's words are still preferred: the 400ms of
-         * trailing audio plus the 1500ms Deepgram gets to answer Finalize, and a little
-         * room for the answer to travel.
+         * How long after the release a cloud ear's words are still preferred: the 400ms of
+         * trailing audio plus the 1500ms each gets to answer its end-of-speech request, and a
+         * little room for the answer to travel.
          */
         const val PREFER_DEEPGRAM_MS = 2_000L
+
+        /** How long the first cloud final waits for the other cloud ear's, to compare. */
+        const val COMPARE_MS = 400L
 
         /** How long after the release anything is waited for at all. */
         const val GIVE_UP_MS = 4_000L

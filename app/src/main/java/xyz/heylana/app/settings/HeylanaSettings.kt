@@ -66,17 +66,52 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putString(KEY_VOICE, if (value in VOICES) value else VOICE_SKYLAR).apply()
         }
 
-    /** Debug switches: pretend the good ears and the good voice are not there. */
-    var forcePhoneEars: Boolean
-        get() = prefs.getBoolean(KEY_FORCE_PHONE_EARS, false)
+    /**
+     * Debug switch: which ears listen. [EAR_AUTO] races all three; any other one is the only
+     * ear that listens, so each provider can be heard on its own.
+     */
+    var forceEar: String
+        get() = prefs.getString(KEY_FORCE_EAR, null)?.takeIf { it in FORCE_EARS }
+            ?: if (prefs.getBoolean(KEY_FORCE_PHONE_EARS, false)) EAR_ANDROID else EAR_AUTO
         set(value) {
-            prefs.edit().putBoolean(KEY_FORCE_PHONE_EARS, value).apply()
+            val ear = value.takeIf { it in FORCE_EARS } ?: EAR_AUTO
+            prefs.edit().putString(KEY_FORCE_EAR, ear).putBoolean(KEY_FORCE_PHONE_EARS, ear == EAR_ANDROID).apply()
         }
+
+    /** The old switch: only the phone's own ears. */
+    var forcePhoneEars: Boolean
+        get() = forceEar == EAR_ANDROID
+        set(value) {
+            forceEar = if (value) EAR_ANDROID else EAR_AUTO
+        }
+
+    /**
+     * Whether AssemblyAI listens: the worker lends it (as /me last said; until heard, it is
+     * assumed, as the worker is set) and the debug switch has not left it out. The privacy
+     * line names it exactly then.
+     */
+    val assemblyListening: Boolean
+        get() = EAR_ASSEMBLYAI in (prefs.getString(KEY_EARS_OFFERED, null)?.split(",") ?: listOf(EAR_ASSEMBLYAI)) &&
+            earAllowed(EAR_ASSEMBLYAI) && forceEar != EAR_ANDROID
+
+    /** Whether [ear] ("deepgram", "assemblyai", "android") may listen under the debug switch. */
+    fun earAllowed(ear: String): Boolean = forceEar.let { it == EAR_AUTO || it == ear }
 
     /**
      * Debug switch: keeps the raw audio of the last spoken answer in a file, so
      * a stream that sounds wrong on the phone can be listened to somewhere else.
      */
+    /**
+     * Debug builds only: each ear's words from the last hold, kept in the app's private
+     * storage as ears_capture.txt (overwritten every hold), so a test can count word errors.
+     * Off unless switched on; never in a log.
+     */
+    var saveEarsCapture: Boolean
+        get() = prefs.getBoolean(KEY_SAVE_EARS, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_SAVE_EARS, value).apply()
+        }
+
     var saveTtsStream: Boolean
         get() = prefs.getBoolean(KEY_SAVE_TTS, false)
         set(value) {
@@ -178,9 +213,10 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             ?: VoiceCopy.defaultName(voiceProvider, slot)
 
     /** Keeps what /me said about the voice: the provider and the two slots' names. */
-    fun rememberVoice(provider: String, skylar: String?, archie: String?) {
+    fun rememberVoice(provider: String, skylar: String?, archie: String?, ears: List<String>? = null) {
         prefs.edit().apply {
             putString(KEY_VOICE_PROVIDER, provider)
+            if (ears != null) putString(KEY_EARS_OFFERED, ears.joinToString(","))
             if (skylar.isNullOrBlank()) remove(KEY_VOICE_NAME_PREFIX + VOICE_SKYLAR) else putString(KEY_VOICE_NAME_PREFIX + VOICE_SKYLAR, skylar)
             if (archie.isNullOrBlank()) remove(KEY_VOICE_NAME_PREFIX + VOICE_ARCHIE) else putString(KEY_VOICE_NAME_PREFIX + VOICE_ARCHIE, archie)
         }.apply()
@@ -274,7 +310,15 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_USE_OWN_KEY = "use_own_key"
         private const val KEY_VOICE = "voice"
         private const val KEY_FORCE_PHONE_EARS = "force_phone_ears"
+        private const val KEY_FORCE_EAR = "force_ear"
+        private const val KEY_EARS_OFFERED = "ears_offered"
+        const val EAR_AUTO = "auto"
+        const val EAR_DEEPGRAM = "deepgram"
+        const val EAR_ASSEMBLYAI = "assemblyai"
+        const val EAR_ANDROID = "android"
+        val FORCE_EARS = listOf(EAR_AUTO, EAR_DEEPGRAM, EAR_ASSEMBLYAI, EAR_ANDROID)
         private const val KEY_SAVE_TTS = "save_tts_stream"
+        private const val KEY_SAVE_EARS = "save_ears_capture"
 
         private const val KEY_WARM_UP = "warm_up_connection"
         private const val KEY_SKILLS_OFF = "skills_off"

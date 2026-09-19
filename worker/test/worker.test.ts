@@ -254,6 +254,30 @@ test('the project key itself never leaves', async () => {
   assert.ok(!text.includes(SECRETS.DEEPGRAM_API_KEY))
 })
 
+test('the third ear: a single-use AssemblyAI token, minted with the key in a header, the key never returned', async () => {
+  const AAI = 'aai_test_4444444444444'
+  reply = () => new Response(JSON.stringify({ token: 'aai-temp-xyz', expires_in_seconds: 60 }), { status: 200 })
+  const response = await worker.fetch(post('/stt-token-aai', {}), { ...env(), ASSEMBLYAI_API_KEY: AAI })
+  assert.equal(calls[0].url, 'https://streaming.assemblyai.com/v3/token?expires_in_seconds=60&max_session_duration_seconds=120')
+  assert.equal(new Headers(calls[0].init?.headers).get('authorization'), AAI)
+  const text = await response.text()
+  assert.deepEqual(JSON.parse(text), { key: 'aai-temp-xyz', expires_in: 60 })
+  assert.ok(!text.includes(AAI))
+})
+
+test('with no AssemblyAI key the third ear sits out, and its refusals are plain', async () => {
+  const off = await worker.fetch(post('/stt-token-aai', {}), env())
+  assert.deepEqual([off.status, (await off.json()).reason], [503, 'not_set_up'])
+  reply = () => new Response('{"error":"Rate limited","code":429}', { status: 429 })
+  const busy = await worker.fetch(post('/stt-token-aai', {}), { ...env(), ASSEMBLYAI_API_KEY: 'aai_x' })
+  assert.deepEqual([busy.status, (await busy.json()).reason], [429, 'quota'])
+  reply = () => new Response('{"error":"bad key aai_x"}', { status: 401 })
+  const refused = await worker.fetch(post('/stt-token-aai', {}), { ...env(), ASSEMBLYAI_API_KEY: 'aai_x' })
+  const body = await refused.text()
+  assert.equal(refused.status, 502)
+  assert.ok(!body.includes('aai_x'))
+})
+
 // ---------------------------------------------------------------- the rules
 
 test('a request with no device is refused', async () => {

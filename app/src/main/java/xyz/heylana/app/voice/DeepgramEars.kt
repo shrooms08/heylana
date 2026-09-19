@@ -89,6 +89,22 @@ class DeepgramEars(
 
     private var socket: WebSocket? = null
     private var recorder: AudioRecord? = null
+
+    /**
+     * The other cloud ear, fed the same audio: every piece that goes (or would go) to
+     * Deepgram after the hold starts, pre-roll first. One recorder for both, so neither is
+     * silenced for the other. While it is set, a failed Deepgram socket leaves the
+     * microphone running for it.
+     */
+    @Volatile
+    var tap: ((ByteArray) -> Unit)? = null
+
+    /**
+     * The microphone alone, with no Deepgram socket at all: for when Deepgram is switched
+     * off and only [tap] listens.
+     */
+    @Volatile
+    var micOnly = false
     private var pump: Job? = null
 
     @Volatile
@@ -102,6 +118,15 @@ class DeepgramEars(
 
     /** Everything Deepgram has settled on so far, in order. */
     private val heard = StringBuilder()
+
+    @Volatile
+    private var confidenceSum = 0f
+
+    @Volatile
+    private var confidenceCount = 0
+
+    override val confidence: Float?
+        get() = if (confidenceCount == 0) null else confidenceSum / confidenceCount
 
     /**
      * Audio recorded before the socket was up.
@@ -155,7 +180,15 @@ class DeepgramEars(
         released = false
         wanted = false
         heard.setLength(0)
+        confidenceSum = 0f
+        confidenceCount = 0
         nothingHeard.started()
+        if (micOnly) {
+            // No socket to open: the microphone is all there is, for the other ear.
+            stage = Stage.READY
+            HeylanaLog.state("deepgram: microphone only, no socket")
+            return
+        }
         stage = Stage.TOKEN
 
         scope.launch {
@@ -287,7 +320,8 @@ class DeepgramEars(
                     "deepgram: socket failed ${t::class.simpleName}: ${t.message?.take(160)} " +
                         "http=${refused ?: "none"} stage=$stage body=${body ?: "none"}"
                 )
-                stopRecording()
+                // The other ear may still be listening through this microphone.
+                if (tap == null) stopRecording()
                 if (abandoned) return
                 val wasReady = stage == Stage.READY
                 stage = Stage.FAILED
@@ -301,7 +335,7 @@ class DeepgramEars(
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                stopRecording()
+                if (tap == null || released) stopRecording()
                 if (abandoned) return
                 if (released && !finalized) HeylanaLog.state("deepgram: socket closed code=$code before the final")
                 stage = Stage.IDLE
@@ -327,6 +361,11 @@ class DeepgramEars(
         if (json.optBoolean("is_final")) {
             if (heard.isNotEmpty()) heard.append(' ')
             heard.append(text)
+            // Deepgram's confidence for this phrase, averaged over every phrase settled.
+            if (alternative.has("confidence")) {
+                confidenceSum += alternative.optDouble("confidence").toFloat()
+                confidenceCount++
+            }
             callbacks.onPartial(heard.toString())
         } else {
             val sofar = if (heard.isEmpty()) text else "$heard $text"
@@ -343,7 +382,8 @@ class DeepgramEars(
      */
     @SuppressLint("MissingPermission")
     private fun startRecordingNow() {
-        if (listening) return
+        // Already recording, perhaps only for the other ear after Deepgram's socket failed.
+        if (listening || recorder != null) return
         listening = true
         val minimum = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL, ENCODING)
         if (minimum <= 0) {
@@ -406,15 +446,20 @@ class DeepgramEars(
                             (if (touchDownAt > 0) recorderStartedAt - touchDownAt else -1) +
                             " silenced_at_hold=${silencedNow ?: "unknown"}"
                     )
-                    if (kept.isNotEmpty()) sendOrKeep(kept)
+                    if (kept.isNotEmpty()) {
+                        sendOrKeep(kept)
+                        tap?.invoke(kept)
+                    }
                 }
                 sendOrKeep(piece)
+                tap?.invoke(piece)
                 callbacks.onLevel(levelOf(frame, read))
             }
         }
     }
 
     private fun sendOrKeep(piece: ByteArray) {
+        if (micOnly) return
         val live = socket.takeIf { stage == Stage.READY }
         if (live != null) live.send(piece.toByteString()) else keepEarly(piece)
     }
@@ -478,8 +523,17 @@ class DeepgramEars(
     override fun release(): Boolean {
         released = true
         val heldBack = nothingHeard.releasedNow()
-        if (!listening) {
-            if (heldBack && !abandoned) callbacks.onNothingHeard()
+        if (!listening || micOnly) {
+            // Deepgram is out, but the microphone may be feeding the other ear: it hears the
+            // same trailing moment Deepgram would have, then stops.
+            if (recorder != null) {
+                scope.launch(Dispatchers.IO) {
+                    Thread.sleep(TRAILING_MS)
+                    stopRecording()
+                    listening = false
+                }
+            }
+            if (!micOnly && heldBack && !abandoned) callbacks.onNothingHeard()
             return false
         }
         finalized = false
@@ -567,7 +621,7 @@ class DeepgramEars(
 
     override fun shutdown() = cancel()
 
-    private companion object {
+    companion object {
         const val SAMPLE_RATE = 16_000
         const val CHANNEL = AudioFormat.CHANNEL_IN_MONO
         const val ENCODING = AudioFormat.ENCODING_PCM_16BIT

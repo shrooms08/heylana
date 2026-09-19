@@ -86,7 +86,7 @@ private fun SkillsScreen(settings: HeylanaSettings, onBack: () -> Unit, modifier
         val answer = WalletApi(settings).me()
         if (answer is Answer.Ok) {
             settings.skillsCap = answer.value.skillsCap
-            answer.value.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie) }
+            answer.value.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie, it.ears) }
             version++
         }
     }

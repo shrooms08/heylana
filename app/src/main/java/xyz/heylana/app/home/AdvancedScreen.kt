@@ -169,8 +169,20 @@ object PrivacyCopy {
 
     data class Item(val title: String, val detail: String)
 
+    /** Where the voice goes: Deepgram, and AssemblyAI when it is listening too — named only then. */
+    fun voiceDetail(assemblyai: Boolean): String =
+        if (assemblyai) {
+            "To Deepgram and AssemblyAI, to be written down. The phone connects to each directly with a pass that " +
+                "stops working within two minutes (AssemblyAI's opens one session only). Both are sent a fixed list " +
+                "of Solana words to listen for; never anything from your screen."
+        } else {
+            "To Deepgram, to be written down. The phone connects to Deepgram directly with a key that stops " +
+                "working after two minutes. Deepgram is also sent a fixed list of Solana words to listen for; " +
+                "never anything from your screen."
+        }
+
     /** The seven things that leave the phone, with the voice provider the worker speaks through. */
-    fun items(provider: String): List<Item> = listOf(
+    fun items(provider: String, assemblyai: Boolean = false): List<Item> = listOf(
         Item(
             "Your question and a text list of the screen",
             "To Heylana's server (a Cloudflare Worker), which passes it to Anthropic to write the answer. " +
@@ -178,12 +190,7 @@ object PrivacyCopy {
                 "forgotten after ten minutes or when the buddy stops) and, on the first answer after the buddy starts, " +
                 "the name you asked to be called. Questions asked here in the app carry no screen."
         ),
-        Item(
-            "Your voice, only while you hold the buddy or the mic",
-            "To Deepgram, to be written down. The phone connects to Deepgram directly with a key that stops " +
-                "working after two minutes. Deepgram is also sent a fixed list of Solana words to listen for; " +
-                "never anything from your screen."
-        ),
+        Item("Your voice, only while you hold the buddy or the mic", voiceDetail(assemblyai)),
         Item("The text of the spoken answer", "${speechSentence(provider)} ${VoiceCopy.LIVE_SENTENCE}"),
         Item(
             "Your wallet address, a signed sign-in message, and the name you choose",
@@ -223,7 +230,7 @@ object PrivacyCopy {
 
 /** The privacy screen: the pixels line, then the list. */
 @Composable
-fun PrivacyScreen(provider: String, onBack: () -> Unit) {
+fun PrivacyScreen(provider: String, onBack: () -> Unit, assemblyai: Boolean = false) {
     val palette = LocalHeylana.current
     FlatPage {
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
@@ -239,7 +246,7 @@ fun PrivacyScreen(provider: String, onBack: () -> Unit) {
                 FlatRow("No pixels, ever", subtitle = PrivacyCopy.PIXELS, glyph = Glyph.EYE, selected = true)
                 Spacer(Modifier.height(6.dp))
                 SectionHead("What leaves the phone")
-                PrivacyCopy.items(provider).forEachIndexed { i, item ->
+                PrivacyCopy.items(provider, assemblyai).forEachIndexed { i, item ->
                     FlatRow(item.title, subtitle = item.detail, letter = "${i + 1}")
                 }
                 Spacer(Modifier.height(6.dp))

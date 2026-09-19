@@ -42,6 +42,12 @@ class Listener(
 
     override val isListening: Boolean get() = listening
 
+    /** The recogniser's own confidence in its best result, when it gives one (many don't: then null). */
+    @Volatile
+    private var lastConfidence: Float? = null
+
+    override val confidence: Float? get() = lastConfidence
+
     override fun available(): Boolean = SpeechRecognizer.isRecognitionAvailable(context)
 
     /** Must be called on the main thread. [keyterms] bias it where the platform allows. */
@@ -83,6 +89,8 @@ class Listener(
             }
 
             override fun onResults(results: Bundle?) {
+                lastConfidence = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+                    ?.firstOrNull()?.takeIf { it in 0f..1f }
                 listening = false
                 if (abandoned) return
                 val text = firstResult(results)

@@ -15,6 +15,9 @@ interface Ears {
     /** True between the microphone opening and the last word arriving. */
     val isListening: Boolean
 
+    /** How sure these ears were of their final words, 0 to 1, when they say; null when they don't. */
+    val confidence: Float? get() = null
+
     /**
      * Opens the microphone. [keyterms] are names the listener should lean
      * toward; ears that cannot use them ignore them.

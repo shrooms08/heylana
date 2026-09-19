@@ -19,8 +19,17 @@ class VoiceCopyTest {
         for (line in listOf(deepgram, gemini)) {
             assertTrue(line.startsWith("Your voice goes to Deepgram to be transcribed while you hold the buddy."))
             assertTrue(line.contains(VoiceCopy.LIVE_SENTENCE))
-            assertTrue(line.endsWith("The screen never goes to either."))
+            assertTrue(line.endsWith("The screen never goes to any of them."))
         }
+    }
+
+    @Test
+    fun `AssemblyAI is named exactly when it is listening`() {
+        val both = VoiceCopy.privacyLine(VoiceCopy.DEEPGRAM, assemblyai = true)
+        assertTrue(both.startsWith("Your voice goes to Deepgram and AssemblyAI to be transcribed while you hold the buddy."))
+        assertFalse(VoiceCopy.privacyLine(VoiceCopy.DEEPGRAM, assemblyai = false).contains("AssemblyAI"))
+        assertTrue(xyz.heylana.app.home.PrivacyCopy.voiceDetail(true).startsWith("To Deepgram and AssemblyAI"))
+        assertFalse(xyz.heylana.app.home.PrivacyCopy.voiceDetail(false).contains("AssemblyAI"))
     }
 
     @Test

@@ -79,6 +79,7 @@ import xyz.heylana.app.actions.QuickLog
 import xyz.heylana.app.actions.QuickText
 import xyz.heylana.app.voice.HeylanaVoice
 import xyz.heylana.app.voice.VoiceFailure
+import xyz.heylana.app.voice.AssemblyEars
 import xyz.heylana.app.voice.DeepgramEars
 import xyz.heylana.app.voice.EarsRace
 import xyz.heylana.app.voice.EarCallbacks
@@ -112,8 +113,11 @@ class BuddyOverlayService : Service() {
     /** The phone's own ears: always there, and what everything falls back to. */
     private var phoneEars: Listener? = null
 
-    /** The good ears, when the proxy can lend a key for them. */
+    /** The good ears, when the proxy can lend a key for them. They also own the microphone. */
     private var cloudEars: DeepgramEars? = null
+
+    /** The third ear, AssemblyAI, fed from [cloudEars]' microphone. */
+    private var assemblyEars: AssemblyEars? = null
 
     /** When the buddy was touched — everything about the ears is timed from here. */
     private var earsAskedAt = 0L
@@ -253,8 +257,14 @@ class BuddyOverlayService : Service() {
     /** What Deepgram reports, marked as coming from it. */
     private val cloudCallbacks: EarCallbacks by lazy { callbacksFor(EarsRace.Ear.DEEPGRAM) }
 
+    /** What AssemblyAI reports, marked as coming from it. */
+    private val assemblyCallbacks: EarCallbacks by lazy { callbacksFor(EarsRace.Ear.ASSEMBLYAI) }
+
     /** True once Deepgram has put words in the capsule this hold. */
     private var deepgramSpoke = false
+
+    /** True once AssemblyAI has put words in the capsule this hold. */
+    private var assemblySpoke = false
 
     /**
      * Both ears report into the race rather than acting on their own, so the
@@ -262,13 +272,26 @@ class BuddyOverlayService : Service() {
      */
     private fun callbacksFor(ear: EarsRace.Ear) = EarCallbacks(
         onPartial = { text ->
-            // Deepgram's words, once it has any, are the ones shown.
+            // Deepgram's words, once it has any, are the ones shown; then AssemblyAI's; then the phone's.
             if (ear == EarsRace.Ear.DEEPGRAM) deepgramSpoke = true
-            if (ear == EarsRace.Ear.DEEPGRAM || !deepgramSpoke) overlayView?.showHeard(text)
+            if (ear == EarsRace.Ear.ASSEMBLYAI) assemblySpoke = true
+            val shown = when (ear) {
+                EarsRace.Ear.DEEPGRAM -> true
+                EarsRace.Ear.ASSEMBLYAI -> !deepgramSpoke
+                EarsRace.Ear.ANDROID -> !deepgramSpoke && !assemblySpoke
+            }
+            if (shown) overlayView?.showHeard(text)
         },
         onFinal = { text ->
             HeylanaLog.state("ears: ${ear.name.lowercase()} final")
-            judge(race?.heard(ear, SystemClock.uptimeMillis(), text))
+            val confidence = when (ear) {
+                EarsRace.Ear.DEEPGRAM -> cloudEars?.confidence
+                EarsRace.Ear.ASSEMBLYAI -> assemblyEars?.confidence
+                EarsRace.Ear.ANDROID -> phoneEars?.confidence
+            }
+            // A cloud final may wait a moment for the other cloud ear's: look again then.
+            if (ear != EarsRace.Ear.ANDROID) main.postDelayed(raceTick, EarsRace.COMPARE_MS)
+            judge(race?.heard(ear, SystemClock.uptimeMillis(), text, confidence))
         },
         onProblem = { message ->
             HeylanaLog.state("ears: ${ear.name.lowercase()} problem")
@@ -288,12 +311,17 @@ class BuddyOverlayService : Service() {
 
             is EarsRace.Verdict.Use -> {
                 val deepgram = cloudEars
+                val assembly = assemblyEars
+                // Which ear, how sure, how long after the release; every ear's result beside it. Never the words.
                 HeylanaLog.state(
                     "ears=${verdict.ear.name.lowercase()} won reason=${verdict.reason} " +
-                        "after_release=${SystemClock.uptimeMillis() - releasedAt}ms " +
-                        "token_ms=${deepgram?.tokenMillis ?: -1} " +
-                        "socket_ms=${deepgram?.socketMillis ?: -1}"
+                        "confidence=${verdict.confidence?.let { "%.2f".format(it) } ?: "none"} " +
+                        "ms=${SystemClock.uptimeMillis() - releasedAt} " +
+                        "all=[${race?.summary()}] " +
+                        "token_ms=${deepgram?.tokenMillis ?: -1} socket_ms=${deepgram?.socketMillis ?: -1} " +
+                        "aai_token_ms=${assembly?.tokenMillis ?: -1} aai_socket_ms=${assembly?.socketMillis ?: -1}"
                 )
+                captureEars(verdict)
                 endRace()
                 ask(verdict.text)
             }
@@ -326,9 +354,12 @@ class BuddyOverlayService : Service() {
         main.removeCallbacks(raceTick)
         race = null
         deepgramSpoke = false
+        assemblySpoke = false
         phoneEars?.cancel()
         cloudEars?.cancel()
         cloudEars = null
+        assemblyEars?.cancel()
+        assemblyEars = null
     }
 
     /** An exchange has run for twenty seconds: end it, whatever is stuck. */
@@ -378,6 +409,8 @@ class BuddyOverlayService : Service() {
         scope.cancel()
         cloudEars?.shutdown()
         cloudEars = null
+        assemblyEars?.shutdown()
+        assemblyEars = null
         phoneEars?.shutdown()
         phoneEars = null
         mouth?.shutdown()
@@ -820,6 +853,16 @@ class BuddyOverlayService : Service() {
             override fun onReceive(context: Context, intent: Intent) {
                 val view = overlayView ?: return
                 intent.getStringExtra("dock")?.let { view.debugDock(left = it == "left") }
+                // Which ears listen: auto, deepgram, assemblyai or android.
+                if (intent.hasExtra("ears_capture")) {
+                    settings.saveEarsCapture = intent.getBooleanExtra("ears_capture", false)
+                    if (!settings.saveEarsCapture) java.io.File(filesDir, EARS_CAPTURE).delete()
+                    HeylanaLog.state("ears: capture ${if (settings.saveEarsCapture) "on" else "off, file deleted"}")
+                }
+                intent.getStringExtra("ears")?.let { ear ->
+                    settings.forceEar = ear
+                    HeylanaLog.state("ears: debug switch now ${settings.forceEar}")
+                }
                 if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
                 if (intent.getBooleanExtra("thinking", false)) view.showThinking()
                 if (intent.getBooleanExtra("teach", false)) debugTeach()
@@ -1899,7 +1942,9 @@ class BuddyOverlayService : Service() {
      * without a word — see [discardEars].
      */
     private fun prepareEars() {
-        if (settings.forcePhoneEars) return
+        val deepgramOn = settings.earAllowed(HeylanaSettings.EAR_DEEPGRAM)
+        val assemblyOn = settings.earAllowed(HeylanaSettings.EAR_ASSEMBLYAI)
+        if (!deepgramOn && !assemblyOn) return
         if (!Proxy(settings).isConfigured) return
         if (!micGranted()) return
 
@@ -1908,6 +1953,7 @@ class BuddyOverlayService : Service() {
             // is thrown away, because the next touch deserves a fresh try.
             if (existing.stage != DeepgramEars.Stage.FAILED) {
                 existing.startPreRoll()
+                prepareAssembly(existing, assemblyOn)
                 return
             }
             existing.cancel()
@@ -1930,10 +1976,46 @@ class BuddyOverlayService : Service() {
             },
             unavailable = { reason -> deepgramUnavailable(reason) }
         )
+        // Deepgram switched off: its microphone still runs, for AssemblyAI alone.
+        deepgram.micOnly = !deepgramOn
         cloudEars = deepgram
+        prepareAssembly(deepgram, assemblyOn)
         deepgram.prepare(earsKeyterms)
         // The microphone starts now, into memory only, so a hold's first syllable is there.
         deepgram.startPreRoll()
+    }
+
+    /**
+     * The third ear, from the same first touch: a single-use token and an open socket, fed
+     * by [microphone]. One that gave up, or finished a hold, is replaced by a fresh one.
+     */
+    private fun prepareAssembly(microphone: DeepgramEars, on: Boolean) {
+        if (!on) {
+            microphone.tap = null
+            return
+        }
+        assemblyEars?.let { existing ->
+            if (existing.stage == AssemblyEars.Stage.TOKEN || existing.stage == AssemblyEars.Stage.SOCKET ||
+                existing.stage == AssemblyEars.Stage.READY
+            ) return
+            existing.cancel()
+        }
+        val assembly = AssemblyEars(
+            proxy = Proxy(settings),
+            scope = scope,
+            heard = assemblyCallbacks,
+            unavailable = { reason -> assemblyUnavailable(reason) }
+        )
+        assemblyEars = assembly
+        microphone.tap = { piece -> assembly.feed(piece) }
+        assembly.prepare(earsKeyterms.ifEmpty { Keyterms.forEars(emptyList()) })
+    }
+
+    /** AssemblyAI cannot deliver — before the hold or during it. */
+    private fun assemblyUnavailable(reason: String) {
+        HeylanaLog.state("ears: assemblyai unavailable reason=$reason token_ms=${assemblyEars?.tokenMillis ?: -1}")
+        val running = race ?: return
+        judge(running.failed(EarsRace.Ear.ASSEMBLYAI, SystemClock.uptimeMillis(), reason))
     }
 
     /** The touch was not a hold: the socket goes, quietly and unused. */
@@ -1941,6 +2023,8 @@ class BuddyOverlayService : Service() {
         if (race != null) return
         cloudEars?.discard()
         cloudEars = null
+        assemblyEars?.discard()
+        assemblyEars = null
     }
 
     /**
@@ -1953,31 +2037,74 @@ class BuddyOverlayService : Service() {
      * work at all is simply out of the race, not a reason to hear nothing.
      */
     private fun openEars() {
-        val race = EarsRace()
+        // The debug switch can leave any of them out, so each can be heard on its own.
+        val racing = buildSet {
+            if (settings.earAllowed(HeylanaSettings.EAR_DEEPGRAM)) add(EarsRace.Ear.DEEPGRAM)
+            if (settings.earAllowed(HeylanaSettings.EAR_ASSEMBLYAI)) add(EarsRace.Ear.ASSEMBLYAI)
+            if (settings.earAllowed(HeylanaSettings.EAR_ANDROID)) add(EarsRace.Ear.ANDROID)
+        }
+        if (settings.forceEar != HeylanaSettings.EAR_AUTO) HeylanaLog.state("ears: forced ${settings.forceEar}")
+        val race = EarsRace(racing = racing)
         this.race = race
         deepgramSpoke = false
+        assemblySpoke = false
         val now = SystemClock.uptimeMillis()
         val keyterms = earsKeyterms.ifEmpty { Keyterms.forEars(emptyList()) }
 
-        val phone = phoneEars
-        if (phone != null) {
-            HeylanaLog.state("ears: android listening")
-            phone.start(keyterms)
-        } else {
-            race.failed(EarsRace.Ear.ANDROID, now, Listener.UNAVAILABLE)
+        if (EarsRace.Ear.ANDROID in racing) {
+            val phone = phoneEars
+            if (phone != null) {
+                HeylanaLog.state("ears: android listening")
+                phone.start(keyterms)
+            } else {
+                race.failed(EarsRace.Ear.ANDROID, now, Listener.UNAVAILABLE)
+            }
         }
 
         val deepgram = cloudEars
-        when {
-            settings.forcePhoneEars -> deepgramOut(race, "forced")
-            deepgram == null -> deepgramOut(race, "not_set_up")
-            deepgram.stage == DeepgramEars.Stage.FAILED ->
-                deepgramOut(race, deepgram.failure ?: "failed")
-            else -> {
-                HeylanaLog.state("ears: deepgram listening stage=${deepgram.stage}")
-                deepgram.beginSpeaking()
+        val assembly = assemblyEars
+        if (EarsRace.Ear.DEEPGRAM in racing) {
+            when {
+                deepgram == null -> deepgramOut(race, "not_set_up")
+                deepgram.stage == DeepgramEars.Stage.FAILED -> deepgramOut(race, deepgram.failure ?: "failed")
+                else -> HeylanaLog.state("ears: deepgram listening stage=${deepgram.stage}")
             }
         }
+        if (EarsRace.Ear.ASSEMBLYAI in racing) {
+            when {
+                assembly == null -> assemblyOut(race, "not_set_up")
+                assembly.stage == AssemblyEars.Stage.FAILED -> assemblyOut(race, assembly.failure ?: "failed")
+                else -> {
+                    HeylanaLog.state("ears: assemblyai listening stage=${assembly.stage}")
+                    assembly.beginSpeaking()
+                }
+            }
+        }
+        // The microphone is Deepgram's, and it runs for AssemblyAI too — even when Deepgram's
+        // own socket failed or it was switched off.
+        val microphoneWanted = (EarsRace.Ear.DEEPGRAM in racing && deepgram?.stage != DeepgramEars.Stage.FAILED) ||
+            (EarsRace.Ear.ASSEMBLYAI in racing && assembly != null && assembly.stage != AssemblyEars.Stage.FAILED)
+        if (deepgram != null && microphoneWanted) deepgram.beginSpeaking()
+    }
+
+    /**
+     * Debug builds with the switch on only: every ear's words from this hold, in the app's
+     * private storage, for counting word errors by hand. Never logged, overwritten each hold.
+     */
+    private fun captureEars(verdict: EarsRace.Verdict.Use) {
+        if (!BuildConfig.DEBUG || !settings.saveEarsCapture) return
+        val running = race ?: return
+        val text = buildString {
+            append("winner=").append(verdict.ear.name.lowercase()).append(' ').append(verdict.reason).append('\n')
+            append(running.summary()).append('\n')
+            for (ear in EarsRace.Ear.entries) append(ear.name.lowercase()).append('\t').append(running.wordsOf(ear) ?: "-").append('\n')
+        }
+        runCatching { java.io.File(filesDir, EARS_CAPTURE).writeText(text) }
+    }
+
+    private fun assemblyOut(race: EarsRace, reason: String) {
+        HeylanaLog.state("ears: assemblyai out of the race reason=$reason")
+        judge(race.failed(EarsRace.Ear.ASSEMBLYAI, SystemClock.uptimeMillis(), reason))
     }
 
     private fun deepgramOut(race: EarsRace, reason: String) {
@@ -2013,10 +2140,12 @@ class BuddyOverlayService : Service() {
         releasedAt = SystemClock.uptimeMillis()
         val phone = phoneEars
         val deepgram = cloudEars
+        val assembly = assemblyEars
         judge(running.released(releasedAt))
-        // Either may report straight away, and may end the race while doing so.
+        // Any may report straight away, and may end the race while doing so.
         phone?.release()
         deepgram?.release()
+        assembly?.release()
 
         if (race != null) {
             main.postDelayed(raceTick, EarsRace.PREFER_DEEPGRAM_MS)
@@ -2111,6 +2240,8 @@ class BuddyOverlayService : Service() {
 
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
+        /** Debug builds only: the last hold's words from every ear ([captureEars]). */
+        private const val EARS_CAPTURE = "ears_capture.txt"
         /** How long an answer with source chips stays up after it has been said, so a chip can be tapped. */
         private const val SOURCE_LINGER_MS = 10_000L
 

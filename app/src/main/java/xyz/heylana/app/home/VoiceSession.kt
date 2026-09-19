@@ -69,7 +69,9 @@ class VoiceSession(
     private val main = Handler(Looper.getMainLooper())
     private var race: EarsRace? = null
     private var cloud: DeepgramEars? = null
+    private var assembly: xyz.heylana.app.voice.AssemblyEars? = null
     private var deepgramSpoke = false
+    private var assemblySpoke = false
     private var releasedAt = 0L
 
     private val phone: Listener by lazy { Listener(context, callbacksFor(EarsRace.Ear.ANDROID)) }
@@ -101,23 +103,35 @@ class VoiceSession(
         heard = ""
         level = 0f
         deepgramSpoke = false
+        assemblySpoke = false
         startedAt = SystemClock.uptimeMillis()
         ranMs = 0L
         phase = Phase.LISTENING
         HeylanaLog.state("app: voice listening")
 
-        val running = EarsRace()
+        // The debug switch can leave any ear out, so each can be heard on its own.
+        val deepgramOn = settings.earAllowed(HeylanaSettings.EAR_DEEPGRAM)
+        val assemblyOn = settings.earAllowed(HeylanaSettings.EAR_ASSEMBLYAI)
+        val racing = buildSet {
+            if (deepgramOn) add(EarsRace.Ear.DEEPGRAM)
+            if (assemblyOn) add(EarsRace.Ear.ASSEMBLYAI)
+            if (settings.earAllowed(HeylanaSettings.EAR_ANDROID)) add(EarsRace.Ear.ANDROID)
+        }
+        val running = EarsRace(racing = racing)
         race = running
         val keyterms = Keyterms.forEars(emptyList())
-        if (phone.available()) {
-            HeylanaLog.state("ears: android listening")
-            phone.start(keyterms)
-        } else {
-            running.failed(EarsRace.Ear.ANDROID, SystemClock.uptimeMillis(), Listener.UNAVAILABLE)
+        if (EarsRace.Ear.ANDROID in racing) {
+            if (phone.available()) {
+                HeylanaLog.state("ears: android listening")
+                phone.start(keyterms)
+            } else {
+                running.failed(EarsRace.Ear.ANDROID, SystemClock.uptimeMillis(), Listener.UNAVAILABLE)
+            }
         }
         val proxy = Proxy(settings)
-        if (settings.forcePhoneEars || !proxy.isConfigured) {
-            deepgramOut(if (settings.forcePhoneEars) "forced" else "not_set_up")
+        if ((!deepgramOn && !assemblyOn) || !proxy.isConfigured) {
+            if (deepgramOn) deepgramOut("not_set_up")
+            if (assemblyOn) assemblyOut("not_set_up")
         } else {
             val deepgram = DeepgramEars(
                 proxy = proxy,
@@ -131,6 +145,19 @@ class VoiceSession(
                 unavailable = { reason -> deepgramOut(reason) }
             )
             cloud = deepgram
+            // Deepgram switched off: its microphone still runs, for AssemblyAI alone.
+            deepgram.micOnly = !deepgramOn
+            if (assemblyOn) {
+                val third = xyz.heylana.app.voice.AssemblyEars(
+                    proxy = proxy,
+                    scope = scope,
+                    heard = callbacksFor(EarsRace.Ear.ASSEMBLYAI),
+                    unavailable = { reason -> assemblyOut(reason) }
+                )
+                assembly = third
+                deepgram.tap = { piece -> third.feed(piece) }
+                third.start(keyterms)
+            }
             deepgram.start(keyterms)
         }
         main.postDelayed(limit, LISTEN_LIMIT_MS)
@@ -150,6 +177,7 @@ class VoiceSession(
         judge(running.released(releasedAt))
         phone.release()
         cloud?.release()
+        assembly?.release()
         if (race != null) {
             main.postDelayed(raceTick, EarsRace.PREFER_DEEPGRAM_MS)
             main.postDelayed(raceTick, EarsRace.GIVE_UP_MS)
@@ -192,11 +220,23 @@ class VoiceSession(
         onPartial = { text ->
             if (race != null) shown[ear] = text
             if (ear == EarsRace.Ear.DEEPGRAM) deepgramSpoke = true
-            if (ear == EarsRace.Ear.DEEPGRAM || !deepgramSpoke) heard = text
+            if (ear == EarsRace.Ear.ASSEMBLYAI) assemblySpoke = true
+            val showThis = when (ear) {
+                EarsRace.Ear.DEEPGRAM -> true
+                EarsRace.Ear.ASSEMBLYAI -> !deepgramSpoke
+                EarsRace.Ear.ANDROID -> !deepgramSpoke && !assemblySpoke
+            }
+            if (showThis) heard = text
         },
         onFinal = { text ->
             HeylanaLog.state("ears: ${ear.name.lowercase()} final")
-            judge(race?.heard(ear, SystemClock.uptimeMillis(), text))
+            val confidence = when (ear) {
+                EarsRace.Ear.DEEPGRAM -> cloud?.confidence
+                EarsRace.Ear.ASSEMBLYAI -> assembly?.confidence
+                EarsRace.Ear.ANDROID -> phone.confidence
+            }
+            if (ear != EarsRace.Ear.ANDROID) main.postDelayed(raceTick, EarsRace.COMPARE_MS)
+            judge(race?.heard(ear, SystemClock.uptimeMillis(), text, confidence))
         },
         onProblem = { message ->
             HeylanaLog.state("ears: ${ear.name.lowercase()} problem")
@@ -215,6 +255,11 @@ class VoiceSession(
         onLevel = { l -> if (phase == Phase.LISTENING) level = l }
     )
 
+    private fun assemblyOut(reason: String) {
+        HeylanaLog.state("ears: assemblyai out of the race reason=$reason")
+        judge(race?.failed(EarsRace.Ear.ASSEMBLYAI, SystemClock.uptimeMillis(), reason))
+    }
+
     private fun deepgramOut(reason: String) {
         HeylanaLog.state("ears: deepgram out of the race reason=$reason")
         judge(race?.failed(EarsRace.Ear.DEEPGRAM, SystemClock.uptimeMillis(), reason))
@@ -226,7 +271,8 @@ class VoiceSession(
             is EarsRace.Verdict.Use -> {
                 HeylanaLog.state(
                     "ears=${verdict.ear.name.lowercase()} won reason=${verdict.reason} " +
-                        "after_release=${SystemClock.uptimeMillis() - releasedAt}ms"
+                        "confidence=${verdict.confidence?.let { "%.2f".format(it) } ?: "none"} " +
+                        "ms=${SystemClock.uptimeMillis() - releasedAt} all=[${race?.summary()}]"
                 )
                 endRace()
                 phase = Phase.READY
@@ -257,11 +303,14 @@ class VoiceSession(
         main.removeCallbacks(limit)
         race = null
         deepgramSpoke = false
+        assemblySpoke = false
         shown.clear()
         level = 0f
         phone.cancel()
         cloud?.cancel()
         cloud = null
+        assembly?.cancel()
+        assembly = null
     }
 
     companion object {

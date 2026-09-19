@@ -25,7 +25,13 @@ data class Standing(
 )
 
 /** What /me says about the voice. */
-data class VoiceInfo(val provider: String, val skylar: String?, val archie: String?)
+data class VoiceInfo(
+    val provider: String,
+    val skylar: String?,
+    val archie: String?,
+    /** The cloud ears the worker can lend a pass for; an older worker says nothing, which is Deepgram's alone. */
+    val ears: List<String> = listOf("deepgram")
+)
 
 /** What the worker says to send for Pro. [amount] is in the token's base units. */
 data class Quote(
@@ -322,7 +328,9 @@ class WalletApi(private val settings: HeylanaSettings) {
                 VoiceInfo(
                     provider = provider,
                     skylar = voice.optString("skylar").takeIf { it.isNotEmpty() },
-                    archie = voice.optString("archie").takeIf { it.isNotEmpty() }
+                    archie = voice.optString("archie").takeIf { it.isNotEmpty() },
+                    ears = voice.optJSONArray("ears")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotEmpty() } }
+                        ?: listOf("deepgram")
                 )
             }
         }

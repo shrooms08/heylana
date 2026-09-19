@@ -65,6 +65,8 @@ export interface Env {
   /** Gemini TTS, the default voice. */
   GEMINI_API_KEY?: string
   DEEPGRAM_API_KEY: string
+  /** AssemblyAI's key, for minting the third ear's single-use streaming tokens. Optional: without it that ear sits out. */
+  ASSEMBLYAI_API_KEY?: string
   /** Seals session tokens. Long and random; changing it signs everyone out. */
   SESSION_SECRET: string
   /** The code that turns an account into a judge's. */
@@ -127,6 +129,8 @@ const DAILY_CAPS: Record<string, number> = {
   chat: DAILY_CAP_FREE_CHAT,
   tts: 150,
   'stt-token': 300,
+  // AssemblyAI's tokens are single-use, so one is minted at every touch of the disc.
+  'stt-token-aai': 600,
   'wallet/challenge': 50,
   'wallet/verify': 50,
   judge: 20,
@@ -166,6 +170,7 @@ const ROUTES: Record<string, readonly string[]> = {
   chat: ['POST'],
   tts: ['POST'],
   'stt-token': ['POST'],
+  'stt-token-aai': ['POST'],
   'wallet/challenge': ['POST'],
   'wallet/verify': ['POST'],
   judge: ['POST'],
@@ -216,6 +221,11 @@ const TTS_SAMPLE_RATE = 24000
 
 /** How long a borrowed pair of ears is good for. */
 const STT_KEY_TTL_SECONDS = 120
+/** AssemblyAI Universal-Streaming: a temporary token for one session, opened within this many seconds. */
+export const AAI_TOKEN_URL = 'https://streaming.assemblyai.com/v3/token'
+export const AAI_TOKEN_TTL_SECONDS = 60
+/** A hold is never longer than the phone's 20 seconds; a session well past that is not a hold. */
+export const AAI_MAX_SESSION_SECONDS = 120
 
 /** Spoken answers are short by design; this is the ceiling, not the target. */
 const MAX_TTS_CHARS = 400
@@ -280,6 +290,7 @@ export default {
       if (route === 'chat') return await chat(request, env, who, started)
       if (route === 'tts') return await speak(request, env, device, started)
       if (route === 'stt-token') return await sttToken(env, device, started)
+      if (route === 'stt-token-aai') return await sttTokenAai(env, device, started)
       if (route === 'wallet/challenge') return await walletChallenge(request, env, who)
       if (route === 'wallet/verify') return await walletVerify(request, env, who)
       if (route === 'judge') return await judge(request, env, who)
@@ -558,6 +569,11 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
 }
 
 /** The model did not answer: the status it gave rides along, never its message. */
+/** Which cloud ears the phone may borrow a pass for: the privacy line names each one that listens. */
+export function earsOf(env: Pick<Env, 'ASSEMBLYAI_API_KEY'>): string[] {
+  return env.ASSEMBLYAI_API_KEY ? ['deepgram', 'assemblyai'] : ['deepgram']
+}
+
 function brainUnavailable(upstreamStatus: number): Response {
   return new Response(JSON.stringify({ reason: 'brain_unavailable', detail: 'The model did not answer.', upstream_status: upstreamStatus }), {
     status: 502,
@@ -724,6 +740,35 @@ async function speakCartesia(env: Env, device: string, started: number, text: st
  * A pair of ears for the next two minutes. The project key stays here; the
  * phone gets something that stops working almost immediately.
  */
+/**
+ * The third ear: a single-use AssemblyAI streaming token, good for [AAI_TOKEN_TTL_SECONDS] to
+ * open one session of at most [AAI_MAX_SESSION_SECONDS]. The real key stays here. The
+ * phone opens the socket itself, as it does Deepgram's.
+ */
+async function sttTokenAai(env: Env, device: string, started: number): Promise<Response> {
+  if (!env.ASSEMBLYAI_API_KEY) return fail(503, 'not_set_up', 'AssemblyAI is not set up on this worker.')
+  const url = `${AAI_TOKEN_URL}?expires_in_seconds=${AAI_TOKEN_TTL_SECONDS}&max_session_duration_seconds=${AAI_MAX_SESSION_SECONDS}`
+  const upstream = await fetch(url, { headers: { authorization: env.ASSEMBLYAI_API_KEY } })
+  const text = await upstream.text()
+  log({ route: 'stt-token-aai', device, ms: clock.now() - started, status: upstream.status })
+  if (!upstream.ok) {
+    if (upstream.status === 429) return fail(429, 'quota', 'The ears are out of quota for now.')
+    return fail(502, 'upstream', 'AssemblyAI did not give a token.')
+  }
+  const token = (() => {
+    try {
+      return JSON.parse(text)?.token
+    } catch {
+      return undefined
+    }
+  })()
+  if (typeof token !== 'string' || !token) return fail(502, 'upstream', 'AssemblyAI did not give a token.')
+  return new Response(
+    JSON.stringify({ key: token, expires_in: AAI_TOKEN_TTL_SECONDS }),
+    { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } },
+  )
+}
+
 async function sttToken(env: Env, device: string, started: number): Promise<Response> {
   const upstream = await fetch(`${DEEPGRAM_KEYS_URL}/${env.DEEPGRAM_PROJECT_ID}/keys`, {
     method: 'POST',
@@ -831,7 +876,7 @@ async function walletVerify(request: Request, env: Env, who: Who): Promise<Respo
     welcome_granted: welcome.granted,
     me: {
       ...standing(welcome.account, await talksUsed(env, key, now), now), wallet: pubkey, cluster: clusterOf(env),
-      voice: voiceInfo(env.VOICE_PROVIDER),
+      voice: { ...voiceInfo(env.VOICE_PROVIDER), ears: earsOf(env) },
     },
   })
 }
@@ -954,7 +999,7 @@ async function me(env: Env, who: Who): Promise<Response> {
   return json(200, {
     ...standing(account, used, now), wallet: who.wallet, cluster: clusterOf(env),
     // Which provider speaks and what its two voices are called: the phone's privacy line and picker follow it.
-    voice: voiceInfo(env.VOICE_PROVIDER),
+    voice: { ...voiceInfo(env.VOICE_PROVIDER), ears: earsOf(env) },
   })
 }
 

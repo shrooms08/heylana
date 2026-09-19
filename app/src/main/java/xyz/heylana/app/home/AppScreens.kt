@@ -61,7 +61,7 @@ fun AppScreens(
             is Answer.Ok -> {
                 standing = answer.value
                 settings.skillsCap = answer.value.skillsCap
-                answer.value.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie) }
+                answer.value.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie, it.ears) }
                 HeylanaLog.state("app: plan ${answer.value.plan}")
             }
             else -> HeylanaLog.state("app: plan not heard")
@@ -135,7 +135,7 @@ fun AppScreens(
             onBack = { onScreen(Screen.HOME) }
         )
         Screen.MEMORY -> MemoryScreen(settings, onBack = { onScreen(Screen.HOME) })
-        Screen.PRIVACY -> PrivacyScreen(settings.voiceProvider, onBack = { onScreen(Screen.HOME) })
+        Screen.PRIVACY -> PrivacyScreen(settings.voiceProvider, onBack = { onScreen(Screen.HOME) }, assemblyai = settings.assemblyListening)
         Screen.SETTINGS -> AppSettingsScreen(
             settings = settings,
             buddyOn = buddyOn,

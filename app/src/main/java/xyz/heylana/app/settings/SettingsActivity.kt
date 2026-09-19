@@ -161,7 +161,7 @@ private fun SettingsScreen(
     LaunchedEffect(standing) {
         standing?.let { settings.skillsCap = it.skillsCap }
         // The voice follows the worker too: the privacy line and the picker's names.
-        standing?.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie) }
+        standing?.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie, it.ears) }
     }
 
     // Whenever the wallet changes: claim any payment still waiting, then ask where we stand.
@@ -259,7 +259,7 @@ private fun SettingsScreen(
             }
         )
 
-        PrivacyCard(provider = standing?.voice?.provider ?: settings.voiceProvider)
+        PrivacyCard(provider = standing?.voice?.provider ?: settings.voiceProvider, assemblyai = settings.assemblyListening)
 
         OutlinedButton(
             onClick = { advanced = !advanced },
@@ -845,7 +845,7 @@ private fun JudgeCodeCard(api: WalletApi, onStanding: (Standing) -> Unit) {
 
 /** The plain-words version of what goes where. The app's Privacy screen has the full list. */
 @Composable
-private fun PrivacyCard(provider: String) {
+private fun PrivacyCard(provider: String, assemblyai: Boolean) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(text = "What leaves the phone", style = MaterialTheme.typography.titleMedium)
@@ -857,7 +857,7 @@ private fun PrivacyCard(provider: String) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = VoiceCopy.privacyLine(provider),
+                text = VoiceCopy.privacyLine(provider, assemblyai),
                 style = MaterialTheme.typography.bodySmall
             )
         }

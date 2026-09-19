@@ -122,6 +122,33 @@ class Proxy(private val settings: HeylanaSettings) {
     }
 
     /**
+     * The third ear's pass: a single-use AssemblyAI streaming token, fresh every time (a
+     * token opens one session only, so there is nothing to keep).
+     */
+    suspend fun sttTokenAai(): Borrowed = withContext(Dispatchers.IO) {
+        val started = SystemClock.elapsedRealtime()
+        fun since() = SystemClock.elapsedRealtime() - started
+        if (!isConfigured) return@withContext Borrowed.Unreachable("not_set_up", 0)
+        try {
+            http.newCall(post("stt-token-aai", "{}")).execute().use { response ->
+                val body = response.body.string()
+                if (!response.isSuccessful) {
+                    HeylanaLog.state("proxy: stt-token-aai refused ${response.code} in ${since()}ms")
+                    return@use Borrowed.Refused(response.code, since(), scopeProblem = false)
+                }
+                val key = org.json.JSONObject(body).optString("key").takeIf { it.isNotBlank() }
+                    ?: return@use Borrowed.Refused(response.code, since(), scopeProblem = false)
+                HeylanaLog.state("proxy: stt-token-aai ${response.code} token_ms=${since()}")
+                Borrowed.Key(key, cached = false, millis = since())
+            }
+        } catch (e: Exception) {
+            val cause = e::class.simpleName ?: "Exception"
+            HeylanaLog.state("proxy: stt-token-aai unreachable $cause in ${since()}ms")
+            Borrowed.Unreachable(cause, since())
+        }
+    }
+
+    /**
      * Borrowed ears: a Deepgram key that stops working two minutes from now.
      *
      * The key is kept until it is nearly out of time, so holding the buddy twice

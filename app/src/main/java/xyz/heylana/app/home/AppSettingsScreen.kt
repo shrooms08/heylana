@@ -228,7 +228,7 @@ private fun DebugRows(settings: HeylanaSettings, onDebugStates: () -> Unit) {
     val palette = LocalHeylana.current
     var simulateFree by remember { mutableStateOf(settings.simulateFreePlan) }
     var saveTts by remember { mutableStateOf(settings.saveTtsStream) }
-    var phoneEars by remember { mutableStateOf(settings.forcePhoneEars) }
+    var ears by remember { mutableStateOf(settings.forceEar) }
     var warmUp by remember { mutableStateOf(settings.warmUpConnection) }
     Spacer(Modifier.height(6.dp))
     SectionHead("Debug")
@@ -238,8 +238,12 @@ private fun DebugRows(settings: HeylanaSettings, onDebugStates: () -> Unit) {
     FlatRow("Save last tts stream", subtitle = "Keeps the last answer's audio as tts_capture.pcm.") {
         FlatSwitch(saveTts, { saveTts = it; settings.saveTtsStream = it })
     }
-    FlatRow("Force phone ears", subtitle = "Skips Deepgram.") {
-        FlatSwitch(phoneEars, { phoneEars = it; settings.forcePhoneEars = it })
+    // All three race, or one listens alone: tap to go auto, Deepgram, AssemblyAI, phone.
+    FlatRow("Ears", subtitle = EarsText.subtitle(ears), onClick = {
+        ears = EarsText.next(ears)
+        settings.forceEar = ears
+    }) {
+        Text(EarsText.name(ears), style = HeylanaType.label, color = palette.inkSecondary)
     }
     FlatRow("Warm up the connection", subtitle = "Opens the connection at the first touch.") {
         FlatSwitch(warmUp, { warmUp = it; settings.warmUpConnection = it })
@@ -268,3 +272,21 @@ private fun VersionLine() {
 private class AppTestCrash : RuntimeException(
     "Heylana test crash. This address must arrive as [address]: 7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv"
 )
+
+/** The debug Ears row's words. */
+internal object EarsText {
+    fun name(ear: String): String = when (ear) {
+        HeylanaSettings.EAR_DEEPGRAM -> "Deepgram"
+        HeylanaSettings.EAR_ASSEMBLYAI -> "AssemblyAI"
+        HeylanaSettings.EAR_ANDROID -> "Phone"
+        else -> "Auto"
+    }
+
+    fun subtitle(ear: String): String =
+        if (ear == HeylanaSettings.EAR_AUTO) "All three race; tap to force one." else "Only ${name(ear)} listens; tap for the next."
+
+    fun next(ear: String): String {
+        val all = HeylanaSettings.FORCE_EARS
+        return all[(all.indexOf(ear).coerceAtLeast(0) + 1) % all.size]
+    }
+}

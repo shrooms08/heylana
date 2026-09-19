@@ -256,7 +256,16 @@ export default {
     }
 
     // The knowledge base's own door, for scripts/kb/build.sh: a secret, no device, no caps.
-    if (route === 'kb/ingest' || route === 'kb/search') return await kbAdmin(route, request, env)
+    if (route === 'kb/ingest' || route === 'kb/search') {
+      try {
+        return await kbAdmin(route, request, env)
+      } catch (error) {
+        // Workers AI or Vectorize failed (a spent daily allowance is "4006"): said plainly, with its code.
+        const code = String((error as Error)?.message ?? '').match(/^\d{4}/)?.[0] ?? 'error'
+        log({ route, error: 'kb_unavailable', code })
+        return fail(503, 'kb_unavailable', `The knowledge base could not search (${code}).`)
+      }
+    }
 
     const methods = ROUTES[route]
     if (!methods) {

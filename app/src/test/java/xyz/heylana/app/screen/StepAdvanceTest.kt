@@ -94,4 +94,46 @@ class StepAdvanceTest {
         assertEquals(1.0, StepAdvance.difference(setOf("a"), setOf("b")), 0.0001)
         assertEquals(0.5, StepAdvance.difference(setOf("a", "b"), setOf("a")), 0.0001)
     }
+
+    @Test
+    fun `the wallet's live price and quote refreshing is not the user doing the step`() {
+        fun screenAt(price: String, quote: String) = listOf(
+            ScreenNode(1, 0, "Text", "Sell", null, null, false, false, false, null, android.graphics.Rect()),
+            ScreenNode(2, 0, "Text", price, null, null, false, false, false, null, android.graphics.Rect()),
+            ScreenNode(3, 0, "Text", quote, null, null, false, false, false, null, android.graphics.Rect())
+        )
+        assertEquals(
+            StepAdvance.signature(screenAt("$0.00111", "1 SOL ≈ 111.7 USDC")),
+            StepAdvance.signature(screenAt("$0.00112", "1 SOL ≈ 111.94 USDC"))
+        )
+        assertEquals("Text||Balance: #||", StepAdvance.withoutNumbers("Text||Balance: 1.045||"))
+    }
+
+    @Test
+    fun `with no tap in the app, only a new screen counts - a partial redraw waits for the user`() {
+        val step = step(landedAt = 1_000L)
+        // Part of the screen redrawn (a quote loading, a banner): 38%, nobody touched anything.
+        assertEquals(Decision.Ignore, step.onContentChange(3_000L, app, app, changed(5)))
+        assertEquals(0.38, step.lastDifference, 0.01)
+        // The user taps something in the app (not the pointed element): now the same change counts.
+        assertEquals(Decision.Ignore, step.onClick(3_200L, "Button|max|Max", app))
+        assertEquals(change, step.onContentChange(3_400L, app, app, changed(5)))
+    }
+
+    @Test
+    fun `a whole new screen counts even when the app sent no tap`() {
+        val step = step(landedAt = 1_000L)
+        assertEquals(change, step.onContentChange(3_000L, app, app, changed(15)))
+    }
+
+    @Test
+    fun `the box settling uncovers part of the app - that read is the step's screen, not a change`() {
+        val step = step(landedAt = 1_000L)
+        // Seconds later the box settles into its small form, and the app is read with more of it showing.
+        step.ownWindowsChanged(6_000L)
+        assertEquals(Decision.Ignore, step.onContentChange(6_300L, app, app, changed(15)))
+        // Afterwards the same screen again is no change at all.
+        assertEquals(Decision.Ignore, step.onContentChange(9_000L, app, app, changed(15)))
+        assertEquals(0.0, step.lastDifference, 0.0001)
+    }
 }

@@ -129,6 +129,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      */
     private val dockInset = dp(HeylanaTokens.DISC_DP * HeylanaTokens.DOCK_INSET_RATIO) -
         dp(HeylanaTokens.discBleedDp(HeylanaTokens.DISC_DP))
+
+    /** How far the docked window may hang off the side: its transparent bloom margin, never the disc. */
+    private val edgeOverhang = dp(HeylanaTokens.discBleedDp(HeylanaTokens.DISC_DP))
     /**
      * The gutter is measured to the visible pane. The panel carries its own
      * shadow margin, so that much is taken off the layout margin or the box
@@ -846,7 +849,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         PointF((usableLeft + dockedLeft(spriteLeft)).toFloat(), (usableTop + dockedTop(spriteTop)).toFloat())
 
     /** The docked window's left for a wanted disc left: on screen, as the window manager keeps it. */
-    private fun dockedLeft(wanted: Int): Int = DockPosition.clamped(wanted, discSize, usableWidth)
+    private fun dockedLeft(wanted: Int): Int = DockPosition.clamped(wanted, discSize, usableWidth, edgeOverhang)
 
     private fun dockedTop(wanted: Int): Int = DockPosition.clamped(wanted, discSize, usableHeight)
 
@@ -1437,7 +1440,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
             0
         }
 
-        val x = clamp(spriteLeft - spriteOffsetX, 0, usableWidth - measuredContainerWidth)
+        // Docked, the bloom margin may hang off the side, so the disc rests 6dp from it.
+        val overhang = if (mode == Mode.DOCKED) edgeOverhang else 0
+        val x = clamp(spriteLeft - spriteOffsetX, -overhang, usableWidth - measuredContainerWidth + overhang)
         val y = clamp(
             spriteTop - (measuredContainerHeight - discSize) / 2,
             0,
@@ -1495,13 +1500,18 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         /** How long the system's window slide lasts where it cannot be switched off. */
         private const val WINDOW_SLIDE_MS = 250L
 
+        /** Docked and HUD. NO_LIMITS lets the docked window's bloom margin hang off the edge. */
         private const val FLAGS_PASSIVE =
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 
         /** Composing: focusable so the field can type, and told about outside taps. */
         private const val FLAGS_COMPOSE =
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
+                WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                // The window becomes the docked one at landing, before its flags change:
+                // without this the overhang is clamped away there, and the disc rests 14dp in.
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
     }
 }

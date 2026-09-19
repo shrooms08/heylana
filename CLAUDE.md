@@ -1156,7 +1156,18 @@ change then is held and acted on when the line ends), and never for an event fro
 (`ScreenSignal.Clicked/Changed(packageName)`). Before this, any screen movement 600ms after
 the pointer appeared counted as "done", and every teaching step advanced itself a few hundred
 ms after landing. The trace says `step: armed`, `step: holding until …` and `advance
-reason=click|content_changed`. One-shot answers keep their `TapWatch`. `StepAdvanceTest`
+reason=click|content_changed`. **An app redrawing itself is not the user doing the step**
+(found on the Seeker on Sept 19: the Wallet's live price and swap quote refreshing advanced a
+teaching session five times in a minute with nobody touching the phone, a /chat each). So the
+node keys are compared with every number taken out (`StepAdvance.withoutNumbers`: "$0.00111" and
+"$0.00112" are one element), and unless the user has tapped something in the app since the step
+began, only a change over `BIG_CHANGE` (0.5: a new screen or a sheet) counts — the Wallet, a
+Compose app, reports no clicks at all, so typing an amount waits and the next screen moves it
+on (`step: change without a tap ignored diff=0.23`). Heylana's own windows changing (the box
+settling into its small form uncovers part of the app) starts a fresh quiet time
+(`ownWindowsChanged`), since that read shows more of the app, not a new screen. Walked on the
+Seeker to the swap review: three steps, each waiting for the tap, the window clear of every
+pointed element, "stop" flying the disc home. One-shot answers keep their `TapWatch`. `StepAdvanceTest`
 feeds it made-up event streams. Done stays, and "stop", "cancel", "that's
 enough", "never mind" said on their own (`Teaching.isStop`) end it the same way. The session
 ends on `done`, Done, stop or the 8-step cap; its last line is spoken and then the disc flies
@@ -1372,8 +1383,15 @@ the button the answer is about usually lives.
 and settles back on the way home, on the same spring as the flight: the flying
 stand-in is always the 80dp-sized view and springs its `discDp`, offset by half the
 size difference at take-off and landing. Bleed, bloom and dock inset are ratios of
-the disc (`DISC_BLEED_RATIO`, `GLOW_BLUR_RATIO`, `DOCK_INSET_RATIO`, the old 20, 40
-and 8dp around 88dp), so they scale with it. Resizing the docked disc only changes
+the disc (`DISC_BLEED_RATIO`, `GLOW_BLUR_RATIO` — the old 20 and 40dp around 88dp — and
+`DOCK_INSET_RATIO`, 6dp at 64dp), so they scale with it. **The docked disc sits 6dp from the
+edge.** It used to sit 14dp in: the inset is measured to the visible disc, so the window wants
+to start past the edge, and the window manager clamped it back on screen by the whole bloom
+margin. The docked window now carries `FLAG_LAYOUT_NO_LIMITS` (the box's flags too, since the
+window becomes the docked one at landing) and may hang off the edge by exactly its bloom margin
+(`DockPosition.clamped(…, overhang)`, `applyPosition`), never the disc: on the Seeker the
+window's frame runs to 1222 of 1200px and the disc ends at 1185, 15px (6dp) in; the flight home
+lands on the same spot (`flight: target/landed/settled x=985`, and x=-22 on the left). Resizing the docked disc only changes
 its layout params, never detaches it. Debug states shows both sizes side by side.
 
 **The mark dissolves into an orb.** Idle and pointing show the mark. Listening,

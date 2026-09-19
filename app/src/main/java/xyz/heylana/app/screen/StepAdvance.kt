@@ -8,12 +8,16 @@ package xyz.heylana.app.screen
  *  - the user clicks the element it points at, or
  *  - the target app's content really changes: its node set differs from the step's
  *    by more than [CHANGE_THRESHOLD] (a new screen, a sheet, the app handing over to
- *    another one), measured on a fresh read.
+ *    another one), measured on a fresh read — with every number taken out first, so a
+ *    live price or a quote refreshing is not a change — and, unless the user has tapped
+ *    something in the app since the step began, by more than [BIG_CHANGE]: an app that
+ *    redraws itself while nobody touches it is not the user doing the step.
  *
  * And never:
- *  - within [QUIET_MS] of the disc landing — the target app re-lays itself out when
- *    Heylana's windows appear, and that is not the user doing anything; changes in that
- *    time only update what the step is compared against;
+ *  - within [QUIET_MS] of the disc landing, or of Heylana's own windows changing again
+ *    (the box settling into its small form uncovers part of the app) — the target app
+ *    re-lays itself out around Heylana's windows, and that is not the user doing anything;
+ *    changes in that time only update what the step is compared against;
  *  - while the step's line is still being spoken — a click or change then is held and
  *    acted on the moment the line ends;
  *  - for anything from Heylana's own package, or with no package at all.
@@ -37,12 +41,26 @@ class StepAdvance(
     private var baseline: Set<String> = baseline
     private var held: Reason? = null
     private var done = false
+    /** The user has tapped something in the target app since the step began. */
+    private var acted = false
+
+    /** The last fresh read's difference from the step's screen, for the log. */
+    var lastDifference: Double = 0.0
+        private set
 
     /** True when a tap or a change is waiting for the quiet time or the line to end. */
     val holding: Boolean get() = held != null && !done
 
+    /** When the quiet time last began: the landing, or Heylana's windows last changing. */
+    private var quietFrom = landedAt
+
     /** How long until the quiet time is over. */
-    fun quietLeft(now: Long): Long = (QUIET_MS - (now - landedAt)).coerceAtLeast(0)
+    fun quietLeft(now: Long): Long = (QUIET_MS - (now - quietFrom)).coerceAtLeast(0)
+
+    /** Heylana's own windows changed (the box settled, the window moved): a fresh quiet time. */
+    fun ownWindowsChanged(now: Long) {
+        quietFrom = maxOf(quietFrom, now)
+    }
 
     /** True while the step's line is being spoken. */
     var speaking: Boolean = false
@@ -64,6 +82,7 @@ class StepAdvance(
     fun onClick(now: Long, key: String?, packageName: String?): Decision {
         if (done) return Decision.Ignore
         if (packageName == null || packageName == ownPackage) return Decision.Ignore
+        acted = true
         if (pointedKey == null || key != pointedKey) return Decision.Ignore
         return hold(now, Reason.CLICK)
     }
@@ -77,12 +96,14 @@ class StepAdvance(
         if (eventPackage == null || eventPackage == ownPackage) return Decision.Ignore
         if (topPackage == null || topPackage == ownPackage) return Decision.Ignore
         val difference = if (topPackage != targetPackage) 1.0 else difference(baseline, nodes)
-        if (now - landedAt < QUIET_MS) {
+        lastDifference = difference
+        if (now - quietFrom < QUIET_MS) {
             // Settling around our windows: that is the step's screen now.
             if (topPackage == targetPackage) baseline = nodes
             return Decision.Ignore
         }
         if (difference <= CHANGE_THRESHOLD) return Decision.Ignore
+        if (!acted && difference <= BIG_CHANGE) return Decision.Ignore
         return hold(now, Reason.CONTENT_CHANGED)
     }
 
@@ -95,7 +116,7 @@ class StepAdvance(
     private fun release(now: Long): Decision {
         val reason = held ?: return Decision.Wait
         if (done) return Decision.Ignore
-        if (speaking || now - landedAt < QUIET_MS) return Decision.Wait
+        if (speaking || now - quietFrom < QUIET_MS) return Decision.Wait
         done = true
         return Decision.Advance(reason)
     }
@@ -109,8 +130,16 @@ class StepAdvance(
         /** More than this share of the nodes different is a real change. */
         const val CHANGE_THRESHOLD = 0.15
 
-        /** What a screen is, for comparing: its nodes by key. */
-        fun signature(nodes: List<ScreenNode>): Set<String> = nodes.mapTo(HashSet()) { it.key }
+        /** With no tap from the user, only a change this big counts: a new screen, a sheet. */
+        const val BIG_CHANGE = 0.5
+
+        /** What a screen is, for comparing: its nodes by key, numbers taken out. */
+        fun signature(nodes: List<ScreenNode>): Set<String> = nodes.mapTo(HashSet()) { withoutNumbers(it.key) }
+
+        private val NUMBER = Regex("\\d[\\d.,:]*")
+
+        /** "$0.00111" and "$0.00112" are the same element: a price ticking is not the screen changing. */
+        fun withoutNumbers(key: String): String = key.replace(NUMBER, "#")
 
         /** 0 for the same set, 1 for nothing in common (Jaccard distance). */
         fun difference(a: Set<String>, b: Set<String>): Double {

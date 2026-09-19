@@ -177,8 +177,8 @@ object HeylanaTokens {
     /** How much of the disc the mark fills. */
     const val MARK_FRACTION = 0.62f
 
-    /** How far the resting buddy is held off the screen edge, as a share of the disc. (8dp at 88.) */
-    const val DOCK_INSET_RATIO = 8f / 88f
+    /** How far the visible resting disc is held off the screen edge, as a share of the disc: 6dp at 64. */
+    const val DOCK_INSET_RATIO = 6f / 64f
 
     /** The bloom behind an active disc, as a share of the disc. (40dp at 88.) */
     const val GLOW_BLUR_RATIO = 40f / 88f

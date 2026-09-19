@@ -178,6 +178,8 @@ class BuddyOverlayService : Service() {
             return@Runnable
         }
         HeylanaLog.state("settle: run")
+        // The box changing shape uncovers part of the app: a fresh quiet time for the step.
+        stepAdvance?.ownWindowsChanged(SystemClock.uptimeMillis())
         view.endVoiceExchange()
         // Never while the capsule is still on screen: closing the box abandons
         // the microphone, and that is not what the end of an answer means.
@@ -1504,11 +1506,13 @@ class BuddyOverlayService : Service() {
         val step = stepAdvance ?: return
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         if (snapshot.isEmpty) return
-        decideStep(
-            step.onContentChange(
-                SystemClock.uptimeMillis(), lastChangeFrom, snapshot.packageName, StepAdvance.signature(snapshot.nodes)
-            )
+        val decision = step.onContentChange(
+            SystemClock.uptimeMillis(), lastChangeFrom, snapshot.packageName, StepAdvance.signature(snapshot.nodes)
         )
+        if (step.lastDifference > StepAdvance.CHANGE_THRESHOLD && decision is StepAdvance.Decision.Ignore) {
+            HeylanaLog.state("step: change without a tap ignored diff=${"%.2f".format(step.lastDifference)}")
+        }
+        decideStep(decision)
     }
 
     // ------------------------------------------------------------ step advance

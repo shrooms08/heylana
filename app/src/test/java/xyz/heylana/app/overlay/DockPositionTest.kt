@@ -24,4 +24,15 @@ class DockPositionTest {
         assertEquals(once, DockPosition.clamped(once, view, width))
         assertEquals(0, DockPosition.clamped(40, 300, 200))
     }
+
+    @Test
+    fun `with the bloom margin allowed off the edge, the visible disc sits 6dp from it`() {
+        // 408 dpi: 6dp is 15px, the bloom margin 14.5dp is 37px, so the inset is -22px.
+        val margin = 37
+        val sixDp = -22
+        assertEquals(1200 - view + 22, DockPosition.dockLeft(onLeft = false, inset = sixDp, viewSize = view, usableWidth = width, overhang = margin))
+        assertEquals(-22, DockPosition.dockLeft(onLeft = true, inset = sixDp, viewSize = view, usableWidth = width, overhang = margin))
+        // Never further off than the margin: the disc itself stays on screen.
+        assertEquals(-margin, DockPosition.clamped(-300, view, width, overhang = margin))
+    }
 }

@@ -611,6 +611,31 @@ three chunks at cosine ≥ 0.6 with title, url, source, licence and a 1,200-char
 the tool tells the model to name the title in one short phrase. The chat log carries
 `kb_hits` (chunks handed over), never their text. `test/kb.test.ts`.
 
+**The knowledge base is read, not offered.** Left to decide, the model searched about a
+third of the time and answered the rest from memory, with no source chip (the dev eval,
+Sept 20: 60 questions, 24 right). So whenever `search_solana_kb` is among the offered
+tools, the worker searches first — `lookUpFirst`, the closest three chunks, each with its
+title, source and url and 900 characters of it — and appends them to the question before
+the model is called. Every chunk handed over goes into the same `found` map the tool fills
+in, so `cite` turns into chips and the top-match fallback still works. The tool stays
+offered for a second, different query. A lesson turn sends `kb_query` (the topic), since
+the user's turn — "yes" — is not a query. Measured over the same 60 on Sept 20: every
+question got chunks, 59 answers carried a source, 51 answered in one round and 9 searched
+again.
+
+**The answer's shape is forced, not asked for.** Thirteen of those 60 came back as
+markdown prose with `stop_reason: end_turn`. `ANSWER_TOOL` (`worker/src/brain.ts`) puts the
+contract itself on the table — `say` or `steps`, `point_at`, `task`, `code`, `cite` — for
+exactly those knowledge questions. Every round is then `tool_choice: {type: 'any'}` (a
+lookup while lookups are left) and the last is forced to `answer`, the way a send forces
+`propose_send`, so prose has nowhere to come out. That round gets `ANSWER_MAX_TOKENS` (700)
+rather than the phone's 300: the same two sentences cost more as JSON with a snippet in
+them. If prose arrives anyway — an own-key model, a stray `end_turn` — `wrappedProse`
+(`worker/src/say.ts`) puts it into the contract on the worker rather than asking again: the
+markdown comes off, the first fenced block becomes `code`, the first whole sentences up to
+60 words become `say`, and the chat log says `prose_wrapped`. Over the 60: 0 prose, 0
+wrapped, 0 unreadable. `test/kb.test.ts`.
+
 **Explain this error (`brain/ErrorTable`).** An error in the user's words — an Anchor
 "Error Code: … Error Number: …" line, a bare name like AccountDidNotDeserialize, "custom
 program error: 0x…", a runtime message like "Blockhash not found", an MWA `ERROR_…` or a Seed
@@ -921,7 +946,14 @@ slots, Proof of History and Tower BFT, Turbine and Gulf Stream, Sealevel, priori
 compute units, RPC, accounts DB and snapshots, Agave and Firedancer, staking, Token-2022, the
 Solana Mobile stack). Front matter: id, title, short (what Memory says), track, aliases,
 chunks (4 to 6), recap, checked (date and source); body under 450 tokens; anything not
-confirmed against a current source says "unverified". The folder ships with the skills'
+confirmed against a current source says "unverified". **Facts that have moved are a bug in
+a note, not a gap**: a slot has been 300ms since August 2026 (SIMD-0525, stepping to
+200ms), so an epoch's fixed 432,000 slots are about 36 hours, not two days; a legacy or v0
+transaction is still 1,232 bytes but v1 raises it to 4,096 and is live on mainnet; full
+Firedancer has been on mainnet since December 2025. `FreshFactsTest` fails if any note
+shipped in the APK puts "400ms" anywhere near the word slot, and checks the other three by
+asking for the correction, so a note rewritten from memory fails there rather than on the
+phone. The folder ships with the skills'
 assets; the skills list reads only the top of `skills/`, so lessons never appear there.
 "Teach me PDAs" (`LessonWords.topic`: teach me, a lesson on, learn, I want to learn, then a
 title or alias; never "teach me how to…", which stays a walk-through) starts `Lesson`, in the
@@ -1046,6 +1078,20 @@ phone's; Free gives it 20 welcome talks and 30 a month, `HEYLANA_JUDGE_CODE` lif
 Cloudflare refuses Python's default User-Agent (error 1010), so it sends `heylana-eval/1`.
 Twenty /chat calls a full run; `--skip` and `--only` take case ids. First live run, Sept 19:
 19 of 19 passed (chat-opinion left out to keep the task within its call budget).
+
+**The developer eval.** `python3 scripts/eval/dev_eval.py` asks sixty questions a Solana
+developer actually asks — 20 from Stack Exchange, 20 errors, 20 infrastructure
+(`scripts/eval/dev_set.jsonl`) — and scores whether the answer is *right*: the points a
+correct answer must make, a source chip where one is due, no invented API (a deny-list of
+nine names that sound real and are not), and a date on a fact that moves with a release.
+One /chat each, on its own throwaway wallet (`--state`), and `--rescore` scores saved runs
+again for nothing. The request is `scripts/eval/dev_request.json`, written by
+`DevRequestTest` from `HeylanaPrompt`; the developer's lines the phone adds per question go
+on per `scripts/eval/dev_verdicts.json`, which the same test fills in with
+`DevQuestion`'s own verdict — of the sixty, the phone calls eighteen a developer's
+question. Sept 20: 24 of 60, then 30 with the notes in `scripts/kb/notes/`, then **39 of
+60** (stackexchange 12, errors 13, infrastructure 14) once the knowledge base was read
+rather than offered and the answer's shape forced.
 
 **Answers have a word cap, enforced once.** `brain/AnswerLength`: a signing
 explanation is two sentences under 40 words (the prompt asks for it); everything else

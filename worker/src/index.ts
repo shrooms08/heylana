@@ -23,7 +23,11 @@ import { aboutBlock, newRecord, parseMemory, refusal, relevant, withRecord, type
 import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
-import { makeRpc, type Rpc, type RpcSample } from './rpc.ts'
+import { makeRpc, type Rpc } from './rpc.ts'
+import {
+  USAGE_PREFIX, USAGE_TTL_SECONDS, apply as applyUsage, daysBack, dayOf, emptyDay, isEmpty as usageIsEmpty,
+  priceSheet, summarise, type DayUsage, type UsagePatch,
+} from './usage.ts'
 import { answerWithTools, forcedAnswer, proposeAction, proposeSend, toolsNamed } from './brain.ts'
 import { sentryFor, type WaitUntil } from './sentry.ts'
 import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
@@ -79,6 +83,10 @@ export interface Env {
   RPCFAST_URL?: string
   /** Which mainnet provider is tried first: "rpcfast" (the default) or "helius". */
   RPC_PRIMARY?: string
+  /** Reads /admin/usage. Without it the route does not exist. */
+  ADMIN_SECRET?: string
+  /** What each thing costs, as JSON ([priceSheet]); the defaults stand in when it is unset. */
+  PRICES?: string
   /** Optional: raises Jupiter's rate limit above the keyless one. */
   JUPITER_API_KEY?: string
   /** Optional: a mainnet RPC for .skr names, which live on mainnet whatever CLUSTER is. */
@@ -261,6 +269,9 @@ export default {
       return fail(405, 'method', 'GET or HEAD to this.')
     }
 
+    // The operator's own door: counts and an estimated cost. A secret, no device, no caps.
+    if (route === 'admin/usage') return await adminUsage(request, env)
+
     // The knowledge base's own door, for scripts/kb/build.sh: a secret, no device, no caps.
     if (route === 'kb/ingest' || route === 'kb/search') {
       try {
@@ -308,7 +319,7 @@ export default {
       // One line per chain call: which method, which provider, how long, how it went.
       onCall: (call) => log({ route: 'rpc', method: call.method, provider: call.provider, ms: call.ms, outcome: call.outcome }),
     })
-    current = { rpc, logged: false }
+    current = { rpc, logged: false, usage: {} }
     try {
       if (route === 'chat') return await chat(request, env, who, started, rpc)
       if (route === 'tts') return await speak(request, env, device, started)
@@ -337,7 +348,18 @@ export default {
     } finally {
       // A route that logs nothing of its own still says what its chain calls cost.
       if (rpc.calls.length > 0 && !current.logged) log({ route, device, ms: clock.now() - started })
+      // The day's counters, written once per request and never in its way.
+      const patch: UsagePatch = {
+        ...current.usage,
+        wallet: who.wallet,
+        rpc: rpc.calls.map((call) => ({ provider: call.provider, method: call.method, ms: call.ms })),
+      }
       current = null
+      if (!usageIsEmpty(patch)) {
+        const write = recordUsage(env, patch)
+        if (context?.waitUntil) context.waitUntil(write)
+        else await write
+      }
     }
   },
 }
@@ -534,6 +556,8 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     if (!userKey) await saveAccount(env, who.key, spent.account)
     if (!userKey) await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
   }
+  // For the day's counters: which model answered, and what it read and wrote.
+  if (status >= 200 && status < 300) count({ chatModel: model, tokensIn: tokensIn, tokensOut: tokensOut })
   log({
     route: 'chat',
     device,
@@ -673,6 +697,7 @@ async function speakDeepgram(env: Env, device: string, started: number, text: st
     body: JSON.stringify({ text }),
   })
 
+  if (upstream.ok) count({ tts: { provider: 'deepgram', chars: text.length } })
   log({ route: 'tts', device, provider: 'deepgram', voice, ms: clock.now() - started, status: upstream.status, chars: text.length })
 
   if (!upstream.ok || !upstream.body) {
@@ -709,6 +734,7 @@ async function speakGemini(env: Env, device: string, started: number, text: stri
     body: JSON.stringify(geminiRequest(text, voice, model)),
   })
 
+  if (upstream.ok) count({ tts: { provider: 'gemini', chars: text.length } })
   log({ route: 'tts', device, provider: 'gemini', voice, model, ms: clock.now() - started, status: upstream.status, chars: text.length })
 
   if (!upstream.ok || !upstream.body) {
@@ -752,6 +778,7 @@ async function speakCartesia(env: Env, device: string, started: number, text: st
     }),
   })
 
+  if (upstream.ok) count({ tts: { provider: 'cartesia', chars: text.length } })
   log({ route: 'tts', device, provider: 'cartesia', voice: slot, ms: clock.now() - started, status: upstream.status, chars: text.length })
 
   if (!upstream.ok) {
@@ -777,6 +804,7 @@ async function sttTokenAai(env: Env, device: string, started: number): Promise<R
   const url = `${AAI_TOKEN_URL}?expires_in_seconds=${AAI_TOKEN_TTL_SECONDS}&max_session_duration_seconds=${AAI_MAX_SESSION_SECONDS}`
   const upstream = await fetch(url, { headers: { authorization: env.ASSEMBLYAI_API_KEY } })
   const text = await upstream.text()
+  if (upstream.ok) count({ ears: { provider: 'assemblyai' } })
   log({ route: 'stt-token-aai', device, ms: clock.now() - started, status: upstream.status })
   if (!upstream.ok) {
     if (upstream.status === 429) return fail(429, 'quota', 'The ears are out of quota for now.')
@@ -835,6 +863,7 @@ async function sttToken(env: Env, device: string, started: number): Promise<Resp
   }
 
   const minted = JSON.parse(text)
+  count({ ears: { provider: 'deepgram' } })
   return new Response(
     JSON.stringify({ key: minted.key, expires_in: STT_KEY_TTL_SECONDS }),
     { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } },
@@ -1173,6 +1202,7 @@ async function payConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Promi
   await env.CAPS.put(`sig:${signature}`, reference)
   const account = extendPro(await loadAccount(env, who.key), now, Number(env.PRO_DAYS))
   await saveAccount(env, who.key, account)
+  count({ proPayments: 1, proUsd: Number(env.PRICE_USD) || 0 })
   log({
     route: 'pay/confirm', device: who.device, wallet: who.wallet.slice(0, 8),
     accepted: true, currency: quote.currency, amount: verdict.amount,
@@ -1223,6 +1253,7 @@ async function sendPrepare(request: Request, env: Env, who: Who, rpc: Rpc): Prom
   const id = newReference()
   const prepared: PreparedSend = { ...quote, from: who.wallet, prepared_at: clock.now() }
   await env.CAPS.put(`send:${id}`, JSON.stringify(prepared), { expirationTtl: SEND_TTL_SECONDS })
+  count({ sendsPrepared: 1 })
   log({
     route: 'send/prepare', device: who.device, wallet: who.wallet.slice(0, 4), to: quote.to_address.slice(0, 4),
     token: quote.token, amount: quote.amount, new_account: quote.will_create_ata,
@@ -1484,6 +1515,7 @@ async function sendConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Prom
   }
   await env.CAPS.put(`sent:${id}`, signature!, { expirationTtl: SEND_TTL_SECONDS })
   await env.CAPS.put(`sentsig:${signature}`, id, { expirationTtl: SEND_TTL_SECONDS })
+  count({ sendsConfirmed: 1 })
   log({ ...logged, confirmed: true })
   return json(200, { confirmed: true, signature: short(signature!) })
 }
@@ -1780,12 +1812,71 @@ function rpcSummary(rpc: Rpc): { method: string; provider: string; ms: number }[
   return rpc.calls.map((call) => ({ method: call.method, provider: call.provider, ms: call.ms }))
 }
 
+/**
+ * The day's counters, read and written once per request. Last write wins, so two requests
+ * landing together can lose an increment — near enough to watch a budget by, as the talk
+ * counts are.
+ */
+async function recordUsage(env: Env, patch: UsagePatch): Promise<void> {
+  const date = dayOf(clock.now())
+  const key = USAGE_PREFIX + date
+  const stored = await env.CAPS.get(key)
+  const day: DayUsage = stored ? { ...emptyDay(date), ...JSON.parse(stored) } : emptyDay(date)
+  const hashed = patch.wallet ? await hashWallet(patch.wallet, env.SESSION_SECRET) : null
+  const next = applyUsage(day, patch, hashed, Math.floor(clock.now() / 60_000))
+  await env.CAPS.put(key, JSON.stringify(next), { expirationTtl: USAGE_TTL_SECONDS })
+}
+
+/** A wallet as a short salted hash: enough to count how many were active, never enough to name one. */
+async function hashWallet(wallet: string, secret: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${secret}:${wallet}`))
+  return [...new Uint8Array(digest).slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * What Heylana has been costing: the day's counters and an estimate from the price sheet.
+ * Behind ADMIN_SECRET
+ * in X-Heylana-Admin; without the secret set the route does not exist. Counts only: no
+ * wallet, no device, no words.
+ */
+async function adminUsage(request: Request, env: Env): Promise<Response> {
+  const given = request.headers.get('X-Heylana-Admin') ?? ''
+  if (!env.ADMIN_SECRET || !sameText(given, env.ADMIN_SECRET)) return fail(404, 'unknown_route', 'No such route.')
+  if (request.method !== 'GET') return fail(405, 'method', 'GET to this.')
+  const asked = Number(new URL(request.url).searchParams.get('days') ?? 30)
+  const days = Math.min(90, Math.max(1, Number.isFinite(asked) ? Math.floor(asked) : 30))
+  const dates = daysBack(clock.now(), days)
+  const stored = await Promise.all(dates.map((date) => env.CAPS.get(USAGE_PREFIX + date)))
+  const found: DayUsage[] = stored.flatMap((raw, i) => {
+    if (!raw) return []
+    try {
+      return [{ ...emptyDay(dates[i]), ...JSON.parse(raw) }]
+    } catch {
+      return []
+    }
+  })
+  const report = summarise(found, priceSheet(env.PRICES))
+  log({ route: 'admin/usage', days, found: found.length })
+  return json(200, report)
+}
+
 /** One line per request. Names and numbers only — never content. */
 /**
  * The request being served, so its line can carry what its chain calls cost. Set for each
  * request and cleared after it; a Worker handles one request per invocation.
  */
-let current: { rpc: Rpc; logged: boolean } | null = null
+let current: { rpc: Rpc; logged: boolean; usage: UsagePatch } | null = null
+
+/** Adds what this request did to what will be counted for the day. */
+function count(patch: UsagePatch): void {
+  if (!current) return
+  const into = current.usage
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === 'rpc') continue
+    if (typeof value === 'number') (into as any)[key] = ((into as any)[key] ?? 0) + value
+    else (into as any)[key] = value
+  }
+}
 
 function log(fields: Record<string, unknown>): void {
   const shown: Record<string, unknown> = { ...fields, device: String(fields.device ?? '').slice(0, 8) }

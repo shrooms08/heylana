@@ -44,6 +44,13 @@ PRO_DAYS = "30"
 # RPC_URL); see README.md.
 RPC_PRIMARY = "rpcfast"
 
+# What each thing costs, for the estimate /admin/usage returns. Models are dollars
+# per million tokens, the voice per million characters, the ears per minute, and
+# ears_session_seconds is how long one listening session is taken to be (the worker
+# mints the pass and never hears the audio). Check these against each provider's
+# pricing page and keep them current: they are the operator's figures, not a bill.
+PRICES = """{"models":{"claude-haiku-4-5-20251001":{"in":1,"out":5},"claude-sonnet-5":{"in":3,"out":15}},"tts":{"deepgram":30,"gemini":30,"cartesia":65},"ears":{"deepgram":0.0077,"assemblyai":0.0025},"rpc":{"rpcfast":0,"helius":0,"devnet":0},"ears_session_seconds":8}"""
+
 # Which Solana payments are taken on: "mainnet-beta", or "devnet" to test with
 # play money (then RPC_URL and USDC_MINT must be devnet too). See README.md.
 CLUSTER = "devnet"

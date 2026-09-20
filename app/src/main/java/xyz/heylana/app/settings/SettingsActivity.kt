@@ -153,7 +153,10 @@ private fun SettingsScreen(
 
     val api = remember { WalletApi(settings) }
     var session by remember { mutableStateOf(settings.walletSession) }
-    var standing by remember { mutableStateOf<Standing?>(null) }
+    var trueStanding by remember { mutableStateOf<Standing?>(null) }
+    var simulateFree by remember { mutableStateOf(BuildConfig.DEBUG && settings.simulateFreePlan) }
+    // What the screen shows: the account as it is, or as Free while the debug switch is on.
+    val standing = if (simulateFree) PlanText.asFree(trueStanding) else trueStanding
     var planProblem by remember { mutableStateOf("") }
     var goPro by remember { mutableStateOf(startGoPro) }
 
@@ -169,7 +172,7 @@ private fun SettingsScreen(
         if (session != null) settlePendingPayment(settings, api)
         when (val answer = api.me()) {
             is Answer.Ok -> {
-                standing = answer.value
+                trueStanding = answer.value
                 planProblem = ""
             }
             is Answer.Refused -> planProblem = WalletProblem.fromWorker(answer.reason).words
@@ -193,7 +196,7 @@ private fun SettingsScreen(
             session = session,
             cluster = standing?.cluster ?: Cluster.MAINNET,
             onSession = { session = it },
-            onStanding = { standing = it }
+            onStanding = { trueStanding = it }
         )
 
         PlanCard(
@@ -212,7 +215,7 @@ private fun SettingsScreen(
                 session = payer,
                 cluster = standing?.cluster ?: Cluster.MAINNET,
                 onPaid = {
-                    standing = it
+                    trueStanding = it
                     goPro = false
                 },
                 onClose = { goPro = false }
@@ -269,11 +272,11 @@ private fun SettingsScreen(
         }
 
         if (advanced) {
-            AdvancedSection(settings = settings, api = api, onStanding = { standing = it })
+            AdvancedSection(settings = settings, api = api, onStanding = { trueStanding = it })
         }
 
         if (BuildConfig.DEBUG) {
-            DebugSection(settings = settings)
+            DebugSection(settings = settings, onSimulateFree = { simulateFree = it })
         }
 
         OutlinedButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
@@ -1014,7 +1017,7 @@ private fun AdvancedSection(
 
 /** Debug builds only: things that exist to make a fallback happen on purpose. */
 @Composable
-private fun DebugSection(settings: HeylanaSettings) {
+private fun DebugSection(settings: HeylanaSettings, onSimulateFree: (Boolean) -> Unit = {}) {
     var warmUp by remember { mutableStateOf(settings.warmUpConnection) }
     val context = LocalContext.current
 
@@ -1025,12 +1028,14 @@ private fun DebugSection(settings: HeylanaSettings) {
 
     SwitchCard(
         title = "Simulate Free plan",
-        detail = "Debug builds only. Skills count against the Free plan's 3 whatever the " +
-            "plan really is, so the greyed skills can be seen on a Judge account.",
+        detail = "Debug builds only. Shows this account as Free — the plan card, its talks " +
+            "bar, the Go Pro sheet and the skills cap — whatever it really is. Nothing on " +
+            "the server changes.",
         checked = simulateFree,
         onCheckedChange = {
             simulateFree = it
             settings.simulateFreePlan = it
+            onSimulateFree(it)
         }
     )
 

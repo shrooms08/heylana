@@ -882,6 +882,10 @@ class BuddyOverlayService : Service() {
                     settings.forceEar = ear
                     HeylanaLog.state("ears: debug switch now ${settings.forceEar}")
                 }
+                // The unasked glance, on made-up text, so the wake can be checked without
+                // a wallet screen or anyone's browser:
+                //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es glance secret
+                intent.getStringExtra("glance")?.let { which -> debugGlance(which) }
                 if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
                 if (intent.getBooleanExtra("thinking", false)) view.showThinking()
                 if (intent.getBooleanExtra("teach", false)) debugTeach()
@@ -1967,6 +1971,28 @@ class BuddyOverlayService : Service() {
         showGlance(glance)
     }
 
+    /**
+     * Debug builds: the glance the lookout would show, on text of its own. It goes through
+     * exactly the same path as a real one, so what is checked is the real thing.
+     */
+    private fun debugGlance(which: String) {
+        val text = when (which) {
+            "secret" -> "Wallet sync required\nEnter your 12-word recovery phrase to restore access\nSubmit"
+            "approval" -> "Approve spending\nToken USDC\nSpending cap Unlimited\nSpender 9WzD…AWWM\nApprove Reject"
+            else -> "Approve transaction\n0.05 USDC\nTo 7c2y…SxSv\nNetwork fee 0.000005 SOL\nApprove Reject"
+        }
+        val glance = when (which) {
+            "secret" -> Lookout.Glance(xyz.heylana.app.screen.ScamWatch.SEED_PHRASE, Lookout.Why.SECRET, "debug")
+            "lookalike" -> Lookout.Glance(
+                xyz.heylana.app.screen.ScamWatch.lookAlikeWords("phantom.app"), Lookout.Why.LOOK_ALIKE, "debug"
+            )
+            else -> Lookout.Glance(Lookout.signingLine(text), Lookout.Why.SIGNING, "debug")
+        }
+        HeylanaLog.state("debug: glance $which")
+        lastGlance = glance
+        showGlance(glance)
+    }
+
     /** True while a glance of the lookout's own is on screen. */
     private var shownGlance = false
 
@@ -1975,7 +2001,8 @@ class BuddyOverlayService : Service() {
         // Counts and kinds only: never the domain, never a word of the screen.
         HeylanaLog.state("watch=signing glance why=${glance.why} chars=${glance.line.length}")
         shownGlance = true
-        mode(if (glance.why == Lookout.Why.SIGNING) BuddyMode.READING else BuddyMode.THINKING)
+        // Watching is not thinking and not answering: the chip says which it is.
+        mode(if (glance.why == Lookout.Why.SIGNING) BuddyMode.WATCHING else BuddyMode.HEADS_UP)
         view.showGlance(glance.line)
         // It never speaks: a tap opens the box, which is where Heylana talks.
         main.removeCallbacks(glanceTimeout)

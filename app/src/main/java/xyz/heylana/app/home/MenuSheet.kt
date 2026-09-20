@@ -101,6 +101,8 @@ fun MenuSheet(
     shortWallet: String?,
     onBuddy: (Boolean) -> Unit,
     onGoPro: () -> Unit,
+    /** The Plan row: what you are on, without jumping into paying for anything. */
+    onPlan: () -> Unit,
     onScreen: (Screen) -> Unit,
     onClose: () -> Unit
 ) {
@@ -135,7 +137,11 @@ fun MenuSheet(
                         "Plan",
                         subtitle = MenuText.planLine(standing),
                         glyph = Glyph.STAR,
-                        card = false
+                        card = false,
+                        // The row itself opens the plan: a row that says what you are on and
+                        // does nothing when tapped reads as broken, because it is. It opens
+                        // the plan, not the payment — Go Pro is its own button, below.
+                        onClick = onPlan
                     ) { Text(MenuText.planName(standing), style = HeylanaType.label, color = palette.inkSecondary) }
                     MenuText.planFill(standing)?.let { fill ->
                         Box(Modifier.padding(start = 56.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().height(4.dp).clip(CircleShape).background(palette.switchOff)) {

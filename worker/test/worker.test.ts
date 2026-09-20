@@ -412,3 +412,32 @@ test('a thrown error carries no secret either', async () => {
 test('scrub leaves ordinary text alone', () => {
   assert.equal(scrub('nothing to hide', env()), 'nothing to hide')
 })
+
+test('two requests at once do not knock each other over', async () => {
+  // The two ear passes are fetched together at every touch of the disc, and they land in
+  // one isolate. The second to start used to null the first's counters out from under it,
+  // which threw out of the finally and became a 500 — about a third of all holds.
+  const e = { ...env(), ASSEMBLYAI_API_KEY: 'aai_test_key' }
+  globalThis.fetch = (async (input: any) => {
+    const url = typeof input === 'string' ? input : input.url
+    if (url.startsWith('https://api.deepgram.com')) {
+      // Slow enough that the other request certainly starts while this one is in flight.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      return new Response(JSON.stringify({ key: 'dg-temp-key' }), { status: 200 })
+    }
+    if (url.startsWith('https://streaming.assemblyai.com') || url.includes('assemblyai')) {
+      return new Response(JSON.stringify({ token: 'aai-temp-token' }), { status: 200 })
+    }
+    throw new Error(`unexpected fetch ${url}`)
+  }) as typeof fetch
+
+  const touch = () => Promise.all([
+    worker.fetch(post('/stt-token', {}), e),
+    worker.fetch(post('/stt-token-aai', {}), e),
+  ])
+  for (let i = 0; i < 5; i++) {
+    const [deepgram, assembly] = await touch()
+    assert.equal(deepgram.status, 200, `deepgram, touch ${i}`)
+    assert.equal(assembly.status, 200, `assemblyai, touch ${i}`)
+  }
+})

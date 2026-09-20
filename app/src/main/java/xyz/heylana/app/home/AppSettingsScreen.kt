@@ -248,7 +248,7 @@ private fun DebugRows(settings: HeylanaSettings, onDebugStates: () -> Unit, onSe
     var warmUp by remember { mutableStateOf(settings.warmUpConnection) }
     Spacer(Modifier.height(6.dp))
     SectionHead("Debug")
-    FlatRow("Simulate Free plan", subtitle = "Skills count against Free's 3.") {
+    FlatRow("Simulate Free plan", subtitle = "Shows this account as Free: the plan card, Go Pro and the skills cap.") {
         FlatSwitch(simulateFree, { simulateFree = it; settings.simulateFreePlan = it })
     }
     FlatRow("Save last tts stream", subtitle = "Keeps the last answer's audio as tts_capture.pcm.") {

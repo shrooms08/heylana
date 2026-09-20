@@ -299,6 +299,32 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         HeylanaLog.state("overlay: pop in side=${if (fromRight) "right" else "left"}")
     }
 
+    /**
+     * The screen turned, or changed size. The window manager keeps a window on screen by
+     * moving it, but it does not tell the disc where it ended up — and a disc docked at the
+     * right of a landscape screen has a left that is off a portrait one entirely. So the
+     * position is worked out again against the new metrics, and the disc is put back on the
+     * edge it was docked to (found on the Seeker: rotate, rotate back, and the buddy was
+     * gone, its window sitting at x=2455 on a 1200-wide screen).
+     */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration?) {
+        super.onConfigurationChanged(newConfig)
+        if (!attached) return
+        val wasRight = spriteLeft + discSize / 2 > usableWidth / 2
+        val heightBefore = usableHeight.coerceAtLeast(1)
+        val downFraction = (spriteTop.toFloat() / heightBefore).coerceIn(0f, 1f)
+        refreshMetrics()
+        // The same edge, and about the same way down it.
+        spriteLeft = dockedLeft(if (wasRight) usableWidth - discSize - dockInset else dockInset)
+        spriteTop = dockedTop((downFraction * usableHeight).toInt())
+        HeylanaLog.state("overlay: re-docked after a turn side=${if (wasRight) "right" else "left"} x=$spriteLeft y=$spriteTop")
+        if (mode == Mode.COMPOSE) {
+            updateLayout()
+        } else {
+            applyPosition()
+        }
+    }
+
     fun removeFromWindow() {
         if (!attached) return
         removeCallbacks(longPress)

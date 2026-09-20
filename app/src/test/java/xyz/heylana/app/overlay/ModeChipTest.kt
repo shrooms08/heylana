@@ -9,9 +9,13 @@ import xyz.heylana.app.wallet.SendStage
 class ModeChipTest {
 
     @Test
-    fun `the chip says one of seven things`() {
+    fun `the chip says one of nine things`() {
         assertEquals(
-            listOf("reading", "thinking", "preparing", "simulating", "approve in wallet", "sent", "working", "Remembered"),
+            listOf(
+                "reading", "thinking", "preparing", "simulating", "approve in wallet", "sent", "working",
+                // The two the lookout uses when nobody asked it anything.
+                "watching", "heads up", "Remembered",
+            ),
             BuddyMode.entries.map { it.label }
         )
     }

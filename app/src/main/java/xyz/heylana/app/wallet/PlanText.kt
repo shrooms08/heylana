@@ -13,6 +13,21 @@ import java.util.Locale
  */
 object PlanText {
 
+    /**
+     * Debug builds only: the same standing as Free, so the plan card, the usage bar and
+     * the Go Pro sheet can be seen on an account that is not. It changes nothing on the
+     * worker — the account is what it is — only what this phone shows.
+     */
+    fun asFree(standing: Standing?): Standing? = standing?.copy(
+        plan = "free",
+        limit = FREE_TALKS,
+        used = standing.used.coerceAtMost(FREE_TALKS),
+        skillsCap = xyz.heylana.app.skills.SkillCap.FREE,
+        proUntil = null,
+        judgeUntil = null,
+    )
+
+
     const val GO_PRO = "Go Pro, \$5/month"
 
     /** What each period costs, and what a year saves against twelve months. */

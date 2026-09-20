@@ -342,7 +342,15 @@ export default {
       // One line per chain call: which method, which provider, how long, how it went.
       onCall: (call) => log({ route: 'rpc', method: call.method, provider: call.provider, ms: call.ms, outcome: call.outcome }),
     })
-    current = { rpc, logged: false, usage: {}, week: {} }
+    // This request's own counters. It is also put in `current` so log(), count() and
+    // caught() can reach it without being handed it everywhere — but the finally below
+    // reads **this** object, never the global one: two requests overlap in one isolate
+    // all the time (the two ear passes are fetched together at every touch), and the
+    // second one to start used to null the first one's state out from under it. That
+    // threw out of the finally, which Cloudflare answers as a 500 — the intermittent
+    // "token_refused_500" an ear saw about a third of the time.
+    const scope = { rpc, logged: false, usage: {} as UsagePatch, week: {} as WeekPatch }
+    current = scope
     try {
       if (route === 'chat') return await chat(request, env, who, started, rpc, context)
       if (route === 'tts') return await speak(request, env, device, started)
@@ -372,15 +380,16 @@ export default {
       return fail(500, 'internal', 'Something went wrong on Heylana\'s side.')
     } finally {
       // A route that logs nothing of its own still says what its chain calls cost.
-      if (rpc.calls.length > 0 && !current.logged) log({ route, device, ms: clock.now() - started })
+      if (rpc.calls.length > 0 && !scope.logged) log({ route, device, ms: clock.now() - started })
       // The day's counters, written once per request and never in its way.
       const patch: UsagePatch = {
-        ...current.usage,
+        ...scope.usage,
         wallet: who.wallet,
         rpc: rpc.calls.map((call) => ({ provider: call.provider, method: call.method, ms: call.ms })),
       }
-      const week = current.week
-      current = null
+      const week = scope.week
+      // Only clear the global if this request still owns it: another may have started.
+      if (current === scope) current = null
       const writes: Promise<unknown>[] = []
       if (!usageIsEmpty(patch)) writes.push(recordUsage(env, patch))
       // The week's counts are the user's own, and follow memory: nothing without a wallet.

@@ -59,7 +59,13 @@ fun AppScreens(
         if (!menuOpen) return@LaunchedEffect
         when (val answer = WalletApi(settings).me()) {
             is Answer.Ok -> {
-                standing = answer.value
+                // The debug switch shows a Judge or Pro account as Free, so the Free plan
+                // card, its usage bar and the Go Pro sheet can be checked without one.
+                standing = if (xyz.heylana.app.BuildConfig.DEBUG && settings.simulateFreePlan) {
+                    xyz.heylana.app.wallet.PlanText.asFree(answer.value)
+                } else {
+                    answer.value
+                }
                 settings.skillsCap = answer.value.skillsCap
                 answer.value.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie, it.ears) }
                 HeylanaLog.state("app: plan ${answer.value.plan}")
@@ -198,6 +204,11 @@ fun AppScreens(
                 activity.startActivity(
                     Intent(activity, SettingsActivity::class.java).putExtra(SettingsActivity.EXTRA_GO_PRO, true)
                 )
+            },
+            onPlan = {
+                menuOpen = false
+                // The plan itself: what you are on, how much of it is left, and Go Pro to tap.
+                activity.startActivity(Intent(activity, SettingsActivity::class.java))
             },
             onScreen = { next ->
                 menuOpen = false

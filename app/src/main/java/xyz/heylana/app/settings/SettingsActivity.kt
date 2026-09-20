@@ -875,8 +875,9 @@ private fun PrivacyCard(provider: String, assemblyai: Boolean) {
             Text(text = "What leaves the phone", style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Heylana reads the screen only when you ask, and watches for your " +
-                    "tap only while it is pointing at something.",
+                text = "Heylana reads the screen when you ask and when a signing screen comes " +
+                    "up, and watches for your tap only while it is pointing at something. What it " +
+                    "reads on a signing screen stays on the phone unless you ask a question about it.",
                 style = MaterialTheme.typography.bodySmall
             )
             Spacer(modifier = Modifier.height(8.dp))

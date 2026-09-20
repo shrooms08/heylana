@@ -2466,8 +2466,9 @@ class BuddyOverlayService : Service() {
         private const val AUTO_ADVANCE_DEBOUNCE_MS = 900L
 
         /** The same sentence as the app's Permissions screen, in the operator's words. */
-        const val PRIVACY_LINE = "reads the screen only when you ask, and watches for " +
-            "your tap only while it is pointing at something"
+        const val PRIVACY_LINE = "reads the screen when you ask and when a signing screen " +
+            "comes up, watches for your tap only while it is pointing at something, and " +
+            "keeps what it reads on the phone"
 
         private const val STOPPED_LINE = "Okay, stopping here."
 

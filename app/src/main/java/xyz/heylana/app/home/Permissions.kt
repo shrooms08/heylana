@@ -36,7 +36,7 @@ class PermissionsModel(private val check: () -> PermissionState) {
 
     companion object {
         const val OVERLAY_WHY = "So the buddy can float over your apps."
-        const val SCREEN_READING_WHY = "Reads your screen only when you ask."
+        const val SCREEN_READING_WHY = "Reads your screen when you ask, and on signing screens."
         const val NOTIFICATIONS_WHY = "Keeps the buddy running, with a notice you can always see."
         const val MICROPHONE_WHY = "Hold the buddy and talk. Optional: typing works too."
 

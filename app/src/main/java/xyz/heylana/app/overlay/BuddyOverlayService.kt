@@ -210,6 +210,7 @@ class BuddyOverlayService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        live = this
         if (BuildConfig.DEBUG) {
             registerDebugQuickAction()
             registerDebugPanel()
@@ -405,6 +406,8 @@ class BuddyOverlayService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        if (live === this) live = null
+        HeylanaAccessibilityService.watchWindows(null)
         debugQuickAction?.let { runCatching { unregisterReceiver(it) } }
         debugPanel?.let { runCatching { unregisterReceiver(it) } }
         debugQuickAction = null
@@ -501,6 +504,8 @@ class BuddyOverlayService : Service() {
             view.voiceShowsText = settings.showTextForVoice
             view.addToWindow()
         }
+        // The buddy is up: start watching for signing screens, if that is switched on.
+        applyLookout()
     }
 
     // ------------------------------------------------------------------ ask
@@ -1902,6 +1907,91 @@ class BuddyOverlayService : Service() {
     private fun readingMs(text: String): Long =
         (AnswerLength.words(text) * READ_MS_PER_WORD).coerceIn(MIN_READ_MS, MAX_READ_MS)
 
+    // ---------------------------------------------------------------- the lookout
+
+    /** The phishing list, kept on the phone and checked here; never a question to anyone. */
+    private val blocklist by lazy { xyz.heylana.app.screen.Blocklist(this, settings) }
+
+    /** What the last glance was about, so one screen is not glanced at twice. */
+    private var lastGlance: Lookout.Glance? = null
+
+    /** When the last window change was looked at, so a burst of them is one look. */
+    private var lastLookAt = 0L
+
+    /**
+     * Starts or stops watching for a new window. On while the buddy runs and "Watch signing
+     * screens" is on, off the moment either stops — this is the third and last thing that
+     * may switch accessibility events on at all, and it hears a new window and nothing else.
+     */
+    internal fun applyLookout() {
+        val on = settings.watchSigning && HeylanaAccessibilityService.isRunning(this)
+        if (!on) {
+            HeylanaAccessibilityService.watchWindows(null)
+            hideGlance()
+            HeylanaLog.state("watch=signing off")
+            return
+        }
+        HeylanaAccessibilityService.watchWindows { from -> main.post { onNewWindow(from) } }
+        HeylanaLog.state("watch=signing on")
+        scope.launch {
+            blocklist.loadFromDisk()
+            blocklist.refresh()
+        }
+    }
+
+    /**
+     * A new window came up. One read, on the phone, and one line if it deserves one: a
+     * signing screen, a page asking for a recovery phrase, a domain that is a copy of a
+     * real one. Nothing is sent anywhere and nothing is spoken.
+     */
+    private fun onNewWindow(from: String?) {
+        if (!settings.watchSigning) return
+        // Busy: an exchange, a task or a send has the buddy already, and a glance would
+        // land on top of whatever the user asked for.
+        if (exchange.inProgress || session != null || awaitingConfirm != null || teaching != null) return
+        val now = SystemClock.uptimeMillis()
+        if (now - lastLookAt < LOOK_EVERY_MS) return
+        lastLookAt = now
+        if (from == packageName) return
+
+        val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
+        val glance = Lookout.glanceAt(snapshot, blocklist.domains, settings.walletSession?.pubkey)
+        if (glance == null) {
+            // Off that screen: the glance it had goes with it.
+            if (lastGlance != null && shownGlance) hideGlance()
+            lastGlance = null
+            return
+        }
+        if (Lookout.sameAsBefore(glance, lastGlance)) return
+        lastGlance = glance
+        showGlance(glance)
+    }
+
+    /** True while a glance of the lookout's own is on screen. */
+    private var shownGlance = false
+
+    private fun showGlance(glance: Lookout.Glance) {
+        val view = overlayView ?: return
+        // Counts and kinds only: never the domain, never a word of the screen.
+        HeylanaLog.state("watch=signing glance why=${glance.why} chars=${glance.line.length}")
+        shownGlance = true
+        mode(if (glance.why == Lookout.Why.SIGNING) BuddyMode.READING else BuddyMode.THINKING)
+        view.showGlance(glance.line)
+        // It never speaks: a tap opens the box, which is where Heylana talks.
+        main.removeCallbacks(glanceTimeout)
+        main.postDelayed(glanceTimeout, GLANCE_MS)
+    }
+
+    private val glanceTimeout = Runnable { hideGlance() }
+
+    private fun hideGlance() {
+        main.removeCallbacks(glanceTimeout)
+        if (!shownGlance) return
+        shownGlance = false
+        mode(null)
+        overlayView?.hideGlance()
+    }
+
     /** Set while a quick action's line must survive the box closing itself. */
     private var keepSpeechThroughClose = false
 
@@ -2321,6 +2411,18 @@ class BuddyOverlayService : Service() {
         const val DEBUG_QUICK_ACTION = "xyz.heylana.app.debug.QUICK_ACTION"
         const val DEBUG_PANEL = "xyz.heylana.app.debug.PANEL"
 
+        /**
+         * The one running buddy, so a switch in the app can reach it. Held weakly by
+         * being cleared in onDestroy; nothing else ever touches it.
+         */
+        @Volatile
+        private var live: BuddyOverlayService? = null
+
+        /** Settings changed the lookout: start or stop watching, now rather than next start. */
+        fun refreshLookout() {
+            live?.let { service -> service.main.post { service.applyLookout() } }
+        }
+
         /** The beat between an answer finishing and the screen going back to rest. */
         private const val SETTLE_MS = 1_000L
         /** Debug builds only: the last hold's words from every ear ([captureEars]). */
@@ -2339,6 +2441,15 @@ class BuddyOverlayService : Service() {
 
         /** The breath between one taught sentence and the next. */
         private const val BETWEEN_SEGMENTS_MS = 250L
+
+        /**
+         * A burst of window changes is one screen settling, not five screens: the lookout
+         * looks at most this often, whatever the apps in front are doing.
+         */
+        private const val LOOK_EVERY_MS = 1_200L
+
+        /** How long an unasked glance stays up before it takes itself away. */
+        private const val GLANCE_MS = 12_000L
 
         /** How long an answer that could not be spoken stays up to be read. */
         private const val READ_MS_PER_WORD = 350L

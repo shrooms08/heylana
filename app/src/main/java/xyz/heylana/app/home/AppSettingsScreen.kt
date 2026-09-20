@@ -70,6 +70,9 @@ object SettingsText {
     const val LIGHT_DETAIL = "The same screens on white."
     const val SPOKEN_TEXT = "Show spoken answers as text"
     const val SPOKEN_TEXT_DETAIL = "When you ask by holding the buddy, the words stay on screen too."
+    const val WATCH_SIGNING = "Watch signing screens"
+    const val WATCH_SIGNING_DETAIL =
+        "The buddy wakes by itself on a wallet's confirm screen, and on a page asking for a recovery phrase. It shows one line and never speaks."
     const val DARKER = "Darker buddy glass"
     const val DARKER_DETAIL = "Adds a dark tint under the buddy's glass, for light apps."
     const val PERMISSIONS = "Permissions"
@@ -112,6 +115,7 @@ fun AppSettingsScreen(
     var voice by remember { mutableStateOf(settings.voice) }
     var spokenText by remember { mutableStateOf(settings.showTextForVoice) }
     var darker by remember { mutableStateOf(settings.darkerGlass) }
+    var watchSigning by remember { mutableStateOf(settings.watchSigning) }
     var code by remember { mutableStateOf("") }
     var codeLine by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
@@ -156,6 +160,14 @@ fun AppSettingsScreen(
                     FlatSwitch(spokenText, {
                         spokenText = it
                         settings.showTextForVoice = it
+                    })
+                }
+                FlatRow(SettingsText.WATCH_SIGNING, subtitle = SettingsText.WATCH_SIGNING_DETAIL) {
+                    FlatSwitch(watchSigning, {
+                        watchSigning = it
+                        settings.watchSigning = it
+                        // The buddy, if it is running, starts or stops watching now.
+                        xyz.heylana.app.overlay.BuddyOverlayService.refreshLookout()
                     })
                 }
                 FlatRow(SettingsText.DARKER, subtitle = SettingsText.DARKER_DETAIL) {

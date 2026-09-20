@@ -26,6 +26,10 @@ import { rpcClusterMismatch } from './cluster.ts'
 import { makeRpc, type Rpc } from './rpc.ts'
 import { SYSTEM_PROGRAM } from './instructions.ts'
 import {
+  LOOKOUT_KEEP_SECONDS, LOOKOUT_KEY, LOOKOUT_SEED_KEY, PHANTOM_SEED, archiveFor, dayOf as lookoutDay,
+  domainsIn, foldIn, type Lookout,
+} from './lookout.ts'
+import {
   FIRSTS_TTL_SECONDS, FIRST_DESTINATION, FIRST_PROGRAM, firstsKey, hashFirst, parseFirsts, remember, unseen,
   type Firsts,
 } from './firsts.ts'
@@ -179,6 +183,7 @@ const DAILY_CAPS: Record<string, number> = {
   confirm: 200,
   memory: 300,
   'memory/delete': 200,
+  lookout: 20,
   'memory/wipe': 20,
   'memory/consent': 20,
 }
@@ -216,6 +221,7 @@ const ROUTES: Record<string, readonly string[]> = {
   week: ['GET'],
   memory: ['GET', 'POST'],
   'memory/delete': ['POST'],
+  lookout: ['GET'],
   'memory/wipe': ['POST'],
   'memory/consent': ['POST'],
 }
@@ -354,6 +360,7 @@ export default {
       if (route === 'send/build') return await sendBuild(request, env, who, rpc)
       if (route === 'confirm') return await confirm(request, env, who)
       if (route === 'week') return await week(env, who)
+      if (route === 'lookout') return await lookout(request, env, started, context)
       if (route === 'memory' || route.startsWith('memory/')) return await memory(route, request, env, who)
       return await me(env, who)
     } catch (error) {
@@ -670,6 +677,82 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
  * Whether this question can be answered and spoken in one trip: an ordinary answer, no
  * tools, no forced action, and a provider whose voice streams raw audio.
  */
+/**
+ * The phishing blocklist, whole, for the phone to check against on its own.
+ *
+ * The phone says which version it already has; if that is today's, it gets a few bytes
+ * back instead of the list. The list itself is public, so nothing here is secret — what
+ * matters is the direction it travels: out to the phone, never a domain back.
+ */
+async function lookout(request: Request, env: Env, started: number, context?: WaitUntil): Promise<Response> {
+  const today = lookoutDay(clock.now())
+  let list = await readLookout(env)
+  // A day old or missing: rebuild it, but never keep the phone waiting on a source.
+  if (list === null || list.version !== today) {
+    const rebuilt = await buildLookout(env, list, today)
+    if (rebuilt) {
+      list = rebuilt
+      const write = env.CAPS.put(LOOKOUT_KEY, JSON.stringify(rebuilt), { expirationTtl: LOOKOUT_KEEP_SECONDS })
+      if (context?.waitUntil) context.waitUntil(write)
+      else await write
+    }
+  }
+  if (!list) return json(200, { version: '', domains: [], sources: [] })
+  const have = new URL(request.url).searchParams.get('have')
+  log({
+    route: 'lookout', ms: clock.now() - started, version: list.version,
+    domains: list.domains.length, unchanged: have === list.version,
+  })
+  if (have && have === list.version) return json(200, { version: list.version, unchanged: true })
+  return json(200, list)
+}
+
+async function readLookout(env: Env): Promise<Lookout | null> {
+  try {
+    const stored = await env.CAPS.get(LOOKOUT_KEY)
+    if (!stored) return null
+    const parsed = JSON.parse(stored)
+    if (!Array.isArray(parsed?.domains)) return null
+    return { version: String(parsed.version ?? ''), domains: parsed.domains, sources: parsed.sources ?? [] }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Today's list: whatever it had, plus Phantom's frozen seed the first time, plus the day's
+ * archive from Scam Sniffer. A source that will not answer is skipped, never waited on:
+ * yesterday's list is a fine answer, and no list at all is an honest one.
+ */
+async function buildLookout(env: Env, current: Lookout | null, today: string): Promise<Lookout | null> {
+  const sources = new Set(current?.sources ?? [])
+  let domains = current?.domains ?? []
+
+  const get = async (url: string) => {
+    const res = await fetch(url, { headers: { 'user-agent': 'heylana-lookout/1' }, signal: AbortSignal.timeout(4000) })
+    if (!res.ok) throw new Error(String(res.status))
+    return await res.text()
+  }
+
+  if (!(await env.CAPS.get(LOOKOUT_SEED_KEY))) {
+    try {
+      domains = foldIn(domains, domainsIn(await get(PHANTOM_SEED)))
+      sources.add('phantom/blocklist (snapshot)')
+      await env.CAPS.put(LOOKOUT_SEED_KEY, today, { expirationTtl: LOOKOUT_KEEP_SECONDS })
+    } catch {
+      // The seed is a one-off; missing it costs the list its oldest entries and nothing else.
+    }
+  }
+  try {
+    domains = foldIn(domains, domainsIn(await get(archiveFor(clock.now()))))
+    sources.add('scamsniffer/scam-database')
+  } catch {
+    // No archive for that day, or the source is down: the list stands as it was.
+  }
+  if (domains.length === 0) return null
+  return { version: today, domains, sources: [...sources] }
+}
+
 function speakable(body: any, env: Env): boolean {
   if (body.speak !== true) return false
   const provider = providerOf(env.VOICE_PROVIDER)

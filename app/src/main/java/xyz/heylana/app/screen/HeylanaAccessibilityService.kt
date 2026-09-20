@@ -30,12 +30,16 @@ import xyz.heylana.app.settings.HeylanaSettings
  * to zero — so the system delivers nothing, and [onAccessibilityEvent] additionally
  * returns immediately when no watcher is registered.
  *
- * Events are switched on for exactly two things, and switched straight back off:
+ * Events are switched on for exactly three things, and switched straight back off:
  *
  *  - while Heylana is walking the user through a task, so it can notice a step
  *    has been completed ([watchScreenChanges]);
  *  - for a few seconds after it points at something, so it can notice the user
- *    tapping it and get the box out of the way ([watchTaps]).
+ *    tapping it and get the box out of the way ([watchTaps]);
+ *  - while the buddy is running and "Watch signing screens" is on, so it can notice a
+ *    wallet asking for a signature, or a page asking for a recovery phrase, and say so
+ *    without being asked ([watchWindows]). That one hears a new window appearing and
+ *    nothing else — no taps, no redraws — and what it reads stays on the phone.
  *
  * [snapshot] walks the live UI tree at the moment it is asked to, and the result
  * is never logged and never persisted.
@@ -59,7 +63,8 @@ class HeylanaAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val screen = watcher
         val taps = tapWatcher
-        if (screen == null && taps == null) return
+        val windows = windowWatcher
+        if (screen == null && taps == null && windows == null) return
         if (event == null) return
         // Our own windows moving is not the user doing anything.
         if (event.packageName?.toString() == packageName) return
@@ -73,6 +78,9 @@ class HeylanaAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 screen?.invoke(from)
                 taps?.invoke(ScreenSignal.Changed(from))
+                // The lookout is told about a new window only: a screen redrawing itself
+                // is not a new screen, and watching every redraw would be watching.
+                if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) windows?.invoke(from)
             }
         }
     }
@@ -113,6 +121,9 @@ class HeylanaAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         }
+        // The lookout needs to know a new screen came up, and nothing else: no clicks,
+        // no redraws. It is the third and last thing that may switch events on at all.
+        if (windowWatcher != null) types = types or AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         info.eventTypes = types
         serviceInfo = info
     }
@@ -172,6 +183,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
             connected = null
             watcher = null
             tapWatcher = null
+            windowWatcher = null
         }
         return super.onUnbind(intent)
     }
@@ -182,6 +194,7 @@ class HeylanaAccessibilityService : AccessibilityService() {
             connected = null
             watcher = null
             tapWatcher = null
+            windowWatcher = null
         }
         super.onDestroy()
     }
@@ -434,13 +447,27 @@ class HeylanaAccessibilityService : AccessibilityService() {
         @Volatile
         private var tapWatcher: ((ScreenSignal) -> Unit)? = null
 
+        /**
+         * Set while the buddy is running and the lookout is on: a new window came up.
+         * Never a redraw and never a tap, and null the moment the buddy stops or the
+         * switch goes off.
+         */
+        @Volatile
+        private var windowWatcher: ((String?) -> Unit)? = null
+
+        /** Watches for a new window; null stops it and takes the subscription down with it. */
+        fun watchWindows(onWindow: ((String?) -> Unit)?) {
+            windowWatcher = onWindow
+            connected?.applyEventTypes()
+        }
+
         fun watchTaps(onSignal: ((ScreenSignal) -> Unit)?) {
             tapWatcher = onSignal
             connected?.applyEventTypes()
         }
 
         /** True while anything at all is being listened for. */
-        val isWatching: Boolean get() = watcher != null || tapWatcher != null
+        val isWatching: Boolean get() = watcher != null || tapWatcher != null || windowWatcher != null
 
         /**
          * True only when screen reading actually works: listed, the master

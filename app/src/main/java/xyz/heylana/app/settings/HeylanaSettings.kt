@@ -276,6 +276,30 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_SEND_CONFIRMED_ONCE, value).apply()
         }
 
+    /**
+     * Watch signing screens: the buddy wakes by itself on a wallet's confirm sheet, and on
+     * a page asking for a recovery phrase. On unless the user turns it off.
+     */
+    var watchSigning: Boolean
+        get() = prefs.getBoolean(KEY_WATCH_SIGNING, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_WATCH_SIGNING, value).apply()
+        }
+
+    /** The day of the phishing list the phone holds, so it only downloads a newer one. */
+    var blocklistVersion: String
+        get() = prefs.getString(KEY_BLOCKLIST_VERSION, "").orEmpty()
+        set(value) {
+            prefs.edit().putString(KEY_BLOCKLIST_VERSION, value).apply()
+        }
+
+    /** When it last asked for one, so it asks at most once a day. */
+    var blocklistCheckedAt: Long
+        get() = prefs.getLong(KEY_BLOCKLIST_CHECKED, 0L)
+        set(value) {
+            prefs.edit().putLong(KEY_BLOCKLIST_CHECKED, value).apply()
+        }
+
     var darkerGlass: Boolean
         get() = prefs.getBoolean(KEY_DARKER_GLASS, false)
         set(value) {
@@ -335,6 +359,9 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_VOICE_NAME_PREFIX = "voice_name_"
         private const val KEY_SIMULATE_FREE = "simulate_free_plan"
         private const val KEY_DARKER_GLASS = "darker_glass"
+        private const val KEY_WATCH_SIGNING = "watch_signing"
+        private const val KEY_BLOCKLIST_VERSION = "blocklist_version"
+        private const val KEY_BLOCKLIST_CHECKED = "blocklist_checked_at"
         private const val KEY_GLASS_MODE = "glass_mode"
         private const val KEY_FIRST_RUN_DONE = "first_run_done"
         private const val KEY_SEND_CONFIRMED_ONCE = "send_confirmed_once"

@@ -453,6 +453,30 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         applyPosition()
     }
 
+    /**
+     * A glance: one line beside the disc, unasked, while the user is looking at something
+     * that deserves it — a signing screen, a page asking for a recovery phrase.
+     *
+     * It uses the task HUD's shape on purpose. The box would dim the app and take the
+     * keyboard, and covering a wallet's confirm screen with Heylana is the last thing this
+     * should do: a glance is small, passive, and every touch outside it still reaches the
+     * app underneath. Nothing is spoken; tapping the disc opens the box as it always does.
+     */
+    fun showGlance(text: String) {
+        panel.showNotice(text)
+        if (mode == Mode.DOCKED || mode == Mode.CAPSULE) enterMode(Mode.HUD)
+        if (panel.shape != ChatPanelView.Shape.STRIP) {
+            panel.releaseInput()
+            panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
+        }
+        applyPosition()
+    }
+
+    /** Takes the glance away and puts the disc back where it was. */
+    fun hideGlance() {
+        if (mode == Mode.HUD) closePanel()
+    }
+
     fun hideSession() {
         panel.hideSession()
         applyPosition()

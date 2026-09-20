@@ -34,7 +34,14 @@ data class TransferPreview(
     val accountRentSol: String,
     val createsAccount: Boolean,
     val programs: List<String>,
-    val cluster: String
+    val cluster: String,
+    /**
+     * What the worker read back out of the bytes it built: one plain line per instruction
+     * that does something worth knowing. Shown under the strip, never spoken.
+     */
+    val does: List<String> = emptyList(),
+    /** True if any instruction would let someone else move or take over an account. */
+    val grantsPower: Boolean = false
 )
 
 sealed interface SimulationResult {

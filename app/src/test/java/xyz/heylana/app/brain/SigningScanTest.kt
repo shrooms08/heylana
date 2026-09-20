@@ -162,4 +162,49 @@ class SigningScanTest {
         assertFalse(Routing.forQuestion(wallet, "hello", confirmScreen).allowsGreeting)
         assertTrue(Routing.forQuestion(chrome, "what is the capital of Nigeria").allowsGreeting)
     }
+
+    // ------------------------------------------------------ what kind of request it is
+
+    @Test
+    fun `the approve button every wallet has is not an approval`() {
+        // Seed Vault puts "Approve" under every request; on its own it means nothing.
+        val screen = "Review transaction\n0.05 USDC to 7c2y…SxSv\nNetwork fee 0.000005 SOL\nApprove   Reject"
+        assertEquals(emptyList<SigningScan.Kind>(), SigningScan.kinds(screen))
+        assertEquals(emptyList<SigningScan.Kind>(), SigningScan.of(screen).kinds)
+    }
+
+    @Test
+    fun `an approval with no cap is found, and said to be an approval`() {
+        val screen = "Approve spending\nToken: USDC\nSpending cap: Unlimited\nSpender 9WzD…AWWM\nApprove"
+        val kinds = SigningScan.kinds(screen)
+        assertTrue(kinds.contains(SigningScan.Kind.APPROVAL))
+        assertTrue(kinds.contains(SigningScan.Kind.UNLIMITED))
+        assertTrue(SigningScan.Kind.APPROVAL.line.contains("not a transfer"))
+    }
+
+    @Test
+    fun `a delegate, an authority change and a close are each named`() {
+        assertTrue(SigningScan.kinds("Delegate 100 USDC to 9WzD…AWWM").contains(SigningScan.Kind.APPROVAL))
+        assertTrue(SigningScan.kinds("Set authority\nNew authority 9WzD…AWWM").contains(SigningScan.Kind.AUTHORITY))
+        assertTrue(SigningScan.kinds("Close token account\nRent returns to you").contains(SigningScan.Kind.CLOSE))
+        assertTrue(SigningScan.kinds("Revoke approval").contains(SigningScan.Kind.REVOKE))
+    }
+
+    @Test
+    fun `an ordinary transfer screen carries no kind at all`() {
+        val screen = "Send 0.05 USDC\nTo 7c2y…SxSv\nNetwork fee 0.000005 SOL\nSlide to confirm"
+        assertEquals(emptyList<SigningScan.Kind>(), SigningScan.kinds(screen))
+    }
+
+    @Test
+    fun `what the screen says rides with the question, and so does the rule for saying which kind it is`() {
+        val screen = "Approve spending\nSpending cap: Unlimited\nSpender 9WzD…AWWM\nApprove"
+        val message = HeylanaPrompt.signingMessage(screen, "what am I signing", SigningScan.of(screen))
+        assertTrue(message.contains(SigningScan.Kind.APPROVAL.line))
+        assertTrue(message.contains(SigningScan.Kind.UNLIMITED.line))
+        assertTrue(message.contains("lets them move those tokens later"))
+        // The old rules are all still there.
+        assertTrue(message.contains("Never call it safe"))
+        assertTrue(message.contains("two sentences, under 40 words"))
+    }
 }

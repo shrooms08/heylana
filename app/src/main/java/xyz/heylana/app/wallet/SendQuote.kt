@@ -57,6 +57,16 @@ object SendText {
             "Fee ${p.feeSol} SOL, on ${p.cluster}.$opens Nothing has been signed.$hint Confirm?"
     }
 
+    /**
+     * The strip's detail: what the transaction actually does, read back out of the bytes the
+     * worker built, one line each under the confirmation. Never spoken — the spoken line
+     * stays the two sentences it always was — and never more than four lines.
+     */
+    fun withDetail(strip: String, does: List<String>): String {
+        if (does.isEmpty()) return strip
+        return strip + "\n" + does.take(4).joinToString("\n") { "• " + it }
+    }
+
     fun sent(shortSignature: String): String = "Sent. Signature $shortSignature."
 
     const val CANCELLED = "Cancelled. Nothing was sent."

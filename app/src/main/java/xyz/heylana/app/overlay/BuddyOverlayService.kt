@@ -1159,7 +1159,10 @@ class BuddyOverlayService : Service() {
             HeylanaLog.state("send: simulation passed fee=${preview.feeSol} new_account=${preview.createsAccount} cluster=${preview.cluster}")
             // The first send on this phone also says: approve it yourself, don't trust Heylana there.
             val text = SendText.previewed(preview, firstSend = !settings.sendConfirmedOnce)
-            overlayView?.showSimulationPassed(text)
+            // What it actually does goes on the strip under the confirmation; what is said
+            // aloud stays the two sentences it always was.
+            HeylanaLog.state("send: does lines=${preview.does.size} grants_power=${preview.grantsPower}")
+            overlayView?.showSimulationPassed(SendText.withDetail(text, preview.does))
             speak(text)
         }
     }

@@ -336,7 +336,9 @@ class WalletApi(private val settings: HeylanaSettings) {
                 accountRentSol = p.optString("account_rent_sol", "0"),
                 createsAccount = p.optBoolean("creates_account"),
                 programs = List(programs?.length() ?: 0) { programs!!.getString(it) },
-                cluster = p.optString("cluster")
+                cluster = p.optString("cluster"),
+                does = p.optJSONArray("does").let { lines -> List(lines?.length() ?: 0) { lines!!.getString(it) } },
+                grantsPower = p.optBoolean("grants_power")
             ),
             simulation = if (sim.optBoolean("ok")) SimulationResult.Passed
             else SimulationResult.Failed(sim.optString("reason"), sim.optString("words")),

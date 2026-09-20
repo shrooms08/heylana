@@ -290,6 +290,17 @@ object HeylanaPrompt {
     const val SEGMENTS_LINE: String =
         "Answer in say pieces, one sentence each, with point_at on every sentence that names a button on screen."
 
+    /**
+     * A signature is not always a transfer, and the ones that are not look the least like
+     * anything: an approval moves nothing today, an authority change hands an account over
+     * for good. The model is told to name which it is rather than describe an amount.
+     */
+    const val SIGNING_KINDS: String =
+        "Say which kind of request it is: a transfer (who gets what), an approval or delegate (which token, how " +
+            "much, and to whom — say plainly that it lets them move those tokens later and that nothing moves " +
+            "now), a change of authority or a closed account (say that someone else ends up in control), or, if " +
+            "the screen does not say, that you cannot tell what kind it is. "
+
     const val SIGNING_INSTRUCTIONS: String =
         "Answer in two sentences, under 40 words in all: what this request does, with each amount exactly as " +
             "the screen shows it and who receives it; then fine, check the amount, or do not sign. Never call it " +
@@ -313,7 +324,10 @@ object HeylanaPrompt {
             if (addresses.isNotEmpty()) append("Addresses on screen: ").append(addresses.joinToString(", ")).append(". ")
             if (found.amounts.isNotEmpty()) append("Amounts on screen: ").append(found.amounts.joinToString(", ")).append(". ")
         }
+        // What the screen's own words say this is, if they say anything: facts, not a verdict.
+        found.kinds.forEach { append(it.line).append(" ") }
         if (found.addresses.isNotEmpty()) append(SIGNING_LOOKUP)
+        append(SIGNING_KINDS)
         append(SIGNING_INSTRUCTIONS)
         append("\n\nUser asks: ").append(question)
     }

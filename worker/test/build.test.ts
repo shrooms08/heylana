@@ -1,9 +1,11 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
+import { TOKEN_PROGRAM } from '../src/pay.ts'
+import { GRANTS_POWER, drainCheck, whatItDoes } from '../src/build.ts'
 import worker, { clock, type Env } from '../src/index.ts'
 import { decodeBase58, encodeBase58 } from '../src/base58.ts'
 import { forgetRpcClusters } from '../src/cluster.ts'
-import { fromBase64 } from '../src/tx.ts'
+import { compileMessage, fromBase64 } from '../src/tx.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
 const RPC = 'https://rpc.test/secret-token-abc'
@@ -166,6 +168,8 @@ test('a passing simulation comes back with the preview and no transaction until 
     to: '4Nd1…DB4T', to_label: 'a wallet', amount: '0.05', token: 'USDC', fee_sol: '0.000005',
     account_rent_sol: '0', creates_account: false,
     programs: ['Associated Token Account Program', 'SPL Token Program'], cluster: 'devnet',
+    // Read back out of the bytes that were built, not from what was asked for.
+    does: ['Sends 0.05 USDC to 4Nd1…DB4T.'], grants_power: false,
   })
   assert.equal(chain.simulated.length, 1, 'simulated once')
 
@@ -431,3 +435,45 @@ function landedTokenTx(from: string, reference: string) {
     },
   }
 }
+
+// ------------------------------------------------------------------ what it does, and what leaves
+
+test('an instruction that hands over power is never handed out to be signed', () => {
+  // The worker only ever builds transfers, so this is the net beneath that: bytes that
+  // grant an approval are read back as such and refused before the wallet can open.
+  const plan = {
+    from: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', to: '4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T',
+    mint: null, tokenProgram: null, units: 1n, decimals: 9, reference: null,
+  }
+  const approval = compileMessage(plan.from, [{
+    programId: TOKEN_PROGRAM,
+    keys: [plan.from, plan.to, plan.from].map((pubkey, i) => ({ pubkey, isSigner: i === 2, isWritable: true })),
+    data: new Uint8Array([4, 1, 0, 0, 0, 0, 0, 0, 0]),
+  }], '11111111111111111111111111111111')
+  const read = whatItDoes(approval, 'USDC')
+  assert.equal(read.grantsPower, true)
+  assert.match(read.lines[0], /^Lets /)
+  assert.match(GRANTS_POWER, /did not open the wallet/)
+})
+
+test('more leaving the wallet than was confirmed stops the send', () => {
+  const plan = {
+    from: '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM', to: '4Nd1mBQtrMJVYVfKf2PJy9NZUZdTAsp7D4xWLs4gDB4T',
+    mint: null, tokenProgram: null, units: 50_000_000n, decimals: 9, reference: null,
+  }
+  const facts = { token: 'SOL', toLabel: 'a wallet', rentLamports: 0n, createsAccount: false, balance: null, cluster: 'devnet' }
+  const fee = 5_000n
+
+  // Exactly what was promised: the amount and its fee.
+  assert.equal(drainCheck(1_000_000_000, { accounts: [{ lamports: 949_995_000 }] }, plan, facts, fee), null)
+  // A priority fee's worth more is still fine.
+  assert.equal(drainCheck(1_000_000_000, { accounts: [{ lamports: 945_000_000 }] }, plan, facts, fee), null)
+  // A whole SOL more is not.
+  const drained = drainCheck(2_000_000_000, { accounts: [{ lamports: 900_000_000 }] }, plan, facts, fee)
+  assert.equal(drained?.ok, false)
+  assert.equal(drained && !drained.ok && drained.reason, 'unexpected_drain')
+  assert.match(drained && !drained.ok ? drained.words : '', /1\.1 SOL leaving your wallet/)
+  // An RPC that will not say proves nothing, and never fails a send on its own.
+  assert.equal(drainCheck(undefined, { accounts: [] }, plan, facts, fee), null)
+  assert.equal(drainCheck(1_000_000_000, null, plan, facts, fee), null)
+})

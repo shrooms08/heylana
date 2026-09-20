@@ -11,9 +11,52 @@ package xyz.heylana.app.brain
  */
 object SigningScan {
 
-    data class Found(val addresses: List<String>, val shortAddresses: List<String>, val amounts: List<String>) {
+    data class Found(
+        val addresses: List<String>,
+        val shortAddresses: List<String>,
+        val amounts: List<String>,
+        /** What the screen's own words say the request is, beyond a plain transfer. */
+        val kinds: List<Kind> = emptyList()
+    ) {
         val isEmpty: Boolean get() = addresses.isEmpty() && shortAddresses.isEmpty() && amounts.isEmpty()
     }
+
+    /**
+     * The kinds of request worth telling apart, because they are not transfers and do not
+     * look like one: an approval moves nothing today and everything tomorrow, an authority
+     * change hands an account over for good, a close empties one.
+     *
+     * [line] is the fact handed to the model — what was found on the screen, never a verdict.
+     */
+    enum class Kind(val line: String) {
+        APPROVAL("The screen's words look like an approval or a delegate, not a transfer."),
+        AUTHORITY("The screen's words look like a change of authority over an account."),
+        CLOSE("The screen's words look like closing an account."),
+        REVOKE("The screen's words look like cancelling an earlier approval."),
+        UNLIMITED("The screen says the amount is unlimited or has no cap.")
+    }
+
+    /**
+     * Words that mean an approval rather than a transfer. Deliberately narrow: "approve"
+     * on its own is the button every wallet puts under every request, so it never counts.
+     */
+    private val KIND_WORDS: List<Pair<Kind, Regex>> = listOf(
+        Kind.APPROVAL to Regex(
+            "(token approval|approve spending|spending cap|spending limit|allowance|delegate|" +
+                "grant access|give access|permission to spend|approve .{0,12}access)",
+            RegexOption.IGNORE_CASE
+        ),
+        Kind.AUTHORITY to Regex(
+            "(set authority|change authority|update authority|new authority|transfer ownership|make .{0,12}owner)",
+            RegexOption.IGNORE_CASE
+        ),
+        Kind.CLOSE to Regex("close (the )?(token )?account", RegexOption.IGNORE_CASE),
+        Kind.REVOKE to Regex("(?<![\\p{L}])revoke(?![\\p{L}])", RegexOption.IGNORE_CASE),
+        Kind.UNLIMITED to Regex("(unlimited|no limit|no cap|infinite)", RegexOption.IGNORE_CASE)
+    )
+
+    /** Which of those the screen's words carry, in the order above. Facts, never a verdict. */
+    fun kinds(text: String): List<Kind> = KIND_WORDS.filter { it.second.containsMatchIn(text) }.map { it.first }
 
     /** Lookups are capped at four per question; three leaves one to spare. */
     const val MAX_ADDRESSES = 3
@@ -65,7 +108,7 @@ object SigningScan {
             .filterNot { it in tokens }
             .filterNot { short -> full.any { AddressText.matches(short, it) } }
             .take((MAX_ADDRESSES - full.size).coerceAtLeast(0))
-        return Found(full, shortened, amounts(screenText))
+        return Found(full, shortened, amounts(screenText), kinds(screenText))
     }
 
     fun addresses(text: String): List<String> = AddressText.fullAddresses(text).take(MAX_ADDRESSES)

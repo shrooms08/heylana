@@ -58,8 +58,13 @@ def post(base, key, route, body):
 
 def main():
     start = int(sys.argv[sys.argv.index("--from") + 1]) if "--from" in sys.argv else 0
+    main_with(os.path.join(HERE, "data", "corpus.jsonl"), start)
+
+
+def main_with(path, start=0):
+    """Upload any corpus file: the fetched pages, or Heylana's own notes."""
     base, key = proxy_url(), secret()
-    with open(os.path.join(HERE, "data", "corpus.jsonl")) as f:
+    with open(path) as f:
         corpus = [json.loads(line) for line in f]
     done = 0
     for i in range(start, len(corpus), BATCH):

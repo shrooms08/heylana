@@ -26,7 +26,16 @@ object Lookout {
     /** What a glance is about, for the log and so the same one is not shown twice. */
     enum class Why { SIGNING, SECRET, BLOCKLIST, LOOK_ALIKE }
 
-    data class Glance(val line: String, val why: Why, val about: String)
+    /**
+     * [line] is what the strip shows; [spoken] is the one short sentence Heylana says out
+     * loud. They are not the same on purpose: the strip can carry the amount, the address
+     * and what to do next, while the spoken line has to land in the second before a thumb
+     * reaches Approve.
+     */
+    data class Glance(val line: String, val spoken: String, val why: Why, val about: String)
+
+    /** No spoken warning is longer than this. Anything more is not heard in time. */
+    const val SPOKEN_WORDS = 15
 
     /** The tail of the line on a signing screen: how to get the rest. */
     const val TAP_TO_CHECK = "Tap me to check it."
@@ -41,6 +50,8 @@ object Lookout {
         snapshot: ScreenSnapshot,
         blocked: Set<String> = emptySet(),
         ownWallet: String? = null,
+        /** Debug builds only: any screen with a confirm sheet's words counts as one. */
+        anySigns: Boolean = false,
     ): Glance? {
         val text = snapshot.toPromptText()
         // A wallet is where a phrase legitimately appears, so the phrase warning stays out
@@ -57,15 +68,25 @@ object Lookout {
                 ScamWatch.Warning.Why.BLOCKLIST -> Why.BLOCKLIST
                 ScamWatch.Warning.Why.LOOK_ALIKE -> Why.LOOK_ALIKE
             }
-            return Glance(warning.words, why, warning.about)
+            return Glance(warning.words, spokenWarning(why), why, warning.about)
         }
 
-        if (!SigningScan.looksLikeSigning(snapshot.packageName, text, ownWallet)) return null
+        if (!SigningScan.looksLikeSigning(snapshot.packageName, text, ownWallet) && !anySigns) return null
         // Waking up is a stricter test than answering a question about a screen: Seed Vault
         // is the signing app, but its own backup and settings screens are not a signature
         // being asked for, and a buddy that pops up on those is one the user switches off.
         if (!SigningScan.hasSigningWords(text)) return null
-        return Glance(signingLine(text), Why.SIGNING, about = snapshot.packageName ?: "signing")
+        // What tells one signing screen from another: the app, the kind of request and the
+        // amount. The same sheet redrawing is the same screen; a second, different request
+        // in the same wallet is not, and is worth saying out loud again.
+        val found = SigningScan.of(text)
+        val about = listOfNotNull(
+            snapshot.packageName ?: "signing",
+            found.kinds.firstOrNull()?.name,
+            found.amounts.firstOrNull(),
+            found.shortAddresses.firstOrNull() ?: found.addresses.firstOrNull()?.take(8),
+        ).joinToString("|")
+        return Glance(signingLine(text), spokenSigning(text), Why.SIGNING, about)
     }
 
     /**
@@ -92,6 +113,47 @@ object Lookout {
             else -> ""
         }
         return "$opening$middle $TAP_TO_CHECK"
+    }
+
+    /**
+     * What Heylana says out loud about a signing screen: which kind of request it is, in
+     * one sentence short enough to hear before a thumb moves.
+     *
+     * **It is one of a fixed few on purpose.** The amount and the address are on the strip,
+     * where they can be read; putting them in the spoken line would make every sentence a
+     * new one, and a new sentence has to be made by the voice — 800ms on the Seeker, which
+     * is the whole budget. A fixed line is kept after the first time and played from the
+     * phone, so the warning lands while the screen is still going up.
+     */
+    fun spokenSigning(screenText: String): String = when (SigningScan.of(screenText).kinds.firstOrNull()) {
+        SigningScan.Kind.APPROVAL -> "Careful: this is an approval, not a transfer."
+        SigningScan.Kind.AUTHORITY -> "Careful: this hands control of an account to someone else."
+        SigningScan.Kind.CLOSE -> "Careful: this closes an account."
+        SigningScan.Kind.REVOKE -> "This cancels an approval you gave earlier."
+        SigningScan.Kind.UNLIMITED -> "Careful: this asks for an unlimited amount."
+        null -> "Something here wants your signature."
+    }
+
+    /**
+     * Every sentence Heylana can say unasked. A fixed list, so the audio for all of them
+     * fits on the phone and none of them ever waits on the voice.
+     */
+    val SPOKEN_LINES: List<String>
+        get() = Why.entries.map(::spokenWarning) + listOf(
+            spokenSigning("Approve spending\nSpending cap\nApprove"),
+            spokenSigning("Set authority\nApprove"),
+            spokenSigning("Close token account\nApprove"),
+            spokenSigning("Revoke approval\nApprove"),
+            spokenSigning("Unlimited\nApprove"),
+            spokenSigning("Approve"),
+        ).distinct()
+
+    /** What Heylana says out loud about a page: the warning itself, cut to one sentence. */
+    fun spokenWarning(why: Why): String = when (why) {
+        Why.SECRET -> "No real Solana app asks for your recovery phrase."
+        Why.BLOCKLIST -> "Careful: this site is on a known phishing list."
+        Why.LOOK_ALIKE -> "Careful: this looks like a copy of a real site."
+        Why.SIGNING -> "Something here wants your signature."
     }
 
     /**

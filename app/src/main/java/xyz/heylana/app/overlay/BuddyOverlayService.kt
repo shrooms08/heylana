@@ -190,6 +190,12 @@ class BuddyOverlayService : Service() {
             HeylanaLog.state("settle: skipped, a send is waiting to be confirmed")
             return@Runnable
         }
+        // A spoken warning ends like any other line, and the end of it must not take the
+        // warning off the screen: the glance has its own twelve seconds to be read in.
+        if (shownGlance) {
+            HeylanaLog.state("settle: skipped, a warning is on screen")
+            return@Runnable
+        }
         HeylanaLog.state("settle: run")
         // The box changing shape uncovers part of the app: a fresh quiet time for the step.
         stepAdvance?.ownWindowsChanged(SystemClock.uptimeMillis())
@@ -220,6 +226,7 @@ class BuddyOverlayService : Service() {
             main.post {
                 HeylanaLog.state("speak: speaking=$speaking")
                 if (speaking) reportSpeed()
+                if (speaking) reportGlanceSpoken()
                 overlayView?.setTalking(speaking)
                 main.removeCallbacks(settleToIdle)
                 // Mid-teaching, the end of a sentence is the cue for the next one, not to settle.
@@ -886,6 +893,12 @@ class BuddyOverlayService : Service() {
                 // a wallet screen or anyone's browser:
                 //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es glance secret
                 intent.getStringExtra("glance")?.let { which -> debugGlance(which) }
+                // Times the signing glance on a screen that is not a wallet's own sheet:
+                //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --ez glance_any true
+                if (intent.hasExtra("glance_any")) {
+                    settings.glanceAnyScreen = intent.getBooleanExtra("glance_any", false)
+                    HeylanaLog.state("glance: any screen with confirm words = ${settings.glanceAnyScreen}")
+                }
                 if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
                 if (intent.getBooleanExtra("thinking", false)) view.showThinking()
                 if (intent.getBooleanExtra("teach", false)) debugTeach()
@@ -1935,7 +1948,7 @@ class BuddyOverlayService : Service() {
             HeylanaLog.state("watch=signing off")
             return
         }
-        HeylanaAccessibilityService.watchWindows { from -> main.post { onNewWindow(from) } }
+        HeylanaAccessibilityService.watchWindows { from, at -> main.post { onNewWindow(from, at) } }
         HeylanaLog.state("watch=signing on")
         scope.launch {
             blocklist.loadFromDisk()
@@ -1948,28 +1961,89 @@ class BuddyOverlayService : Service() {
      * signing screen, a page asking for a recovery phrase, a domain that is a copy of a
      * real one. Nothing is sent anywhere and nothing is spoken.
      */
-    private fun onNewWindow(from: String?) {
+    /**
+     * A new window came up.
+     *
+     * A burst of them is one screen settling, so looks are spread out — but a burst is
+     * also exactly how a wallet's confirm sheet arrives, behind the screen it came from.
+     * So a look that comes too soon is **held, never dropped**: the one that matters is
+     * usually the last one in the burst. (Dropping it is what made warnings arrive late,
+     * or not at all: three confirm screens in a row, no glance for any of them.)
+     */
+    private fun onNewWindow(from: String?, at: Long) {
         if (!settings.watchSigning) return
         // Busy: an exchange, a task or a send has the buddy already, and a glance would
         // land on top of whatever the user asked for.
         if (exchange.inProgress || session != null || awaitingConfirm != null || teaching != null) return
-        val now = SystemClock.uptimeMillis()
-        if (now - lastLookAt < LOOK_EVERY_MS) return
-        lastLookAt = now
         if (from == packageName) return
 
+        val now = SystemClock.uptimeMillis()
+        val since = now - lastLookAt
+        if (since < LOOK_EVERY_MS) {
+            // Held: the newest window wins, and it is looked at the moment the gap is up.
+            heldWindow = at
+            main.removeCallbacks(heldLook)
+            main.postDelayed(heldLook, LOOK_EVERY_MS - since)
+            HeylanaLog.state("glance: held for ${LOOK_EVERY_MS - since}ms")
+            return
+        }
+        look(at, second = false)
+    }
+
+    /** The window a held look is for, and the look itself. */
+    private var heldWindow = 0L
+    private val heldLook = Runnable { look(heldWindow, second = false) }
+
+    /**
+     * A screen that was still drawing when it was read says nothing, and no second event
+     * has to come. So a look that found nothing takes one more, once, a moment later.
+     */
+    private val secondLook = Runnable { look(heldWindow, second = true) }
+
+    private fun look(at: Long, second: Boolean) {
+        if (!settings.watchSigning) return
+        if (exchange.inProgress || session != null || awaitingConfirm != null || teaching != null) return
+        lastLookAt = SystemClock.uptimeMillis()
+        glanceAt = at
+        val readStarted = SystemClock.uptimeMillis()
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
-        val glance = Lookout.glanceAt(snapshot, blocklist.domains, settings.walletSession?.pubkey)
+        val decideStarted = SystemClock.uptimeMillis()
+        val glance = Lookout.glanceAt(
+            snapshot, blocklist.domains, settings.walletSession?.pubkey,
+            anySigns = BuildConfig.DEBUG && settings.glanceAnyScreen,
+        )
+        val decided = SystemClock.uptimeMillis()
+        HeylanaLog.state(
+            "glance: looked why=${glance?.why ?: "none"} second=$second to_look_ms=${readStarted - at} " +
+                "read_ms=${decideStarted - readStarted} decide_ms=${decided - decideStarted}"
+        )
         if (glance == null) {
+            // Nothing to say here — but this is a wallet or a browser, which is where the
+            // next thing to say usually comes from, so the connection is opened now rather
+            // than when a warning is already waiting on it.
+            warmForGlance(snapshot.packageName)
             // Off that screen: the glance it had goes with it.
             if (lastGlance != null && shownGlance) hideGlance()
             lastGlance = null
+            // It may simply not have finished drawing: look once more, then let it be.
+            if (!second) {
+                heldWindow = at
+                main.removeCallbacks(secondLook)
+                main.postDelayed(secondLook, SECOND_LOOK_MS)
+            }
             return
         }
-        if (Lookout.sameAsBefore(glance, lastGlance)) return
+        main.removeCallbacks(secondLook)
+        if (Lookout.sameAsBefore(glance, lastGlance)) {
+            HeylanaLog.state("glance: skipped why=same_screen")
+            return
+        }
         lastGlance = glance
         showGlance(glance)
     }
+
+    /** When the window that is being glanced at came up: everything after it is ours. */
+    private var glanceAt = 0L
 
     /**
      * Debug builds: the glance the lookout would show, on text of its own. It goes through
@@ -1982,12 +2056,20 @@ class BuddyOverlayService : Service() {
             else -> "Approve transaction\n0.05 USDC\nTo 7c2y…SxSv\nNetwork fee 0.000005 SOL\nApprove Reject"
         }
         val glance = when (which) {
-            "secret" -> Lookout.Glance(xyz.heylana.app.screen.ScamWatch.SEED_PHRASE, Lookout.Why.SECRET, "debug")
-            "lookalike" -> Lookout.Glance(
-                xyz.heylana.app.screen.ScamWatch.lookAlikeWords("phantom.app"), Lookout.Why.LOOK_ALIKE, "debug"
+            "secret" -> Lookout.Glance(
+                xyz.heylana.app.screen.ScamWatch.SEED_PHRASE,
+                Lookout.spokenWarning(Lookout.Why.SECRET), Lookout.Why.SECRET, "debug:$which"
             )
-            else -> Lookout.Glance(Lookout.signingLine(text), Lookout.Why.SIGNING, "debug")
+            "lookalike" -> Lookout.Glance(
+                xyz.heylana.app.screen.ScamWatch.lookAlikeWords("phantom.app"),
+                Lookout.spokenWarning(Lookout.Why.LOOK_ALIKE), Lookout.Why.LOOK_ALIKE, "debug:$which"
+            )
+            else -> Lookout.Glance(
+                Lookout.signingLine(text), Lookout.spokenSigning(text), Lookout.Why.SIGNING, "debug:$which"
+            )
         }
+        // The debug glance is timed like a real one, from the moment it was asked for.
+        glanceAt = SystemClock.uptimeMillis()
         HeylanaLog.state("debug: glance $which")
         lastGlance = glance
         showGlance(glance)
@@ -1996,17 +2078,73 @@ class BuddyOverlayService : Service() {
     /** True while a glance of the lookout's own is on screen. */
     private var shownGlance = false
 
+    /** The screen the last spoken warning was about, so one screen is never said twice. */
+    private var spokenGlanceAbout: String? = null
+
+    /**
+     * Opens the connection to the proxy when a wallet or a browser comes up, so the voice
+     * of a warning does not start with a handshake. At most once per warm window, and only
+     * where a warning is actually likely — never on every screen the user opens.
+     */
+    private fun warmForGlance(packageName: String?) {
+        if (packageName == null) return
+        val kind = xyz.heylana.app.brain.SolanaApps.of(packageName)?.kind
+        val worthIt = kind == xyz.heylana.app.brain.SolanaApps.Kind.WALLET ||
+            kind == xyz.heylana.app.brain.SolanaApps.Kind.SIGNING ||
+            packageName in xyz.heylana.app.lessons.LessonWords.BROWSERS
+        if (!worthIt) return
+        scope.launch {
+            xyz.heylana.app.net.Proxy(settings).warmUp()
+            // And the words themselves, so the first warning does not wait on the voice
+            // either. One line per screen change at most; a line already kept costs nothing.
+            val voice = mouth ?: return@launch
+            if (settings.voiceMuted) return@launch
+            for (line in Lookout.SPOKEN_LINES) {
+                if (voice.prefetch(line)) break
+            }
+        }
+    }
+
     private fun showGlance(glance: Lookout.Glance) {
         val view = overlayView ?: return
         // Counts and kinds only: never the domain, never a word of the screen.
-        HeylanaLog.state("watch=signing glance why=${glance.why} chars=${glance.line.length}")
+        // The one number that matters: the window came up, and this is when the line is on
+        // screen. Never the words of it, and never what app it was.
+        HeylanaLog.state(
+            "watch=signing glance why=${glance.why} chars=${glance.line.length} " +
+                "glance_ms=${if (glanceAt > 0) SystemClock.uptimeMillis() - glanceAt else -1}"
+        )
         shownGlance = true
         // Watching is not thinking and not answering: the chip says which it is.
         mode(if (glance.why == Lookout.Why.SIGNING) BuddyMode.WATCHING else BuddyMode.HEADS_UP)
         view.showGlance(glance.line)
-        // It never speaks: a tap opens the box, which is where Heylana talks.
+        // And she says it. A warning that is only on screen is a warning nobody read: the
+        // thumb is already on the way to Approve. One short sentence, once per screen, and
+        // muted means the line on the strip is the whole of it.
+        if (glance.about != spokenGlanceAbout) {
+            spokenGlanceAbout = glance.about
+            glanceSpoke = false
+            if (speakWarning(glance.spoken)) {
+                HeylanaLog.state("glance: speaking words=${glance.spoken.split(" ").size}")
+            } else {
+                HeylanaLog.state("glance: not spoken (muted or no voice); the line stands")
+            }
+        }
         main.removeCallbacks(glanceTimeout)
         main.postDelayed(glanceTimeout, GLANCE_MS)
+    }
+
+    /** Set once the spoken warning has really started, so it is timed once. */
+    private var glanceSpoke = false
+
+    /**
+     * The number the whole of this is for: the window came up, and this is the moment the
+     * first word of the warning is heard. Reported once per screen.
+     */
+    private fun reportGlanceSpoken() {
+        if (!shownGlance || glanceSpoke || glanceAt <= 0L) return
+        glanceSpoke = true
+        HeylanaLog.state("glance: spoke glance_ms=${SystemClock.uptimeMillis() - glanceAt}")
     }
 
     private val glanceTimeout = Runnable { hideGlance() }
@@ -2015,6 +2153,7 @@ class BuddyOverlayService : Service() {
         main.removeCallbacks(glanceTimeout)
         if (!shownGlance) return
         shownGlance = false
+        glanceSpoke = false
         mode(null)
         overlayView?.hideGlance()
     }
@@ -2057,6 +2196,19 @@ class BuddyOverlayService : Service() {
     }
 
     /** True if the answer really is being read out, so speech will report its end. */
+    /**
+     * A warning, said out loud. The words are one of a dozen fixed sentences, so their
+     * audio is kept after the first time and plays from the phone — a warning that waits
+     * on the network is a warning that arrives after the thumb.
+     */
+    private fun speakWarning(text: String): Boolean {
+        val voice = mouth ?: return false.also { HeylanaLog.state("speak: no voice") }
+        if (settings.voiceMuted) return false.also { HeylanaLog.state("speak: muted, the line stands") }
+        if (!voice.available) return false
+        HeylanaLog.state("speak: warning chars=${text.length}")
+        return voice.speakFixed(text)
+    }
+
     private fun speak(text: String): Boolean {
         // Already being said, from the answer itself: this is the same words arriving late.
         if (alreadySpeaking) {
@@ -2471,9 +2623,14 @@ class BuddyOverlayService : Service() {
 
         /**
          * A burst of window changes is one screen settling, not five screens: the lookout
-         * looks at most this often, whatever the apps in front are doing.
+         * looks at most this often, whatever the apps in front are doing. Short, because a
+         * look inside the gap is held rather than dropped, and the whole glance — read,
+         * decide, show, start speaking — has to land inside 800ms.
          */
-        private const val LOOK_EVERY_MS = 1_200L
+        private const val LOOK_EVERY_MS = 250L
+
+        /** A screen still drawing says nothing; one more look, once, catches it. */
+        private const val SECOND_LOOK_MS = 400L
 
         /** How long an unasked glance stays up before it takes itself away. */
         private const val GLANCE_MS = 12_000L

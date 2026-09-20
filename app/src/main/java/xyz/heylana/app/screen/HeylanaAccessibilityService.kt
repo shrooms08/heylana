@@ -80,7 +80,10 @@ class HeylanaAccessibilityService : AccessibilityService() {
                 taps?.invoke(ScreenSignal.Changed(from))
                 // The lookout is told about a new window only: a screen redrawing itself
                 // is not a new screen, and watching every redraw would be watching.
-                if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) windows?.invoke(from)
+                if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    // The moment the window changed, so the lookout can time itself from it.
+                    windows?.invoke(from, android.os.SystemClock.uptimeMillis())
+                }
             }
         }
     }
@@ -453,10 +456,10 @@ class HeylanaAccessibilityService : AccessibilityService() {
          * switch goes off.
          */
         @Volatile
-        private var windowWatcher: ((String?) -> Unit)? = null
+        private var windowWatcher: ((String?, Long) -> Unit)? = null
 
         /** Watches for a new window; null stops it and takes the subscription down with it. */
-        fun watchWindows(onWindow: ((String?) -> Unit)?) {
+        fun watchWindows(onWindow: ((String?, Long) -> Unit)?) {
             windowWatcher = onWindow
             connected?.applyEventTypes()
         }

@@ -88,7 +88,7 @@ class LookoutTest {
         val again = Lookout.glanceAt(screen(seedVault, "Approve transaction", "0.05 USDC", "Approve", "Network fee 0.000005 SOL"))!!
         assertTrue(Lookout.sameAsBefore(again, first))
         // A different kind of thing on the same screen is worth saying.
-        val other = Lookout.Glance("x", Lookout.Why.SECRET, seedVault)
+        val other = Lookout.Glance("x", "x.", Lookout.Why.SECRET, seedVault)
         assertFalse(Lookout.sameAsBefore(other, first))
         assertFalse(Lookout.sameAsBefore(first, null))
     }
@@ -138,5 +138,74 @@ class LookoutTest {
         val glance = Lookout.glanceAt(page, blocked = setOf("free-sol-claim.xyz"))
         assertEquals(Lookout.Why.BLOCKLIST, glance?.why)
         assertEquals("free-sol-claim.xyz", glance?.about)
+    }
+
+    // ------------------------------------------------------------ what she says out loud
+
+    @Test
+    fun `every spoken warning is one short sentence`() {
+        val spoken = Lookout.Why.entries.map { Lookout.spokenWarning(it) } + listOf(
+            Lookout.spokenSigning("Approve spending\nSpending cap Unlimited\nApprove"),
+            Lookout.spokenSigning("Approve transaction\n0.05 USDC\nTo 7c2y\u2026SxSv\nApprove"),
+            *Lookout.SPOKEN_LINES.toTypedArray(),
+            Lookout.spokenSigning("Set authority\nNew authority 9WzD\u2026AWWM\nConfirm"),
+            Lookout.spokenSigning("Close token account\nConfirm"),
+            Lookout.spokenSigning("Approve   Reject"),
+        )
+        for (line in spoken) {
+            val words = line.trim().split(Regex("\\s+")).size
+            assertTrue("$words words: $line", words <= Lookout.SPOKEN_WORDS)
+            // One sentence: it ends in a full stop and does not start another. (The stop
+            // inside "0.05" is a decimal point, not the end of anything.)
+            assertTrue(line, line.endsWith("."))
+            assertFalse(line, line.dropLast(1).contains(". "))
+            // Nothing to read out that is not words.
+            assertFalse(line, line.contains("\u2026"))
+            assertFalse(line, line.contains("http"))
+        }
+    }
+
+    @Test
+    fun `the spoken line names the kind, and the strip keeps the detail`() {
+        val screen = screen(seedVault, "Approve spending", "Spending cap Unlimited", "Spender 9WzD\u2026AWWM", "Approve")
+        val glance = Lookout.glanceAt(screen)!!
+        assertEquals("Careful: this is an approval, not a transfer.", glance.spoken)
+        // The strip carries what the spoken line leaves out.
+        assertTrue(glance.line, glance.line.contains("approval"))
+        assertTrue(glance.line, glance.line.endsWith(Lookout.TAP_TO_CHECK))
+        assertFalse("the spoken line does not tell you to tap", glance.spoken.contains("Tap"))
+    }
+
+    @Test
+    fun `the spoken line is one of a fixed few, so it never waits on the voice`() {
+        // The amount changes; the sentence must not, or it cannot be kept and played back.
+        val one = Lookout.spokenSigning("Approve transaction\n0.05 USDC\nTo 7c2y\u2026SxSv\nApprove")
+        val other = Lookout.spokenSigning("Approve transaction\n12.5 SOL\nTo 9WzD\u2026AWWM\nApprove")
+        assertEquals(one, other)
+        assertEquals("Something here wants your signature.", one)
+        // The strip is where the amount goes.
+        assertTrue(Lookout.signingLine("Approve transaction\n0.05 USDC\nApprove").contains("0.05 USDC"))
+        // Every line it can say unasked is in the list, and there are few of them.
+        assertTrue(Lookout.SPOKEN_LINES.size <= 12)
+        assertTrue(Lookout.SPOKEN_LINES.contains(one))
+        assertTrue(Lookout.SPOKEN_LINES.contains(ScamWatch.SEED_PHRASE.let { Lookout.spokenWarning(Lookout.Why.SECRET) }))
+    }
+
+    @Test
+    fun `the phrase warning is spoken as it is written`() {
+        val page = screen(chrome, "Wallet sync", "Enter your 12-word recovery phrase", "Submit")
+        val glance = Lookout.glanceAt(page)!!
+        assertEquals("No real Solana app asks for your recovery phrase.", glance.spoken)
+        // The strip keeps the longer version, which says what happens if you do.
+        assertTrue(glance.line, glance.line.length > glance.spoken.length)
+    }
+
+    @Test
+    fun `no spoken warning is a verdict either`() {
+        for (why in Lookout.Why.entries) {
+            val line = Lookout.spokenWarning(why)
+            assertFalse(line, line.contains("safe", ignoreCase = true))
+            assertFalse(line, line.contains("scam", ignoreCase = true))
+        }
     }
 }

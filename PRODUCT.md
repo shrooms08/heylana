@@ -78,8 +78,10 @@ the buddy while it talks stops it mid-sentence.
 
 **It wakes on its own at the one moment that matters.** When a wallet's confirm sheet or
 Seed Vault comes up, the buddy shows one line beside itself — what kind of request it is,
-the amount and who it is for, "tap me to check it" — without being asked and without
-speaking. It does the same for a screen asking for a recovery phrase and for a domain that
+the amount and who it is for, "tap me to check it" — without being asked, **and says it out
+loud**: one short sentence, about a tenth of a second after the screen appears, while your
+thumb is still on its way to Approve. A warning you have to read is a warning you read
+afterwards. Muted, the line on screen is the whole of it. It does the same for a screen asking for a recovery phrase and for a domain that
 is a copy of a real one. One line per screen, gone after twelve seconds, and every touch
 outside it still goes to the app underneath. Settings → Watch signing screens turns it off.
 

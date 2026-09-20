@@ -4,7 +4,8 @@ For Minos. This one is about the signing moment: what a transaction really does,
 you have dealt with an address before, and the buddy noticing a scam screen on its own.
 The server is deployed already. Install the app, then run `./scripts/a11y.sh` once.
 
-**Live calls this test spends: 2 chat, 2 spoken answers, a handful of ear passes.**
+**Live calls this test spends: 2 chat, 2 spoken answers, a handful of ear passes, and up
+to about eight short spoken warnings the first time (they are then kept on the phone).**
 Devnet. **Never tap Confirm, and never tap Pay.** Stop at "Simulation passed".
 
 ---
@@ -15,13 +16,24 @@ Devnet. **Never tap Confirm, and never tap Pay.** Stop at "Simulation passed".
 2. With the phone plugged in: `adb logcat -s HeylanaState | grep watch=` — it says
    `watch=signing on`, and a moment later `lookout: list updated domains=…`.
 3. **The Wallet's confirm sheet.** Open the Seed Vault Wallet and start any send (devnet),
-   far enough to reach the confirm screen — **do not approve it**. Within a second or so
-   the buddy shows one line beside itself with a **watching** chip: what kind of request it
-   is, the amount and who it is for, and "Tap me to check it."
-   - It must **not** speak.
+   far enough to reach the confirm screen — **do not approve it**. As the screen appears the
+   buddy shows one line beside itself with a **watching** chip — what kind of request it is,
+   the amount and who it is for, "Tap me to check it" — **and says it out loud**: one short
+   sentence, before your thumb reaches Approve.
+   - The spoken sentence is short on purpose ("Something here wants your signature.", or
+     "Careful: this is an approval, not a transfer."). The amount and the address are on the
+     strip, where you can read them.
    - It must **not** dim the screen or cover the Approve button — you can still tap
      anything on the wallet's screen.
+   - It says it **once**. Leave the sheet and come back: the same request stays quiet.
+   - Mute Heylana (the speaker icon on Home) and do it again: the line appears, nothing is
+     said.
    - Back out of the send. The line goes.
+
+   **How quickly.** With the phone plugged in, `adb logcat -s HeylanaState | grep glance_ms`
+   prints two numbers per screen: `watch=signing glance … glance_ms=` (the line on screen)
+   and `glance: spoke glance_ms=` (the first word heard). Both should be well under 800.
+   Mine, over five screens: **35–72ms** to show, **90–135ms** to speak.
 4. Tap the buddy while that line is up: the box opens as usual and you can ask about the
    screen. That is where it talks.
 
@@ -41,8 +53,8 @@ adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es glance secret
      `http://127.0.0.1:8099/seed.html`.
 2. As the page appears the buddy shows, unasked, with a **heads up** chip: *"No real Solana
    app asks for your recovery phrase. If you type it in, whoever is asking can take
-   everything."*
-3. It says it **once** for that page, and never speaks.
+   everything."* — **and says the first sentence of it out loud.**
+3. It says it **once** for that page. Reload it: the line comes back, the voice does not.
 4. Open Phantom or Solflare and go to their own "import recovery phrase" screen: **no
    warning**. A wallet asking for your phrase is what a wallet is for; only everything else
    is warned about.
@@ -109,4 +121,6 @@ adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es glance secret
   screen, or twice for the same one.
 - Any warning that reads like a verdict. They should all say what was found and "check the
   address bar", and never the word safe.
-- Anything it said aloud without being asked. It should never speak unasked.
+- Anything it said aloud that was not one of the three warnings. Those are the only things
+  it may say unasked; an answer still waits to be asked for.
+- Any warning that arrived after you had already tapped, or that you did not hear at all.

@@ -286,6 +286,16 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             prefs.edit().putBoolean(KEY_WATCH_SIGNING, value).apply()
         }
 
+    /**
+     * Debug builds only: treat any screen carrying a confirm sheet's words as a signing
+     * screen, so the glance can be timed without a wallet's own sheet in front.
+     */
+    var glanceAnyScreen: Boolean
+        get() = prefs.getBoolean(KEY_GLANCE_ANY, false)
+        set(value) {
+            prefs.edit().putBoolean(KEY_GLANCE_ANY, value).apply()
+        }
+
     /** The day of the phishing list the phone holds, so it only downloads a newer one. */
     var blocklistVersion: String
         get() = prefs.getString(KEY_BLOCKLIST_VERSION, "").orEmpty()
@@ -360,6 +370,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_SIMULATE_FREE = "simulate_free_plan"
         private const val KEY_DARKER_GLASS = "darker_glass"
         private const val KEY_WATCH_SIGNING = "watch_signing"
+        private const val KEY_GLANCE_ANY = "glance_any_screen"
         private const val KEY_BLOCKLIST_VERSION = "blocklist_version"
         private const val KEY_BLOCKLIST_CHECKED = "blocklist_checked_at"
         private const val KEY_GLASS_MODE = "glass_mode"

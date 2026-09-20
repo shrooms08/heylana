@@ -685,6 +685,35 @@ it was: `brain: … solana-core not loaded tools=not sent`.
 or "what am I signing" questions, route to `task`. "What does this button do" is
 deliberately not an explain question.
 
+**A warning is spoken, or it is not a warning.** Every glance is said out loud as well as
+shown (`Lookout.Glance.spoken`, `BuddyOverlayService.speakWarning`): one short sentence,
+under `SPOKEN_WORDS` (15), once per screen — the screen being the app, the kind of request,
+the amount and the address together, so the same sheet redrawing says nothing and a second,
+different request speaks again. Muted means the line on the strip is the whole of it. The
+spoken line is deliberately **one of a fixed few** (`Lookout.SPOKEN_LINES`): the amount and
+the address live on the strip, where they can be read, because a sentence that changes with
+the amount is a sentence the voice has to make from scratch — 800ms on the Seeker, which is
+the whole budget. `voice/SpokenCache` keeps a fixed line's audio (keyed by voice and words,
+a dozen at most, a cut-off stream never kept) and `HeylanaVoice.prefetch` fetches the
+missing ones when a wallet or a browser comes up, so by the time a confirm sheet is in front
+the words for it are already on the phone. Measured on the Seeker: **918ms the first time a
+sentence is ever said, 90–135ms every time after.** `SpokenCacheTest`.
+
+**The glance is timed, and the clock starts at the window.** `glance: looked … to_look_ms=…
+read_ms=… decide_ms=…`, then `watch=signing glance … glance_ms=…` when the line is on screen
+and `glance: spoke glance_ms=…` when the first word is heard. Measured on the Seeker over
+five confirm screens: shown in **35–72ms**, spoken in **90–135ms**. Debug: `--ez glance_any
+true` treats any screen carrying a confirm sheet's words as a signing screen, so the timing
+can be taken without a wallet's own sheet in front.
+
+**A held look is never a dropped look.** A burst of window changes is one screen settling —
+but a burst is also exactly how a wallet's confirm sheet arrives, behind the screen it came
+from. So a look that comes inside `LOOK_EVERY_MS` (250ms) is **held and run at the end of
+the gap**, never dropped, and the newest window wins; a look that finds nothing takes one
+more `SECOND_LOOK_MS` (400ms) later, in case the screen was still drawing. Before this the
+gap was 1.2s and a look inside it was dropped outright: three confirm screens in a row, no
+glance for any of them (reproduced on the Seeker, `glance: skipped why=too_soon`).
+
 **The lookout: the buddy wakes at the signing moment.** While the buddy runs and
 `HeylanaSettings.watchSigning` is on (default), a new window makes `overlay/Lookout` take
 one read and decide whether to say anything: a signing screen (`SigningScan.looksLikeSigning`
@@ -692,8 +721,8 @@ one read and decide whether to say anything: a signing screen (`SigningScan.look
 screen asking for a recovery phrase, a look-alike domain, or a domain on the blocklist. The
 line is written on the phone from what was scanned — no model call, nothing sent — shown in
 the task HUD's passive shape beside the disc (never the box, which would dim the app and take
-the keyboard), with the `WATCHING` or `HEADS_UP` chip, and **never spoken**: a tap opens the
-box, which is where Heylana talks. One glance per screen (`sameAsBefore`), at most one read
+the keyboard), with the `WATCHING` or `HEADS_UP` chip, **and spoken** (see above); a tap opens the
+box, which is where the rest of it is. One glance per screen (`sameAsBefore`), at most one read
 every `LOOK_EVERY_MS` (1.2s), gone after `GLANCE_MS` (12s), and never while an exchange, a
 task, a send or a teaching flight is running. The trace says `watch=signing on|off` and
 `watch=signing glance why=… chars=…`. Debug: `--es glance signing|secret|lookalike`.

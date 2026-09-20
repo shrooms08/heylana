@@ -44,6 +44,12 @@ export interface ToolContext {
   now: () => number
   /** The knowledge base, when this worker has one bound. */
   kb?: Kb
+  /**
+   * Has this wallet dealt with an address before? Answered from the salted-hash record
+   * the worker keeps per wallet, and only there while memory is on; absent means the
+   * question is not being asked at all, and nothing is claimed either way.
+   */
+  seenBefore?: (address: string) => Promise<boolean | null>
   /** Counts for the log: how many knowledge-base chunks this question was handed. */
   stats?: {
     kbHits: number
@@ -279,6 +285,9 @@ async function explainAddress(given: unknown, context: ToolContext) {
   const complete = list.length < SIGNATURE_PAGE
   const oldest = list.at(-1)?.blockTime
 
+  // Has the user dealt with this before? The most useful thing to know about an address
+  // on a signing screen, and the one a drain usually fails: first time, out of nowhere.
+  const before = context.seenBefore ? await context.seenBefore(address).catch(() => null) : null
   const isTreasury = Boolean(context.treasury) && address === context.treasury
   const label = known?.label ??
     (isTreasury ? 'your Heylana treasury' : null) ??
@@ -292,6 +301,8 @@ async function explainAddress(given: unknown, context: ToolContext) {
     kind,
     label,
     well_known: Boolean(known) || isTreasury,
+    // true = this wallet has dealt with it before; false = it has not; absent = not asked.
+    ...(before === null ? {} : { dealt_with_before: before }),
     transactions: complete ? list.length : `${SIGNATURE_PAGE} or more`,
     first_seen: oldest ? (complete ? isoDay(oldest) : `before ${isoDay(oldest)}`) : null,
     age_days: oldest && complete ? Math.floor((context.now() / 1000 - oldest) / 86400) : null,

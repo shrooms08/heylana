@@ -112,7 +112,11 @@ async function ownTokenAccounts(wallet: string, context: ToolContext): Promise<{
   )
 }
 
-async function recentCounterparties(wallet: string, context: ToolContext, store?: Store): Promise<string[]> {
+/**
+ * Everyone the wallet has dealt with in its last transactions, cached for ten minutes.
+ * Exported so a first-time check can ask the same question without fetching them twice.
+ */
+export async function recentCounterparties(wallet: string, context: ToolContext, store?: Store): Promise<string[]> {
   const key = `counterparties:${wallet}`
   try {
     const cached = store ? await store.get(key) : null

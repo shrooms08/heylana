@@ -24,6 +24,11 @@ import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
 import { makeRpc, type Rpc } from './rpc.ts'
+import { SYSTEM_PROGRAM } from './instructions.ts'
+import {
+  FIRSTS_TTL_SECONDS, FIRST_DESTINATION, FIRST_PROGRAM, firstsKey, hashFirst, parseFirsts, remember, unseen,
+  type Firsts,
+} from './firsts.ts'
 import {
   WEEK_PREFIX, WEEK_TTL_SECONDS, anythingCaught, applyWeek, breakdown, cardLine, emptyWeek, nothingCaught, weekStart,
   type Week, type WeekPatch,
@@ -35,11 +40,11 @@ import {
 import { answerWithTools, forcedAnswer, proposeAction, proposeSend, toolsNamed } from './brain.ts'
 import { sentryFor, type WaitUntil } from './sentry.ts'
 import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
-import { checkLines, checkShortAddresses, withAddressChecks } from './shortaddr.ts'
+import { checkLines, checkShortAddresses, recentCounterparties, withAddressChecks } from './shortaddr.ts'
 import { prepareSend } from './tools.ts'
 import { checkSend, type PreparedSend } from './send.ts'
 import { buildAndSimulate, labelFor, needsAccount, tokenAccountRent, type Built } from './build.ts'
-import type { TransferPlan } from './tx.ts'
+import { ASSOCIATED_TOKEN_PROGRAM, type TransferPlan } from './tx.ts'
 import { short, unitsToDecimal } from './solana.ts'
 import { checkedBody } from './say.ts'
 import {
@@ -512,7 +517,7 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
       text = forcedAnswer(null, tokensIn, tokensOut)
     }
   } else if (withTools) {
-    const context = { ...toolContext(env, who, rpc), stats: kbStats }
+    const context = { ...toolContext(env, who, rpc), stats: kbStats, seenBefore: seenBeforeFor(env, who, rpc) }
     const signing = body.signing as { short?: unknown; typed?: unknown } | undefined
     if (signing && typeof signing === 'object') {
       const checkStarted = clock.now()
@@ -1294,14 +1299,19 @@ async function memory(route: string, request: Request, env: Env, who: Who): Prom
 
   if (route === 'memory/consent') {
     const on = body.on === true
-    // Turning it off keeps nothing — the week's counts are memory's too.
+    // Turning it off keeps nothing — the week's counts and what it has seen before are memory's too.
     await save({ on, records: on ? current.records : [] })
-    if (!on) await env.CAPS.delete(weekKey(who.wallet, weekStart(clock.now())))
+    if (!on) {
+      await env.CAPS.delete(weekKey(who.wallet, weekStart(clock.now())))
+      await env.CAPS.delete(firstsKey(who.wallet))
+    }
     log({ route, device: who.device, wallet, on })
     return json(200, { on, records: on ? current.records : [] })
   }
   if (route === 'memory/wipe') {
     await save({ on: current.on, records: [] })
+    // Wipe all means all: the addresses and programs it had seen before go too.
+    await env.CAPS.delete(firstsKey(who.wallet))
     log({ route, device: who.device, wallet, wiped: current.records.length })
     return json(200, { on: current.on, records: [] })
   }
@@ -1602,6 +1612,8 @@ async function sendBuild(request: Request, env: Env, who: Who, rpc: Rpc): Promis
   const built = await buildAndSimulate(rpc, target.plan, target.facts)
   // A simulation that failed is a send that never reached the wallet: the week counts it.
   if (!built.simulation.ok) caught({ sends_stopped: 1 })
+  // Has this wallet ever sent here before? Memory's question, so memory's switch decides.
+  const firstTime = await firstDestination(env, who, rpc, target.plan.to)
   const record: BuildRecord = { sim_ok: built.simulation.ok, last_valid_block_height: built.last_valid_block_height, at: clock.now() }
   await env.CAPS.put(`built:${target.subject}`, JSON.stringify(record), { expirationTtl: SEND_TTL_SECONDS })
   log({
@@ -1610,13 +1622,97 @@ async function sendBuild(request: Request, env: Env, who: Who, rpc: Rpc): Promis
     fee: built.preview.fee_sol, new_account: built.preview.creates_account, cluster,
     simulation: built.simulation.ok ? 'passed' : built.simulation.reason,
   })
-  return json(200, buildReply(target.kind, built, final))
+  return json(200, buildReply(target.kind, built, final, firstTime))
 }
 
-function buildReply(kind: 'send' | 'pay', built: Built, final: boolean) {
-  const { transaction, blockhash: _blockhash, ...shown } = built
+function buildReply(kind: 'send' | 'pay', built: Built, final: boolean, firstTime = false) {
+  const { transaction, blockhash: _blockhash, does: _does, ...shown } = built
   // Only a transfer that passed simulation, and only when it is about to go to the wallet.
-  return { kind, ...shown, ...(final && built.simulation.ok ? { transaction } : {}) }
+  return {
+    kind,
+    ...shown,
+    preview: { ...built.preview, first_destination: firstTime },
+    ...(final && built.simulation.ok ? { transaction } : {}),
+  }
+}
+
+// ------------------------------------------------------------ first time, per wallet
+
+async function loadFirsts(env: Env, wallet: string): Promise<Firsts> {
+  return parseFirsts(await env.CAPS.get(firstsKey(wallet)))
+}
+
+async function saveFirsts(env: Env, wallet: string, firsts: Firsts): Promise<void> {
+  await env.CAPS.put(firstsKey(wallet), JSON.stringify(firsts), { expirationTtl: FIRSTS_TTL_SECONDS })
+}
+
+/**
+ * Whether this wallet has dealt with [to] before: not among the addresses Heylana has sent
+ * to for it, and not among the counterparties of its recent transactions (the same twenty
+ * the address check already fetches, cached). Two sources, so the line is not a claim about
+ * the wallet's whole history — PRODUCT.md says exactly what it means.
+ *
+ * Only asked while memory is on: it is the wallet's own history, so it is memory's.
+ */
+async function firstDestination(env: Env, who: Who, rpc: Rpc, to: string): Promise<boolean> {
+  if (!who.wallet) return false
+  try {
+    const kept = await loadMemory(env, who.wallet)
+    if (!kept.on) return false
+    const firsts = await loadFirsts(env, who.wallet)
+    const hash = await hashFirst(to, env.SESSION_SECRET)
+    if (unseen(firsts, 'destination', [hash]).length === 0) return false
+    const context = toolContext(env, who, rpc)
+    const recent = await recentCounterparties(who.wallet, { ...context, signal: undefined as never }, env.CAPS).catch(() => [])
+    return !recent.includes(to)
+  } catch {
+    // A check that could not be run says nothing, and never says "first time" by default.
+    return false
+  }
+}
+
+/**
+ * The question `explain_address` asks of the record: has this wallet dealt with [address]
+ * before? Null while there is no wallet or memory is off — then nothing is claimed at all.
+ * The answer is the same two sources as a send's: what Heylana has seen, and the
+ * counterparties of the wallet's recent transactions.
+ */
+function seenBeforeFor(env: Env, who: Who, rpc: Rpc): (address: string) => Promise<boolean | null> {
+  return async (address: string) => {
+    if (!who.wallet) return null
+    try {
+      const kept = await loadMemory(env, who.wallet)
+      if (!kept.on) return null
+      if (address === who.wallet || address === env.TREASURY_ADDRESS) return true
+      const firsts = await loadFirsts(env, who.wallet)
+      const hash = await hashFirst(address, env.SESSION_SECRET)
+      if (unseen(firsts, 'destination', [hash]).length === 0) return true
+      if (unseen(firsts, 'program', [hash]).length === 0) return true
+      const context = toolContext(env, who, rpc)
+      const recent = await recentCounterparties(who.wallet, { ...context, signal: undefined as never }, env.CAPS)
+      return recent.includes(address)
+    } catch {
+      return null
+    }
+  }
+}
+
+/** What a landed send teaches the record: where it went, and which programs it called. */
+async function rememberSend(env: Env, wallet: string, to: string, programs: string[]): Promise<void> {
+  try {
+    const kept = await loadMemory(env, wallet)
+    if (!kept.on) return
+    const [destination, ...rest] = await Promise.all([
+      hashFirst(to, env.SESSION_SECRET),
+      ...programs.map((program) => hashFirst(program, env.SESSION_SECRET)),
+    ])
+    let firsts = await loadFirsts(env, wallet)
+    firsts = remember(firsts, 'destination', [destination])
+    firsts = remember(firsts, 'program', rest)
+    await saveFirsts(env, wallet, firsts)
+  } catch {
+    // The record is a convenience; failing to write it never fails a send.
+  }
 }
 
 type BuildTarget =
@@ -1813,6 +1909,12 @@ async function sendConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Prom
   }
   await env.CAPS.put(`sent:${id}`, signature!, { expirationTtl: SEND_TTL_SECONDS })
   await env.CAPS.put(`sentsig:${signature}`, id, { expirationTtl: SEND_TTL_SECONDS })
+  // It landed, so this address is one the wallet has sent to now, and the programs it
+  // called are ones it has used. Hashes only, and only while memory is on.
+  await rememberSend(
+    env, who.wallet, sent.to_address,
+    sent.mint ? [sent.token_program ?? TOKEN_PROGRAM, ASSOCIATED_TOKEN_PROGRAM] : [SYSTEM_PROGRAM],
+  )
   count({ sendsConfirmed: 1 })
   log({ ...logged, confirmed: true })
   return json(200, { confirmed: true, signature: short(signature!) })

@@ -62,10 +62,17 @@ object SendText {
      * worker built, one line each under the confirmation. Never spoken — the spoken line
      * stays the two sentences it always was — and never more than four lines.
      */
-    fun withDetail(strip: String, does: List<String>): String {
-        if (does.isEmpty()) return strip
-        return strip + "\n" + does.take(4).joinToString("\n") { "• " + it }
+    fun withDetail(strip: String, does: List<String>, firstDestination: Boolean = false): String {
+        val lines = (if (firstDestination) listOf(FIRST_DESTINATION) else emptyList()) + does.take(4)
+        if (lines.isEmpty()) return strip
+        return strip + "\n" + lines.joinToString("\n") { "• " + it }
     }
+
+    /**
+     * What the worker's record says, when it says it: this wallet has not sent here before.
+     * A fact about their own history, never a verdict — Heylana never says not to send.
+     */
+    const val FIRST_DESTINATION = "First time you have sent to this address."
 
     fun sent(shortSignature: String): String = "Sent. Signature $shortSignature."
 

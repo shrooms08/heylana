@@ -170,6 +170,8 @@ test('a passing simulation comes back with the preview and no transaction until 
     programs: ['Associated Token Account Program', 'SPL Token Program'], cluster: 'devnet',
     // Read back out of the bytes that were built, not from what was asked for.
     does: ['Sends 0.05 USDC to 4Nd1…DB4T.'], grants_power: false,
+    // Memory is off for this wallet, so its history is not looked at and nothing is claimed.
+    first_destination: false,
   })
   assert.equal(chain.simulated.length, 1, 'simulated once')
 

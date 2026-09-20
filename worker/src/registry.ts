@@ -80,7 +80,11 @@ export const REGISTRY: Entry[] = [
   },
   {
     name: 'explain_address', version: '1', risk: 'R0', kind: 'tool',
-    description: 'What a Solana address is (wallet, token mint, program, token account), its known name, how old it is and how many transactions it has.',
+    description:
+      'What a Solana address is (wallet, token mint, program, token account), its known name, how old it is and ' +
+      'how many transactions it has. dealt_with_before, when present, says whether this user has dealt with this ' +
+      'address before: if it is false, say so plainly — "first time you have sent to this address" for a wallet, ' +
+      '"you have not used this program before" for a program. Never call an address safe because it is not new.',
     input_schema: { type: 'object', properties: { address: ADDRESS }, required: ['address'], additionalProperties: false },
   },
   {

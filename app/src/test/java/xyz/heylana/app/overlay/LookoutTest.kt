@@ -208,4 +208,65 @@ class LookoutTest {
             assertFalse(line, line.contains("scam", ignoreCase = true))
         }
     }
+
+    // ------------------------------------------------------ said before anything is read
+
+    private fun window(pkg: String, className: String = "", title: String = "") =
+        xyz.heylana.app.screen.WindowEvent(pkg, className, title, at = 0L)
+
+    @Test
+    fun `every Seed Vault window is a signature being asked for`() {
+        // It has no launcher on the Seeker: its windows exist because an app asked.
+        assertTrue(Lookout.signingWindow(window(seedVault, "com.solanamobile.seedvaultimpl.MainActivity")))
+        assertTrue(Lookout.signingWindow(window(seedVault)))
+    }
+
+    @Test
+    fun `a wallet window counts only when the window itself says what it is for`() {
+        val wallet = "com.solanamobile.wallet"
+        assertTrue(Lookout.signingWindow(window(wallet, title = "Confirm transaction")))
+        assertTrue(Lookout.signingWindow(window(wallet, className = "com.x.SignTransactionActivity")))
+        assertTrue(Lookout.signingWindow(window(wallet, title = "Review and approve")))
+        // Browsing your own balances, or your own history, is not a signature.
+        assertFalse(Lookout.signingWindow(window(wallet, className = "com.x.HomeActivity", title = "Wallet")))
+        assertFalse(Lookout.signingWindow(window(wallet, title = "Transactions")))
+        assertFalse(Lookout.signingWindow(window(wallet, className = "com.x.TransactionHistoryActivity")))
+    }
+
+    @Test
+    fun `nothing else wakes the voice before a read`() {
+        assertFalse(Lookout.signingWindow(window(chrome, title = "Confirm your order")))
+        assertFalse(Lookout.signingWindow(window("com.whatsapp", title = "Sign in")))
+        assertFalse(Lookout.signingWindow(window(null.toString())))
+    }
+
+    @Test
+    fun `the opening line is short, fixed and kept with the others`() {
+        val words = Lookout.OPENING_LINE.trim().split(Regex("\\s+")).size
+        assertTrue("$words words", words <= Lookout.SPOKEN_WORDS)
+        assertTrue(Lookout.OPENING_LINE.endsWith("."))
+        assertTrue(Lookout.SPOKEN_LINES.contains(Lookout.OPENING_LINE))
+        assertTrue(Lookout.SPOKEN_LINES.contains(Lookout.FIRST_TIME_LINE))
+    }
+
+    @Test
+    fun `after the announcement, only something worse is worth a second sentence`() {
+        val plain = Lookout.glanceAt(screen(seedVault, "Approve transaction", "0.05 USDC", "To 7c2y\u2026SxSv", "Approve"))!!
+        assertNull("a plain transfer is already announced", Lookout.strongerLine(plain))
+
+        val approval = Lookout.glanceAt(screen(seedVault, "Approve spending", "Spending cap Unlimited", "Approve"))!!
+        assertEquals(approval.spoken, Lookout.strongerLine(approval))
+        assertTrue(Lookout.strongerLine(approval)!!.contains("approval"))
+
+        // An address this wallet has not sent to before is worth saying, when it is known.
+        assertEquals(Lookout.FIRST_TIME_LINE, Lookout.strongerLine(plain, firstTime = true))
+    }
+
+    @Test
+    fun `the strip still carries everything the voice left out`() {
+        val glance = Lookout.glanceAt(screen(seedVault, "Approve transaction", "0.05 USDC", "To 7c2y\u2026SxSv", "Approve"))!!
+        assertTrue(glance.line, glance.line.contains("0.05 USDC"))
+        assertTrue(glance.line, glance.line.contains("7c2y\u2026SxSv"))
+        assertTrue(glance.line, glance.line.endsWith(Lookout.TAP_TO_CHECK))
+    }
 }

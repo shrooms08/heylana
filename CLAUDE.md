@@ -685,6 +685,23 @@ it was: `brain: … solana-core not loaded tools=not sent`.
 or "what am I signing" questions, route to `task`. "What does this button do" is
 deliberately not an explain question.
 
+**On a signing window, she speaks first and looks second.** A wallet's confirm sheet was
+still being announced after the user had approved it, because the order was: read the
+screen, decide, then speak. Now the decision to say something is made from the
+**accessibility event alone** (`Lookout.signingWindow`) — Seed Vault has no launcher on the
+Seeker, so every window of it is a signature being asked for; a wallet's window counts when
+the window's own class or title says so (its Compose sheets come through as `FrameLayout`
+titled "Dialog", which says nothing, so a wallet's windows are instead **read at once**,
+`Lookout.urgentWindow`: no gap, nothing held). The opening line
+(`Lookout.OPENING_LINE`, fixed and already on the phone) is played before the tree is
+touched; the look follows and puts the amount, the address and what it does on the strip;
+and a **second** sentence is spoken only if the look found something worse than a transfer
+(`Lookout.strongerLine`: an approval, a handover, a close, a first-time address). A plain
+transfer says nothing more — its numbers are on the strip, where they can be read.
+The trace proves the order: `window_event_ms=0 spoke_asked_ms=…`, then `look_done_ms=…`,
+then `first_audio_ms=…`. Measured on the Seeker over three signing windows: asked to speak
+at 9–17ms, look finished at 20–27ms, **first audio at 43, 56 and 43ms**.
+
 **A warning is spoken, or it is not a warning.** Every glance is said out loud as well as
 shown (`Lookout.Glance.spoken`, `BuddyOverlayService.speakWarning`): one short sentence,
 under `SPOKEN_WORDS` (15), once per screen — the screen being the app, the kind of request,

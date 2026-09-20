@@ -893,6 +893,26 @@ class BuddyOverlayService : Service() {
                 // a wallet screen or anyone's browser:
                 //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es glance secret
                 intent.getStringExtra("glance")?.let { which -> debugGlance(which) }
+                // A window event as the system would deliver one, so the path from a signing
+                // window appearing to the first spoken word can be timed:
+                //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es window seedvault
+                intent.getStringExtra("window")?.let { which ->
+                    val pkg = when (which) {
+                        "seedvault" -> "com.solanamobile.seedvaultimpl"
+                        "wallet" -> "com.solanamobile.wallet"
+                        else -> which
+                    }
+                    onNewWindow(
+                        xyz.heylana.app.screen.WindowEvent(
+                            packageName = pkg,
+                            className = "com.solanamobile.seedvaultimpl.MainActivity",
+                            // A fresh title each time: every injection is a new window,
+                            // as a second confirm sheet would be.
+                            title = "Approve transaction ${SystemClock.uptimeMillis()}",
+                            at = SystemClock.uptimeMillis(),
+                        )
+                    )
+                }
                 // Times the signing glance on a screen that is not a wallet's own sheet:
                 //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --ez glance_any true
                 if (intent.hasExtra("glance_any")) {
@@ -1948,7 +1968,7 @@ class BuddyOverlayService : Service() {
             HeylanaLog.state("watch=signing off")
             return
         }
-        HeylanaAccessibilityService.watchWindows { from, at -> main.post { onNewWindow(from, at) } }
+        HeylanaAccessibilityService.watchWindows { event -> main.post { onNewWindow(event) } }
         HeylanaLog.state("watch=signing on")
         scope.launch {
             blocklist.loadFromDisk()
@@ -1970,24 +1990,76 @@ class BuddyOverlayService : Service() {
      * usually the last one in the burst. (Dropping it is what made warnings arrive late,
      * or not at all: three confirm screens in a row, no glance for any of them.)
      */
-    private fun onNewWindow(from: String?, at: Long) {
+    private fun onNewWindow(event: xyz.heylana.app.screen.WindowEvent) {
+        val from = event.packageName
+        val at = event.at
+        // Debug builds: what a window says about itself, before anything is read.
+        HeylanaLog.state("glance: window pkg=$from class=${event.className} title=${event.title.take(50)}")
         if (!settings.watchSigning) return
         // Busy: an exchange, a task or a send has the buddy already, and a glance would
         // land on top of whatever the user asked for.
         if (exchange.inProgress || session != null || awaitingConfirm != null || teaching != null) return
         if (from == packageName) return
 
+        // A signature is being asked for: say so **now**, before the screen is read. A
+        // wallet's tree takes long enough to read that the warning used to arrive after the
+        // user had approved. Nothing is waited for here — not the read, not the worker —
+        // because the sentence is one of the fixed few and its audio is already on the phone.
+        val announce = Lookout.signingWindow(event) || (BuildConfig.DEBUG && settings.glanceAnyScreen)
+        if (announce) speakOnSight(event)
+        // A wallet's window is read the instant it appears — no gap, nothing waited for.
+        // Seed Vault's has already been spoken for; a wallet's says too little about itself
+        // to tell a confirm sheet from a settings dialog without reading it.
+        if (announce || Lookout.urgentWindow(event)) {
+            look(at, second = false)
+            return
+        }
+
         val now = SystemClock.uptimeMillis()
         val since = now - lastLookAt
         if (since < LOOK_EVERY_MS) {
             // Held: the newest window wins, and it is looked at the moment the gap is up.
+            // Never held for longer than one gap's worth, whatever else keeps arriving.
             heldWindow = at
+            if (heldSince == 0L) heldSince = now
             main.removeCallbacks(heldLook)
-            main.postDelayed(heldLook, LOOK_EVERY_MS - since)
-            HeylanaLog.state("glance: held for ${LOOK_EVERY_MS - since}ms")
+            val wait = if (now - heldSince >= LOOK_EVERY_MS) 0L else LOOK_EVERY_MS - since
+            main.postDelayed(heldLook, wait)
+            HeylanaLog.state("glance: held for ${wait}ms")
             return
         }
+        heldSince = 0L
         look(at, second = false)
+    }
+
+    /** When the first look of a burst was held, so a burst cannot hold one for ever. */
+    private var heldSince = 0L
+
+    /** The window the opening line was said for, so one window is announced once. */
+    private var announcedWindow: String? = null
+
+    /**
+     * The first sentence, on the window event itself. Playback only: the words are fixed
+     * and their audio is kept on the phone, so this is the shortest path there is between
+     * a signing window appearing and the user hearing about it.
+     */
+    private fun speakOnSight(event: xyz.heylana.app.screen.WindowEvent) {
+        val window = "${event.packageName}|${event.className}|${event.title}"
+        if (window == announcedWindow) {
+            HeylanaLog.state("glance: signing window again, already announced")
+            return
+        }
+        announcedWindow = window
+        glanceAt = event.at
+        glanceSpoke = false
+        val spoke = speakWarning(Lookout.OPENING_LINE)
+        // window_event_ms is the zero of everything that follows; spoke_asked_ms says the
+        // voice was asked for before the screen was read, which is the whole point.
+        HeylanaLog.state(
+            "glance: signing window pkg=${event.packageName} class=${event.className} " +
+                "window_event_ms=0 spoke_asked_ms=${SystemClock.uptimeMillis() - event.at} spoken=$spoke"
+        )
+        if (!spoke) HeylanaLog.state("glance: opening line not spoken (muted or no voice); the strip still comes")
     }
 
     /** The window a held look is for, and the look itself. */
@@ -2004,7 +2076,11 @@ class BuddyOverlayService : Service() {
         if (!settings.watchSigning) return
         if (exchange.inProgress || session != null || awaitingConfirm != null || teaching != null) return
         lastLookAt = SystemClock.uptimeMillis()
-        glanceAt = at
+        // The clock for everything after it starts at the window, not at the look.
+        if (glanceAt != at) {
+            glanceAt = at
+            glanceSpoke = false
+        }
         val readStarted = SystemClock.uptimeMillis()
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         val decideStarted = SystemClock.uptimeMillis()
@@ -2015,7 +2091,8 @@ class BuddyOverlayService : Service() {
         val decided = SystemClock.uptimeMillis()
         HeylanaLog.state(
             "glance: looked why=${glance?.why ?: "none"} second=$second to_look_ms=${readStarted - at} " +
-                "read_ms=${decideStarted - readStarted} decide_ms=${decided - decideStarted}"
+                "read_ms=${decideStarted - readStarted} decide_ms=${decided - decideStarted} " +
+                "look_done_ms=${decided - at}"
         )
         if (glance == null) {
             // Nothing to say here — but this is a wallet or a browser, which is where the
@@ -2123,11 +2200,21 @@ class BuddyOverlayService : Service() {
         // muted means the line on the strip is the whole of it.
         if (glance.about != spokenGlanceAbout) {
             spokenGlanceAbout = glance.about
-            glanceSpoke = false
-            if (speakWarning(glance.spoken)) {
-                HeylanaLog.state("glance: speaking words=${glance.spoken.split(" ").size}")
+            // A signing window has already been announced from the event itself. The look
+            // only adds a voice when it found something worse than a transfer — an
+            // approval, a handover, a close — otherwise the amount and the address are on
+            // the strip and there is nothing more worth saying out loud.
+            val alreadyAnnounced = glance.why == Lookout.Why.SIGNING && announcedWindow != null
+            val say = if (alreadyAnnounced) Lookout.strongerLine(glance) else glance.spoken
+            if (say == null) {
+                HeylanaLog.state("glance: nothing worse than a transfer; the strip has the rest")
             } else {
-                HeylanaLog.state("glance: not spoken (muted or no voice); the line stands")
+                if (!alreadyAnnounced) glanceSpoke = false
+                if (speakWarning(say)) {
+                    HeylanaLog.state("glance: speaking words=${say.split(" ").size} second_line=$alreadyAnnounced")
+                } else {
+                    HeylanaLog.state("glance: not spoken (muted or no voice); the line stands")
+                }
             }
         }
         main.removeCallbacks(glanceTimeout)
@@ -2142,9 +2229,11 @@ class BuddyOverlayService : Service() {
      * first word of the warning is heard. Reported once per screen.
      */
     private fun reportGlanceSpoken() {
-        if (!shownGlance || glanceSpoke || glanceAt <= 0L) return
+        // Not gated on the line being on screen: the whole point is that the voice now
+        // starts before the look that draws it has finished.
+        if (glanceSpoke || glanceAt <= 0L) return
         glanceSpoke = true
-        HeylanaLog.state("glance: spoke glance_ms=${SystemClock.uptimeMillis() - glanceAt}")
+        HeylanaLog.state("glance: spoke first_audio_ms=${SystemClock.uptimeMillis() - glanceAt}")
     }
 
     private val glanceTimeout = Runnable { hideGlance() }
@@ -2154,6 +2243,7 @@ class BuddyOverlayService : Service() {
         if (!shownGlance) return
         shownGlance = false
         glanceSpoke = false
+        announcedWindow = null
         mode(null)
         overlayView?.hideGlance()
     }

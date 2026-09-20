@@ -41,6 +41,77 @@ object Lookout {
     const val TAP_TO_CHECK = "Tap me to check it."
 
     /**
+     * What Heylana says the instant a signing window appears, **before anything is read**.
+     *
+     * Reading a wallet's tree takes long enough to matter when a thumb is already moving
+     * towards Approve — on the Seeker the warning arrived after the user had approved. So
+     * the first sentence is decided from the window event alone and played from the audio
+     * already on the phone; the amount, the address and what it does follow on the strip a
+     * moment later, and a second sentence follows only if the look finds something worse.
+     */
+    const val OPENING_LINE = "Careful: something is asking for your signature."
+
+    /**
+     * Words in a **window's own title or class** that mean a signature is being asked for.
+     * This is not the screen's text — nothing has been read yet — it is what the system
+     * says about the window as it comes up.
+     */
+    private val WINDOW_WORDS = Regex(
+        "(sign|signature|approve|approval|confirm|authoriz|authoris|" +
+            "transaction request|review (and )?(approve|confirm|sign)|slide to)",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * Whether this window, by itself, is a signature being asked for — decided with no
+     * read at all.
+     *
+     * Seed Vault has no launcher on the Seeker: every window it puts up is there because an
+     * app asked for a signature or for access, so any of its windows counts. A wallet is a
+     * place you also browse, so one of its windows counts only when the window itself says
+     * what it is for.
+     */
+    fun signingWindow(event: xyz.heylana.app.screen.WindowEvent): Boolean {
+        val kind = xyz.heylana.app.brain.SolanaApps.of(event.packageName)?.kind ?: return false
+        return when (kind) {
+            xyz.heylana.app.brain.SolanaApps.Kind.SIGNING -> true
+            xyz.heylana.app.brain.SolanaApps.Kind.WALLET -> WINDOW_WORDS.containsMatchIn(event.describedAs)
+            else -> false
+        }
+    }
+
+    /**
+     * Whether this window is looked at the instant it appears, with no gap and no waiting
+     * for the burst around it to settle.
+     *
+     * Every window of a wallet or of Seed Vault is, because that is where a signature comes
+     * from. A wallet built in Compose tells the event almost nothing about itself — the
+     * Seed Vault Wallet's own sheets come through as `FrameLayout` titled "Dialog" — so the
+     * screen has to be read to tell a confirm sheet from a settings dialog. That read is
+     * 13 to 67ms on the Seeker, which is affordable; waiting 250ms for a burst to settle,
+     * or dropping the look altogether, was not.
+     */
+    fun urgentWindow(event: xyz.heylana.app.screen.WindowEvent): Boolean =
+        when (xyz.heylana.app.brain.SolanaApps.of(event.packageName)?.kind) {
+            xyz.heylana.app.brain.SolanaApps.Kind.SIGNING, xyz.heylana.app.brain.SolanaApps.Kind.WALLET -> true
+            else -> false
+        }
+
+    /**
+     * The second sentence, said only when the look found something worse than a transfer.
+     * A plain transfer has already been announced and needs nothing more said out loud —
+     * its amount and its address are on the strip.
+     */
+    fun strongerLine(glance: Glance, firstTime: Boolean = false): String? = when {
+        glance.why == Why.SIGNING && glance.spoken != spokenSigning("") -> glance.spoken
+        firstTime -> FIRST_TIME_LINE
+        else -> null
+    }
+
+    /** Said when the address on a signing screen is one this wallet has not sent to before. */
+    const val FIRST_TIME_LINE = "You have not sent to this address before."
+
+    /**
      * What to say about this screen, if anything.
      *
      * [blocked] is the worker's blocklist, already on the phone; [ownWallet] is the user's
@@ -139,7 +210,7 @@ object Lookout {
      * fits on the phone and none of them ever waits on the voice.
      */
     val SPOKEN_LINES: List<String>
-        get() = Why.entries.map(::spokenWarning) + listOf(
+        get() = listOf(OPENING_LINE, FIRST_TIME_LINE) + Why.entries.map(::spokenWarning) + listOf(
             spokenSigning("Approve spending\nSpending cap\nApprove"),
             spokenSigning("Set authority\nApprove"),
             spokenSigning("Close token account\nApprove"),

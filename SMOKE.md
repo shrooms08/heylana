@@ -16,10 +16,11 @@ Devnet. **Never tap Confirm, and never tap Pay.** Stop at "Simulation passed".
 2. With the phone plugged in: `adb logcat -s HeylanaState | grep watch=` — it says
    `watch=signing on`, and a moment later `lookout: list updated domains=…`.
 3. **The Wallet's confirm sheet.** Open the Seed Vault Wallet and start any send (devnet),
-   far enough to reach the confirm screen — **do not approve it**. As the screen appears the
-   buddy shows one line beside itself with a **watching** chip — what kind of request it is,
-   the amount and who it is for, "Tap me to check it" — **and says it out loud**: one short
-   sentence, before your thumb reaches Approve.
+   far enough to reach the confirm screen — **do not approve it**. She should speak **as the
+   screen appears**, before you could tap Approve: "Careful: something is asking for your
+   signature." The strip follows a moment later with the amount, who it is for and what it
+   does. She says a second sentence only if it is worse than a transfer — an approval, a
+   handover, a close.
    - The spoken sentence is short on purpose ("Something here wants your signature.", or
      "Careful: this is an approval, not a transfer."). The amount and the address are on the
      strip, where you can read them.
@@ -30,10 +31,12 @@ Devnet. **Never tap Confirm, and never tap Pay.** Stop at "Simulation passed".
      said.
    - Back out of the send. The line goes.
 
-   **How quickly.** With the phone plugged in, `adb logcat -s HeylanaState | grep glance_ms`
-   prints two numbers per screen: `watch=signing glance … glance_ms=` (the line on screen)
-   and `glance: spoke glance_ms=` (the first word heard). Both should be well under 800.
-   Mine, over five screens: **35–72ms** to show, **90–135ms** to speak.
+   **How quickly.** With the phone plugged in:
+   `adb logcat -s HeylanaState | grep -E "window_event_ms|first_audio_ms|look_done_ms"`.
+   Three numbers per signing window, all from the moment the window appeared: when the voice
+   was asked for, when the look finished, and when the first word was heard. Mine, over
+   three windows: asked at **9–17ms**, look done at **20–27ms**, first word at **43–56ms**.
+   If `first_audio_ms` is ever over 300, tell me.
 4. Tap the buddy while that line is up: the box opens as usual and you can ask about the
    screen. That is where it talks.
 

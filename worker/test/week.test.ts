@@ -103,7 +103,7 @@ test('nothing caught is not written', () => {
 test('the card is one sentence of numbers and what they counted, singular where it should be', () => {
   assert.equal(
     cardLine({ ...EMPTY_COUNTS, screens: 14, sends_prepared: 2, sends_stopped: 1, questions: 30 }),
-    'This week: 14 screens explained, 2 sends checked, 1 stopped before signing.',
+    'This week: 2 sends checked, 1 stopped before signing, 14 screens explained.',
   )
   assert.equal(cardLine({ ...EMPTY_COUNTS, screens: 1, lessons: 1 }), 'This week: 1 screen explained, 1 lesson finished.')
   assert.equal(cardLine(EMPTY_COUNTS), 'This week: nothing yet.')
@@ -153,7 +153,7 @@ test('with memory on, questions, screens and sends are counted, and the card say
   assert.equal(body.memory_on, true)
   assert.equal(body.week_start, '2026-09-14')
   assert.deepEqual([body.counts.questions, body.counts.screens, body.counts.transactions, body.counts.lessons], [4, 2, 1, 1])
-  assert.equal(body.line, 'This week: 2 screens explained, 1 transaction explained, 1 lesson finished.')
+  assert.equal(body.line, 'This week: 1 transaction explained, 2 screens explained, 1 lesson finished.')
   assert.equal(JSON.stringify(body).includes('seen'), false, 'the hashes stay on the worker')
 })
 

@@ -90,12 +90,12 @@ class WeekModel(
         caught = WeekCatch(
             weekStart = "seeded",
             memoryOn = true,
-            line = "This week: 14 screens explained, 2 sends checked, 1 stopped before signing.",
+            line = "This week: 2 sends checked, 1 stopped before signing, 3 transactions explained.",
             items = listOf(
-                WeekItem("screens", "screens explained", 14),
-                WeekItem("transactions", "transactions explained", 3),
                 WeekItem("sends_prepared", "sends checked", 2),
                 WeekItem("sends_stopped", "stopped before signing", 1),
+                WeekItem("transactions", "transactions explained", 3),
+                WeekItem("screens", "screens explained", 14),
                 WeekItem("new_addresses", "new addresses looked up", 4),
                 WeekItem("lessons", "lessons finished", 1),
                 WeekItem("questions", "questions answered", 31),

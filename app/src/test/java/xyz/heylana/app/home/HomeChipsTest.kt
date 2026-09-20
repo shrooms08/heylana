@@ -7,9 +7,12 @@ import org.junit.Test
 class HomeChipsTest {
 
     @Test
-    fun `the export's chips, in its order`() {
+    fun `the chips, in the order Heylana's own job puts them`() {
         assertEquals(
-            listOf("Ask about this screen", "Learn Solana", "Teach me to swap", "Check my balance", "Send USDC", "Set a timer", "Play a song"),
+            listOf(
+                "What am I signing?", "Check my balance", "Explain this screen",
+                "Learn Solana", "Set a timer", "Play a song",
+            ),
             HomeChips.ALL.map { it.label }
         )
     }
@@ -18,18 +21,23 @@ class HomeChipsTest {
     fun `tapping a chip sends its words as a message, exactly as if typed`() {
         val sent = mutableListOf<String>()
         var started = 0
-        for (chip in HomeChips.ALL.drop(2)) HomeChips.tap(chip, { sent += it }, { started++ })
-        assertEquals(listOf("Teach me to swap", "Check my balance", "Send USDC", "Set a timer", "Play a song"), sent)
+        for (chip in HomeChips.ALL.filter { it.action is ChipAction.Send }) {
+            HomeChips.tap(chip, { sent += it }, { started++ })
+        }
+        assertEquals(listOf("Check my balance", "Set a timer", "Play a song"), sent)
         assertEquals(0, started)
     }
 
     @Test
-    fun `ask about this screen starts the buddy and sends nothing - the app never reads a screen`() {
-        val sent = mutableListOf<String>()
-        var started = 0
-        HomeChips.tap(HomeChips.FIRST_ROW.first(), { sent += it }, { started++ })
-        assertTrue(sent.isEmpty())
-        assertEquals(1, started)
+    fun `the two chips about another app's screen start the buddy and send nothing`() {
+        // The app never reads a screen itself, so both of these can only start the buddy.
+        for (label in listOf("What am I signing?", "Explain this screen")) {
+            val sent = mutableListOf<String>()
+            var started = 0
+            HomeChips.tap(HomeChips.ALL.single { it.label == label }, { sent += it }, { started++ })
+            assertTrue(label, sent.isEmpty())
+            assertEquals(label, 1, started)
+        }
     }
 
     @Test
@@ -39,5 +47,10 @@ class HomeChipsTest {
         HomeChips.tap(HomeChips.ALL.single { it.label == "Learn Solana" }, { sent += it }, {}, { learn++ })
         assertTrue(sent.isEmpty())
         assertEquals(1, learn)
+    }
+
+    @Test
+    fun `the signing chip leads, because the signing moment is what Heylana is for`() {
+        assertEquals("What am I signing?", HomeChips.ALL.first().label)
     }
 }

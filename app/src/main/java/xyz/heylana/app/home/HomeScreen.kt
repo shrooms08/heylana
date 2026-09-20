@@ -67,6 +67,13 @@ import xyz.heylana.app.ui.theme.LocalHeylana
  * Home, frames 1 and 1b of the export: the orb, a greeting, the chips, the message bar
  * and the mic. What is asked here is conversation with the app — no screen is read.
  */
+/** Home's own words, so they are in one place and testable. */
+object HomeText {
+
+    /** Under the greeting while the buddy is running and watching. */
+    const val WATCHING = "Watching for signing screens."
+}
+
 @Composable
 fun HomeScreen(
     name: String,
@@ -81,7 +88,9 @@ fun HomeScreen(
     onAskAboutScreen: () -> Unit,
     onLearn: () -> Unit = {},
     /** "What I caught this week", when there is one to show. */
-    week: WeekModel? = null
+    week: WeekModel? = null,
+    /** The buddy is running and watching signing screens, so Home can say so. */
+    watching: Boolean = false
 ) {
     val palette = LocalHeylana.current
     var message by remember { mutableStateOf("") }
@@ -129,6 +138,15 @@ fun HomeScreen(
                     else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (name.isBlank()) "Hi." else "Hi, $name.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
                         Text("What do you need?", style = HeylanaType.display, color = palette.ink, textAlign = TextAlign.Center)
+                        // The one thing Heylana does while nobody is asking it anything.
+                        if (watching) {
+                            Text(
+                                HomeText.WATCHING,
+                                style = HeylanaType.small,
+                                color = palette.inkTertiary,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
                 }
             }

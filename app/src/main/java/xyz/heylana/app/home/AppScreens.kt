@@ -106,6 +106,7 @@ fun AppScreens(
                 if (started && MicPress.onRelease(held, true) == MicPress.OnRelease.FINISH) voice.finish()
             },
             week = week,
+            watching = buddyOn && settings.watchSigning,
             onAskAboutScreen = { askAboutScreen(activity, chat) },
             onLearn = { onScreen(Screen.LEARN) }
         )

@@ -103,12 +103,16 @@ interface Line {
   many: string
 }
 
-/** The order the card and the list read in: what was explained, then what was stopped. */
+/**
+ * The order the card and the list read in. The sends lead: what Heylana checked before
+ * anyone signed, and what it stopped, are what it is for — a count of questions answered
+ * is the least of it, so it comes last.
+ */
 export const LINES: Line[] = [
-  { key: 'screens', one: 'screen explained', many: 'screens explained' },
-  { key: 'transactions', one: 'transaction explained', many: 'transactions explained' },
   { key: 'sends_prepared', one: 'send checked', many: 'sends checked' },
   { key: 'sends_stopped', one: 'stopped before signing', many: 'stopped before signing' },
+  { key: 'transactions', one: 'transaction explained', many: 'transactions explained' },
+  { key: 'screens', one: 'screen explained', many: 'screens explained' },
   { key: 'new_addresses', one: 'new address looked up', many: 'new addresses looked up' },
   { key: 'lessons', one: 'lesson finished', many: 'lessons finished' },
   { key: 'questions', one: 'question answered', many: 'questions answered' },

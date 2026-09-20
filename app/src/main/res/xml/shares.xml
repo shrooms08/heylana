@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The one folder Heylana ever shares from: the week card's picture, written fresh each time. -->
+<paths>
+    <cache-path name="shares" path="shares/" />
+</paths>

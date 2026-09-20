@@ -45,7 +45,13 @@ export interface ToolContext {
   /** The knowledge base, when this worker has one bound. */
   kb?: Kb
   /** Counts for the log: how many knowledge-base chunks this question was handed. */
-  stats?: { kbHits: number; found?: Map<string, KbResult>; kbError?: string }
+  stats?: {
+    kbHits: number
+    found?: Map<string, KbResult>
+    kbError?: string
+    /** Addresses this question had explained, so the week can count the first-time ones. */
+    addresses?: string[]
+  }
 }
 
 /**
@@ -259,6 +265,8 @@ const SIGNATURE_PAGE = 1000
 async function explainAddress(given: unknown, context: ToolContext) {
   const address = String(given ?? '').trim()
   if (!isAddress(address)) return { error: 'bad_address', detail: 'That is not a Solana address.' }
+  // Noted for the week's count of first-time addresses; hashed by the caller, never stored as it is.
+  context.stats?.addresses?.push(address)
 
   const known = KNOWN[address]
   const [info, signatures] = await Promise.all([

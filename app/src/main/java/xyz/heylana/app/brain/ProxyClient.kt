@@ -154,6 +154,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
         // Nor is an alarm, a timer, an app, a page, a place or a number.
         if (quickAction) extra.put("intent", "quick_action")
+        // For the week's card: which kind of thing this was, in one word. Never the question.
+        weekKind(route, screenText)?.let { extra.put("caught", it) }
         val reply = send(
             message,
             route.mode,
@@ -520,6 +522,18 @@ class ProxyClient(private val settings: HeylanaSettings) {
             val url = o.optString("url").trim()
             if (!url.startsWith("https://")) null else Source(Sources.chipTitle(o.optString("source"), o.optString("title")), url)
         }
+    }
+
+    /**
+     * The one word the week's card counts this question under: a signing screen explained, a
+     * screen read and explained, or nothing worth counting (chat, a send, a quick action).
+     * Only the kind goes; what was asked, read or answered never does.
+     */
+    private fun weekKind(route: Routing.Route, screenText: String): String? = when {
+        route.explainsSigning -> "transaction"
+        route.why == Routing.Why.SEND_QUESTION || route.why == Routing.Why.QUICK_ACTION -> null
+        route.skipsScreen || screenText.isBlank() -> null
+        else -> "screen"
     }
 
     /** A lesson turn's check and verdict, when the reply has either. Addresses shortened like every word said. */

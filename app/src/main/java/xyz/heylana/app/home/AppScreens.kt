@@ -73,6 +73,10 @@ fun AppScreens(
     // release arrives, and a hold ends there.
     var homeHeld by remember { mutableStateOf(false) }
 
+    // What Heylana caught this week: asked for once, shown at most once a week.
+    val week = remember { WeekModel(activity.applicationContext, settings, WalletApi(settings), scope) }
+    LaunchedEffect(Unit) { week.load() }
+
     Box(Modifier.fillMaxSize()) {
     if (screen == Screen.HOME || homeHeld) HomeScreen(
             name = settings.callMe,
@@ -101,6 +105,7 @@ fun AppScreens(
                 homeHeld = false
                 if (started && MicPress.onRelease(held, true) == MicPress.OnRelease.FINISH) voice.finish()
             },
+            week = week,
             onAskAboutScreen = { askAboutScreen(activity, chat) },
             onLearn = { onScreen(Screen.LEARN) }
         )
@@ -137,6 +142,10 @@ fun AppScreens(
         Screen.MEMORY -> MemoryScreen(settings, onBack = { onScreen(Screen.HOME) })
         Screen.PRIVACY -> PrivacyScreen(settings.voiceProvider, onBack = { onScreen(Screen.HOME) }, assemblyai = settings.assemblyListening)
         Screen.SETTINGS -> AppSettingsScreen(
+            onSeedWeek = {
+                week.seed()
+                onScreen(Screen.HOME)
+            },
             settings = settings,
             buddyOn = buddyOn,
             onGlassMode = onGlassMode,

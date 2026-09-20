@@ -79,7 +79,9 @@ fun HomeScreen(
     onMicDown: () -> Boolean,
     onMicUp: (heldMs: Long, started: Boolean) -> Unit,
     onAskAboutScreen: () -> Unit,
-    onLearn: () -> Unit = {}
+    onLearn: () -> Unit = {},
+    /** "What I caught this week", when there is one to show. */
+    week: WeekModel? = null
 ) {
     val palette = LocalHeylana.current
     var message by remember { mutableStateOf("") }
@@ -121,6 +123,8 @@ fun HomeScreen(
                         Text("One moment.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
                         Text("Thinking…", style = HeylanaType.display, color = palette.ink)
                     }
+                    // The week's card sits where the greeting would be, once a week.
+                    week != null && week.show -> WeekCard(week)
                     last != null -> AnswerStrip(chat, history, onHistory = { history = !history })
                     else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (name.isBlank()) "Hi." else "Hi, $name.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
@@ -281,4 +285,50 @@ private fun openSource(context: android.content.Context, source: xyz.heylana.app
     if (uri.scheme != "https") return
     xyz.heylana.app.HeylanaLog.state("app: source opened host=${uri.host}")
     runCatching { context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)) }
+}
+
+/**
+ * "This week: 14 screens explained, 2 sends checked, 1 stopped before signing." A tap opens
+ * the list behind it; Share hands the same numbers over as a picture. Counts only, always.
+ */
+@Composable
+private fun WeekCard(week: WeekModel) {
+    val palette = LocalHeylana.current
+    val caught = week.caught ?: return
+    FlatSurface(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("What I caught", style = HeylanaType.label, color = palette.accentText)
+                Spacer(Modifier.weight(1f))
+                Text("Dismiss", style = HeylanaType.label, color = palette.inkTertiary, modifier = Modifier.tap { week.dismiss() })
+            }
+            Text(monoNumbers(caught.line), style = HeylanaType.body, color = palette.ink)
+            if (!week.open) {
+                Row(Modifier.fillMaxWidth().tap { week.openList() }, verticalAlignment = Alignment.CenterVertically) {
+                    Text("See it all", style = HeylanaType.label, color = palette.inkSecondary)
+                    Spacer(Modifier.width(4.dp))
+                    Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (item in caught.items) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            monoNumbers(item.count.toString()),
+                            style = HeylanaType.bodyMedium, color = palette.accentText,
+                            modifier = Modifier.width(52.dp)
+                        )
+                        Text(item.label, style = HeylanaType.body, color = palette.inkSecondary)
+                    }
+                }
+                Text(
+                    "Counts only — no addresses, no amounts, nothing from your screen.",
+                    style = HeylanaType.small, color = palette.inkTertiary
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Share", style = HeylanaType.label, color = palette.accentText, modifier = Modifier.tap { week.share() })
+                    Text("Close", style = HeylanaType.label, color = palette.inkTertiary, modifier = Modifier.tap { week.closeList() })
+                }
+            }
+        }
+    }
 }

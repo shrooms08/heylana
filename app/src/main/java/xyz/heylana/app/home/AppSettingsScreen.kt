@@ -102,7 +102,9 @@ fun AppSettingsScreen(
     onStanding: (Standing) -> Unit,
     onStopBuddy: () -> Unit,
     onScreen: (Screen) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /** Debug builds: fill the week's card with made-up counts. */
+    onSeedWeek: () -> Unit = {}
 ) {
     val palette = LocalHeylana.current
     val context = LocalContext.current
@@ -199,9 +201,11 @@ fun AppSettingsScreen(
                     subtitle = if (buddyOn) SettingsText.STOP_DETAIL_ON else SettingsText.STOP_DETAIL_OFF
                 ) { HoldControl(Glyph.POWER, buddyOn, SettingsText.STOP_BUDDY, onFire = onStopBuddy, enabled = buddyOn) }
 
-                if (BuildConfig.DEBUG) DebugRows(settings) {
-                    context.startActivity(Intent().setComponent(ComponentName(context, DEBUG_STATES_ACTIVITY)))
-                }
+                if (BuildConfig.DEBUG) DebugRows(
+                    settings,
+                    onDebugStates = { context.startActivity(Intent().setComponent(ComponentName(context, DEBUG_STATES_ACTIVITY))) },
+                    onSeedWeek = onSeedWeek,
+                )
 
                 Spacer(Modifier.height(6.dp))
                 FlatRow(SettingsText.ABOUT, subtitle = SettingsText.ABOUT_DETAIL, glyph = Glyph.STAR)
@@ -224,7 +228,7 @@ private fun Tick() {
 
 /** Debug builds only: the switches that make a fallback happen on purpose, and Debug states. */
 @Composable
-private fun DebugRows(settings: HeylanaSettings, onDebugStates: () -> Unit) {
+private fun DebugRows(settings: HeylanaSettings, onDebugStates: () -> Unit, onSeedWeek: () -> Unit) {
     val palette = LocalHeylana.current
     var simulateFree by remember { mutableStateOf(settings.simulateFreePlan) }
     var saveTts by remember { mutableStateOf(settings.saveTtsStream) }
@@ -247,6 +251,9 @@ private fun DebugRows(settings: HeylanaSettings, onDebugStates: () -> Unit) {
     }
     FlatRow("Warm up the connection", subtitle = "Opens the connection at the first touch.") {
         FlatSwitch(warmUp, { warmUp = it; settings.warmUpConnection = it })
+    }
+    FlatRow("Seed the week's card", subtitle = "Made-up counts, so the card can be seen without waiting a week.", onClick = onSeedWeek) {
+        Text("Seed", style = HeylanaType.label, color = palette.accentText)
     }
     FlatRow("Debug states", glyph = Glyph.LAYERS, onClick = onDebugStates) {
         Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp)

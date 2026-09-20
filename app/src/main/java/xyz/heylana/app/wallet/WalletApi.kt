@@ -51,6 +51,23 @@ data class Quote(
     val days: Int = 30
 )
 
+/**
+ * What Heylana caught this week, for the card on Home. Counts and the words for them, and
+ * nothing else: no address, no amount, no word of a screen, a question or an answer.
+ */
+data class WeekCatch(
+    val weekStart: String,
+    val memoryOn: Boolean,
+    /** "This week: 14 screens explained, 2 sends checked, 1 stopped before signing." */
+    val line: String,
+    val items: List<WeekItem>
+) {
+    val anything: Boolean get() = items.isNotEmpty()
+}
+
+/** One line of the list behind the card: what was counted, and how many. */
+data class WeekItem(val key: String, val label: String, val count: Int)
+
 /** A signed-in wallet, as the worker hands it back. */
 data class Verified(val session: String, val welcomeGranted: Boolean, val standing: Standing)
 
@@ -154,6 +171,20 @@ class WalletApi(private val settings: HeylanaSettings) {
 
     suspend fun judge(code: String): Answer<Standing> =
         post("judge", JSONObject().put("code", code)) { standingOf(it) }
+
+    /** What this week's card says. Empty while memory is off; needs a wallet. */
+    suspend fun week(): Answer<WeekCatch> =
+        call(proxy.get("week")) { json ->
+            val array = json.optJSONArray("items")
+            WeekCatch(
+                weekStart = json.optString("week_start"),
+                memoryOn = json.optBoolean("memory_on"),
+                line = json.optString("line"),
+                items = (0 until (array?.length() ?: 0)).mapNotNull { i ->
+                    array?.optJSONObject(i)?.let { WeekItem(it.optString("key"), it.optString("label"), it.optInt("count")) }
+                }
+            )
+        }
 
     suspend fun quote(currency: String, period: String = "month"): Answer<Quote> =
         post("pay/quote", JSONObject().put("currency", currency).put("period", period)) {

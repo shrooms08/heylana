@@ -44,6 +44,16 @@
         <meta-data
             android:name="io.sentry.auto-init"
             android:value="false" />
+        <!-- The only thing ever shared out of Heylana: the picture of the week's card. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.shares"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shares" />
+        </provider>
         <provider
             android:name="io.sentry.android.core.SentryInitProvider"
             android:authorities="${applicationId}.SentryInitProvider"

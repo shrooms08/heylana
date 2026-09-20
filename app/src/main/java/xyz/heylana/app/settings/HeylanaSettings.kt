@@ -94,6 +94,13 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         get() = EAR_ASSEMBLYAI in (prefs.getString(KEY_EARS_OFFERED, null)?.split(",") ?: listOf(EAR_ASSEMBLYAI)) &&
             earAllowed(EAR_ASSEMBLYAI) && forceEar != EAR_ANDROID
 
+    /** The week whose "what I caught" card has been seen, so it shows once a week. */
+    var weekCardSeen: String
+        get() = prefs.getString(KEY_WEEK_SEEN, "") ?: ""
+        set(value) {
+            prefs.edit().putString(KEY_WEEK_SEEN, value).apply()
+        }
+
     /** Whether [ear] ("deepgram", "assemblyai", "android") may listen under the debug switch. */
     fun earAllowed(ear: String): Boolean = forceEar.let { it == EAR_AUTO || it == ear }
 
@@ -312,6 +319,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_FORCE_PHONE_EARS = "force_phone_ears"
         private const val KEY_FORCE_EAR = "force_ear"
         private const val KEY_EARS_OFFERED = "ears_offered"
+        private const val KEY_WEEK_SEEN = "week_card_seen"
         const val EAR_AUTO = "auto"
         const val EAR_DEEPGRAM = "deepgram"
         const val EAR_ASSEMBLYAI = "assemblyai"

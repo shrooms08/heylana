@@ -25,6 +25,10 @@ import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
 import { makeRpc, type Rpc } from './rpc.ts'
 import {
+  WEEK_PREFIX, WEEK_TTL_SECONDS, anythingCaught, applyWeek, breakdown, cardLine, emptyWeek, nothingCaught, weekStart,
+  type Week, type WeekPatch,
+} from './week.ts'
+import {
   USAGE_PREFIX, USAGE_TTL_SECONDS, apply as applyUsage, daysBack, dayOf, emptyDay, isEmpty as usageIsEmpty,
   priceSheet, summarise, type DayUsage, type UsagePatch,
 } from './usage.ts'
@@ -145,6 +149,7 @@ export const DAILY_CAP_FREE_CHAT = 150
 const DAILY_CAPS: Record<string, number> = {
   chat: DAILY_CAP_FREE_CHAT,
   tts: 150,
+  week: 200,
   'stt-token': 300,
   // AssemblyAI's tokens are single-use, so one is minted at every touch of the disc.
   'stt-token-aai': 600,
@@ -200,6 +205,7 @@ const ROUTES: Record<string, readonly string[]> = {
   'send/confirm': ['POST'],
   'send/build': ['POST'],
   confirm: ['POST'],
+  week: ['GET'],
   memory: ['GET', 'POST'],
   'memory/delete': ['POST'],
   'memory/wipe': ['POST'],
@@ -322,7 +328,7 @@ export default {
       // One line per chain call: which method, which provider, how long, how it went.
       onCall: (call) => log({ route: 'rpc', method: call.method, provider: call.provider, ms: call.ms, outcome: call.outcome }),
     })
-    current = { rpc, logged: false, usage: {} }
+    current = { rpc, logged: false, usage: {}, week: {} }
     try {
       if (route === 'chat') return await chat(request, env, who, started, rpc)
       if (route === 'tts') return await speak(request, env, device, started)
@@ -339,6 +345,7 @@ export default {
       if (route === 'send/confirm') return await sendConfirm(request, env, who, rpc)
       if (route === 'send/build') return await sendBuild(request, env, who, rpc)
       if (route === 'confirm') return await confirm(request, env, who)
+      if (route === 'week') return await week(env, who)
       if (route === 'memory' || route.startsWith('memory/')) return await memory(route, request, env, who)
       return await me(env, who)
     } catch (error) {
@@ -357,9 +364,13 @@ export default {
         wallet: who.wallet,
         rpc: rpc.calls.map((call) => ({ provider: call.provider, method: call.method, ms: call.ms })),
       }
+      const week = current.week
       current = null
-      if (!usageIsEmpty(patch)) {
-        const write = recordUsage(env, patch)
+      const writes: Promise<unknown>[] = []
+      if (!usageIsEmpty(patch)) writes.push(recordUsage(env, patch))
+      // The week's counts are the user's own, and follow memory: nothing without a wallet.
+      if (who.wallet && !nothingCaught(week)) writes.push(recordWeek(env, who.wallet, week))
+      for (const write of writes) {
         if (context?.waitUntil) context.waitUntil(write)
         else await write
       }
@@ -422,7 +433,9 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     }
   }
   // How many knowledge-base chunks this question was handed, for the log.
-  const kbStats: { kbHits: number; found: Map<string, KbResult>; kbError?: string } = { kbHits: 0, found: new Map<string, KbResult>() }
+  const kbStats: { kbHits: number; found: Map<string, KbResult>; kbError?: string; addresses: string[] } = {
+    kbHits: 0, found: new Map<string, KbResult>(), addresses: [],
+  }
   // Every round of this question: the system prompt and tools marked cacheable, the cache use added up.
   const cacheUse = noCacheUse()
   const callModel = async (payload: unknown) => {
@@ -561,6 +574,21 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
   }
   // For the day's counters: which model answered, and what it read and wrote.
   if (status >= 200 && status < 300) count({ chatModel: model, tokensIn: tokensIn, tokensOut: tokensOut })
+  // And for the week's card: a question answered, and what kind it was. The kind is a word
+  // the app sends ("screen", "transaction", "lesson"); never a word of the question itself.
+  if (status >= 200 && status < 300) {
+    const kind = typeof body.caught === 'string' ? body.caught : ''
+    caught({
+      questions: 1,
+      screens: kind === 'screen' ? 1 : 0,
+      transactions: kind === 'transaction' || signingMs !== undefined ? 1 : 0,
+      lessons: kind === 'lesson' ? 1 : 0,
+      // Which addresses were looked up is kept only as salted hashes, to tell a first look from a second.
+      seen: who.wallet
+        ? await Promise.all([...new Set(kbStats.addresses)].map((address) => hashSeen(address, env.SESSION_SECRET)))
+        : [],
+    })
+  }
   log({
     route: 'chat',
     device,
@@ -1018,8 +1046,9 @@ async function memory(route: string, request: Request, env: Env, who: Who): Prom
 
   if (route === 'memory/consent') {
     const on = body.on === true
-    // Turning it off keeps nothing.
+    // Turning it off keeps nothing — the week's counts are memory's too.
     await save({ on, records: on ? current.records : [] })
+    if (!on) await env.CAPS.delete(weekKey(who.wallet, weekStart(clock.now())))
     log({ route, device: who.device, wallet, on })
     return json(200, { on, records: on ? current.records : [] })
   }
@@ -1044,6 +1073,8 @@ async function memory(route: string, request: Request, env: Env, who: Who): Prom
     const record = newRecord(body, newReference().slice(0, 12), clock.now())
     const records = withRecord(current.records, record)
     await save({ on: true, records })
+    // A lesson's progress is how a finished lesson reaches the worker: the week counts it.
+    if (record.category === 'skill_progress') caught({ lessons: 1 })
     log({ route, device: who.device, wallet, category: record.category, consent: record.consent, count: records.length })
     return json(200, { record, count: records.length })
   }
@@ -1270,6 +1301,7 @@ async function sendPrepare(request: Request, env: Env, who: Who, rpc: Rpc): Prom
   const prepared: PreparedSend = { ...quote, from: who.wallet, prepared_at: clock.now() }
   await env.CAPS.put(`send:${id}`, JSON.stringify(prepared), { expirationTtl: SEND_TTL_SECONDS })
   count({ sendsPrepared: 1 })
+  caught({ sends_prepared: 1 })
   log({
     route: 'send/prepare', device: who.device, wallet: who.wallet.slice(0, 4), to: quote.to_address.slice(0, 4),
     token: quote.token, amount: quote.amount, new_account: quote.will_create_ata,
@@ -1320,6 +1352,8 @@ async function sendBuild(request: Request, env: Env, who: Who, rpc: Rpc): Promis
     if (!holds) return json(403, { reason: 'confirmation_required', detail: 'Tap Confirm first.' })
   }
   const built = await buildAndSimulate(rpc, target.plan, target.facts)
+  // A simulation that failed is a send that never reached the wallet: the week counts it.
+  if (!built.simulation.ok) caught({ sends_stopped: 1 })
   const record: BuildRecord = { sim_ok: built.simulation.ok, last_valid_block_height: built.last_valid_block_height, at: clock.now() }
   await env.CAPS.put(`built:${target.subject}`, JSON.stringify(record), { expirationTtl: SEND_TTL_SECONDS })
   log({
@@ -1828,6 +1862,53 @@ function rpcSummary(rpc: Rpc): { method: string; provider: string; ms: number }[
   return rpc.calls.map((call) => ({ method: call.method, provider: call.provider, ms: call.ms }))
 }
 
+const weekKey = (wallet: string, start: string) => `${WEEK_PREFIX}${wallet}:${start}`
+
+/**
+ * This week's counts for [wallet], written once per request and only while memory is on —
+ * the card is part of memory, and follows its switch.
+ */
+async function recordWeek(env: Env, wallet: string, patch: WeekPatch): Promise<void> {
+  const kept = await loadMemory(env, wallet)
+  if (!kept.on) return
+  const start = weekStart(clock.now())
+  const key = weekKey(wallet, start)
+  const stored = await env.CAPS.get(key)
+  const week: Week = stored ? { ...emptyWeek(start), ...JSON.parse(stored) } : emptyWeek(start)
+  await env.CAPS.put(key, JSON.stringify(applyWeek(week, patch)), { expirationTtl: WEEK_TTL_SECONDS })
+}
+
+/** An address as a salted hash: enough to tell a first look from a second, never enough to name it. */
+async function hashSeen(address: string, secret: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${secret}:seen:${address}`))
+  return [...new Uint8Array(digest).slice(0, 6)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * What Heylana caught this week, for the card on Home: counts and the words for them, and
+ * nothing else. Needs a wallet; empty while memory is off, because the card is memory's.
+ */
+async function week(env: Env, who: Who): Promise<Response> {
+  if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
+  const kept = await loadMemory(env, who.wallet)
+  const start = weekStart(clock.now())
+  if (!kept.on) {
+    log({ route: 'week', device: who.device, wallet: who.wallet.slice(0, 8), memory: false })
+    return json(200, { week_start: start, memory_on: false, counts: emptyWeek(start).counts, line: '', items: [] })
+  }
+  const stored = await env.CAPS.get(weekKey(who.wallet, start))
+  const found: Week = stored ? { ...emptyWeek(start), ...JSON.parse(stored) } : emptyWeek(start)
+  log({ route: 'week', device: who.device, wallet: who.wallet.slice(0, 8), memory: true, caught: anythingCaught(found.counts) })
+  // The hashes stay here: the phone gets numbers and the words for them.
+  return json(200, {
+    week_start: start,
+    memory_on: true,
+    counts: found.counts,
+    line: cardLine(found.counts),
+    items: breakdown(found.counts),
+  })
+}
+
 /**
  * The day's counters, read and written once per request. Last write wins, so two requests
  * landing together can lose an increment — near enough to watch a budget by, as the talk
@@ -1882,7 +1963,17 @@ async function adminUsage(request: Request, env: Env): Promise<Response> {
  * The request being served, so its line can carry what its chain calls cost. Set for each
  * request and cleared after it; a Worker handles one request per invocation.
  */
-let current: { rpc: Rpc; logged: boolean; usage: UsagePatch } | null = null
+let current: { rpc: Rpc; logged: boolean; usage: UsagePatch; week: WeekPatch } | null = null
+
+/** Adds what this request caught to the week's counts. Counts only: never what it was about. */
+function caught(patch: WeekPatch): void {
+  if (!current) return
+  const into = current.week
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === 'seen') into.seen = [...(into.seen ?? []), ...(value as string[])]
+    else (into as any)[key] = ((into as any)[key] ?? 0) + (value as number)
+  }
+}
 
 /** Adds what this request did to what will be counted for the day. */
 function count(patch: UsagePatch): void {

@@ -42,10 +42,13 @@ xyz.heylana.app
 │   ├── BuddySpriteView      the 96x96dp sprite, drawn in code (no image assets)
 │   ├── ChatPanelView        the chat card: question field, Send, answer, mute switch
 │   ├── HighlightOverlayView the pointer: pulsing box + arrow, in its own window
-│   ├── BuddyMode            the chip on the strip and HUD: reading, thinking, … approve in wallet, sent
+│   ├── BuddyMode            the chip on the strip and HUD: reading, thinking, … watching, heads up
+│   ├── Lookout              what to say about a screen nobody asked about, and the words for it
 │   └── SpeechTouch          a touch on the disc while she speaks stops her
 ├── screen/                  reading the app the user is looking at
 │   ├── HeylanaAccessibilityService  on-demand screen reads, no continuous work
+│   ├── ScamWatch            a phrase asked for, a look-alike domain, the blocklist — all on the phone
+│   ├── Blocklist            the worker's phishing list, downloaded once a day and kept here
 │   ├── ScreenSnapshot       the element list + its text rendering for the model
 │   ├── Keyterms             the names the ears are told to expect
 │   ├── TapWatch             the rule for noticing the user act on what is pointed at
@@ -402,6 +405,7 @@ knows one address — `heylana.proxyUrl` in `local.properties`, into `BuildConfi
   Honoured only on an ordinary answer (no tools, no forced action) with a provider whose
   audio streams; anything else is answered as plain JSON and the phone speaks it the old
   way. `test/saystream.test.ts`.
+- `/lookout` — the phishing blocklist, whole, for the phone to check against itself.
 - `/stt-token` — a Deepgram key that stops working after two minutes, so the
   phone can open the listening socket itself without holding the real one.
 - `/admin/usage?days=30` — the day-by-day counters and their estimated cost, behind
@@ -680,6 +684,69 @@ it was: `brain: … solana-core not loaded tools=not sent`.
 **Money questions go to the task model.** Signing, wallet and swap screens, and send
 or "what am I signing" questions, route to `task`. "What does this button do" is
 deliberately not an explain question.
+
+**The lookout: the buddy wakes at the signing moment.** While the buddy runs and
+`HeylanaSettings.watchSigning` is on (default), a new window makes `overlay/Lookout` take
+one read and decide whether to say anything: a signing screen (`SigningScan.looksLikeSigning`
+**and** `hasSigningWords`, so Seed Vault's own backup and settings screens are not it), a
+screen asking for a recovery phrase, a look-alike domain, or a domain on the blocklist. The
+line is written on the phone from what was scanned — no model call, nothing sent — shown in
+the task HUD's passive shape beside the disc (never the box, which would dim the app and take
+the keyboard), with the `WATCHING` or `HEADS_UP` chip, and **never spoken**: a tap opens the
+box, which is where Heylana talks. One glance per screen (`sameAsBefore`), at most one read
+every `LOOK_EVERY_MS` (1.2s), gone after `GLANCE_MS` (12s), and never while an exchange, a
+task, a send or a teaching flight is running. The trace says `watch=signing on|off` and
+`watch=signing glance why=… chars=…`. Debug: `--es glance signing|secret|lookalike`.
+`LookoutTest`, `ScamWatchTest`.
+
+**Scam warnings are decided on the phone, by rules, never by a model.** `screen/ScamWatch`:
+a screen asks for a phrase when the words for one (recovery/seed/secret phrase, mnemonic,
+private key, 12/24-word) are there **and** something asks for it (enter, paste, type,
+restore, import…, whole words — "recovery" must never read as "recover"), and never in a
+wallet app, where showing you your own phrase is the job. A domain is a copy when its name
+is within one edit of a real one (two for names of seven letters or more), or reads the same
+after the swaps a look-alike is built on (rn→m, 1→l, 0→o, vv→w…), against the forty real
+Solana domains in `REAL_DOMAINS`; the real ones and their subdomains are never copies of
+themselves. Because none of it asks a model anything, nothing on the page can talk it down —
+"ignore this warning" and a token named SAFE are tested on both sides. Every warning says
+what was found and "Check the address bar", and none of them ever says safe.
+
+**The phishing list goes to the phone, not the other way.** `/lookout` hands over the whole
+list once a day (`?have=<version>` gets a few bytes back when it is already the newest), and
+every check happens on the phone: no address bar, no domain and no page anyone visited is
+ever sent anywhere. The worker builds it from `scamsniffer/scam-database` (GPL-3.0, appended
+to daily, the feed Phantom's product uses — read a day at a time from `blacklist/archive/`,
+a kilobyte or two, because the whole file is nine megabytes and their open feed runs a week
+behind) and `phantom/blocklist` as a frozen seed (about 2,300 Solana domains, unchanged
+since January 2025). Only the Solana-relevant slice is kept (`worthKeeping`), capped at
+`LOOKOUT_CAP` 8,000 — live on Sept 20: 1,239 domains, a 26 KB download. A source that will
+not answer leaves yesterday's list standing. `test/lookout.test.ts`.
+
+**What a transaction actually does (`worker/src/instructions.ts`).** Every send and Pro
+payment is read back out of the bytes the worker just built, instruction by instruction:
+a SOL or token transfer (who gets what, with the recipient's token account named as its
+owner), an **approve** ("lets X move up to N out of your account whenever they choose. This
+is an approval, not a transfer: nothing moves now"), **set authority**, **close account**,
+**revoke**, **burn**, and a program it does not know named rather than guessed at. The lines
+ride on the preview as `does[]` and sit under the confirmation strip; what is spoken stays
+the same two sentences. Two checks stand between a build and the wallet: `grants_power`
+(anything handing someone power over an account) is refused with `GRANTS_POWER`, and
+`drainCheck` refuses when the simulation shows more leaving the payer than the confirmed
+amount, its fee and any rent, by more than `DRAIN_SLACK_LAMPORTS` (0.01 SOL). On a signing
+screen, where there are no bytes, `SigningScan.kinds` reads the same kinds off the screen's
+own words ("approve" alone is the button under every request and never counts) and
+`HeylanaPrompt.SIGNING_KINDS` tells the model to name which it is. `test/instructions.test.ts`.
+
+**First time, per wallet (`worker/src/firsts.ts`).** Two sets per wallet, both **salted
+hashes** (six bytes of SHA-256 over the worker's own secret and the address, so the record
+cannot be read back into addresses or compared across wallets): destinations sent to, and
+programs called. A prepared send whose destination is in neither the record nor the wallet's
+recent counterparties gets `first_destination: true` on its preview, and the strip leads
+with "First time you have sent to this address."; `explain_address` carries
+`dealt_with_before` for the same question on a signing screen, with no extra chain call.
+Written only when a send **lands**, only while memory is on, and thrown away by memory off
+and by Wipe all. It is not a claim about a wallet's whole history, and PRODUCT.md says so.
+`test/firsts.test.ts`.
 
 **Explain before you sign.** On Seed Vault's screen, a wallet screen that says
 approve/confirm/sign/review/slide next to an amount or an address that is not the
@@ -1480,12 +1547,18 @@ dropped first, so remembering cannot quietly grow the cost of a request.
 an optimisation. The accessibility service subscribes to *nothing* by default —
 its `eventTypes` is set to zero, so the system delivers no events at all — and
 its handler additionally returns immediately when no watcher is registered.
-There are exactly two things that may switch events on, and both switch them
+There are exactly three things that may switch events on, and all three switch them
 straight back off:
 
 - a **guidance session**, so it can notice a step has been completed;
 - a **tap watch**, for the fifteen seconds after Heylana points at something, so
-  it can notice the user acting on it and take the box away.
+  it can notice the user acting on it and take the box away;
+- the **lookout** (`watchWindows`), while the buddy is running and "Watch signing screens"
+  is on, so it can notice a wallet asking for a signature or a page asking for a recovery
+  phrase. It is told about a **new window only** — `TYPE_WINDOW_STATE_CHANGED`, never a
+  click, never a redraw — and what it reads is used on the phone and dropped. It is the one
+  watcher the user did not just ask for, so the promise in the notification, the Permissions
+  row and the Privacy screen says so, and one switch turns it off.
 
 Events from Heylana's own package are dropped before anything else looks at them.
 Do not widen this to "always listening" for convenience, and keep the promise in
@@ -1629,6 +1702,14 @@ only when the name is listed, the master switch is on and the service is bound,
 and `scripts/a11y.sh` empties the list before writing it back — writing the same
 value changes nothing — then waits until the service is actually bound.
 
+**A request's own state is its own.** Two requests share one isolate all the time — the two
+ear passes are fetched together at every touch of the disc — so anything a request keeps
+for itself is kept in a local object, and the module-level `current` (which `log`, `count`
+and `caught` reach for) is only ever cleared by the request that still owns it. Before this,
+the second request to start nulled the first's counters out from under it; that threw out of
+the `finally`, which Cloudflare answers as a **500**, and an ear lost its pass about a third
+of the time. `worker/test/worker.test.ts` fails without the fix.
+
 **Nothing that touches a view runs off the main thread.** The socket reads on
 OkHttp's thread and the microphone on an IO thread. Anything they report is handed
 back to the main thread before it reaches the overlay. Starting an animation from
@@ -1698,6 +1779,13 @@ Geometry is always computed at the 64px tuning and scaled onto the face; each
 state keeps its own clock, advanced by real frame time at the preset speed, so a
 loud voice can speed it up without a jump. The disc is a View, so the painter
 draws on its Canvas rather than in Compose.
+
+**A turn of the phone re-docks the disc.** The window manager keeps a window on screen but
+never tells the disc where it ended up, so a disc docked right on a landscape screen had a
+left that was off a portrait one (found on the Seeker at x=2455 of 1200). `BuddyOverlayView.
+onConfigurationChanged` works the position out again against the new metrics and puts the
+disc back on the edge it was docked to, about as far down it as it was
+(`overlay: re-docked after a turn side=… x=… y=…`).
 
 **One movement home.** Closing the box, or letting go of a drag, works out the exact
 docked position before take-off and flies straight there: `DockPosition` clamps it the

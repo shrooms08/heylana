@@ -39,8 +39,10 @@ Open Heylana and it is a place to talk, not a settings page. The first time: sig
 your wallet (Seed Vault signs one message; no transaction), say what to call you, and
 switch on four things — showing over other apps, screen reading, notifications and,
 if you like, the microphone — each with one line on why. After that it opens on Home: a
-slowly breathing ring of dots, "Hi, <name>. What do you need?", a few suggestions, and a message bar with a
-mic. Ask anything; Heylana answers in her voice and in a strip under the orb. Tap or hold
+slowly breathing ring of dots, "Hi, <name>. What do you need?", six suggestions — What am I
+signing?, Check my balance, Explain this screen, Learn Solana, Set a timer, Play a song — and
+a message bar with a mic. While the buddy is running it also says "Watching for signing
+screens." under the greeting. Ask anything; Heylana answers in her voice and in a strip under the orb. Tap or hold
 the mic to talk. Setting a timer or opening an app works from here too. Nothing in the
 app reads your screen; to ask about another app, start the buddy and tap it there.
 
@@ -71,8 +73,15 @@ my brain right now. Try again in a moment.", "Voice is over its limit; text only
 provider's own error text never reaches the screen or the voice.
 
 On the buddy, a small label on its box says what it is doing — reading, thinking,
-preparing, simulating, approve in wallet, sent, working — and touching the buddy while it
-talks stops it mid-sentence.
+preparing, simulating, approve in wallet, sent, working, watching, heads up — and touching
+the buddy while it talks stops it mid-sentence.
+
+**It wakes on its own at the one moment that matters.** When a wallet's confirm sheet or
+Seed Vault comes up, the buddy shows one line beside itself — what kind of request it is,
+the amount and who it is for, "tap me to check it" — without being asked and without
+speaking. It does the same for a screen asking for a recovery phrase and for a domain that
+is a copy of a real one. One line per screen, gone after twelve seconds, and every touch
+outside it still goes to the app underneath. Settings → Watch signing screens turns it off.
 
 Starting and stopping the buddy, and turning memory on or off, take a deliberate hold: a
 round button whose ring fills over a little over a second, a tick, and it happens — let go
@@ -182,10 +191,16 @@ still clears 4.5 there (muted 5.45, accent 5.80).
 
 ## Privacy promises
 
-Nothing is read unless you ask. Heylana reads the screen only when you ask, and
-watches for your tap only while it is pointing at something (or during a task you
-started). There are no screenshots: the screen is turned into a short text list of
-the labels on it.
+Heylana reads the screen when you ask, and — while "Watch signing screens" is on — when a
+new screen comes up, to see whether it is a wallet asking for a signature or a page asking
+for your recovery phrase. **That read never leaves the phone**: it is used for the one line
+it shows you and then dropped, and nothing about it is sent anywhere unless you then ask a
+question. Switch it off in Settings and nothing is read unless you ask. It also watches for
+your tap only while it is pointing at something (or during a task you started). There are
+no screenshots: the screen is turned into a short text list of the labels on it.
+
+The phishing list is **downloaded to your phone** once a day and checked there, so no web
+address you visit is ever sent to Heylana or to anyone else.
 
 Exactly what leaves the phone, and where it goes:
 
@@ -267,6 +282,59 @@ ever on the phone; the only key it ever holds is one you typed in yourself. What
 dropped — never logged, never saved. With "use my own key" (Advanced), your questions
 still go through Heylana's server: your key goes with each one, kept encrypted on the phone
 between times, and the server uses it for that question only and never stores or logs it.
+
+## What Heylana can and cannot catch
+
+Heylana is a second pair of eyes at the moment you sign. It is not an auditor, and this is
+the honest boundary of it.
+
+**What it can tell you.**
+
+- **What a transaction it built would actually do.** Every send and every Pro payment is
+  built by Heylana's server and then read back out of its own bytes, instruction by
+  instruction: a transfer with who gets what, an approval or delegate with which token and
+  how much, a change of authority, a closed account, and a program it does not recognise
+  named rather than guessed at. Those lines sit under the confirmation strip. Anything that
+  would hand someone else power over an account is refused outright — a send does not do
+  that — and a simulation showing more leaving the wallet than the amount you confirmed and
+  its fee stops it too.
+- **What kind of request is on a signing screen.** On Seed Vault or a wallet's confirm
+  sheet, Heylana reads the screen's own words and says which kind of thing it is: a
+  transfer, an approval or delegate (and that it lets someone move your tokens later, with
+  nothing moving now), a change of authority, a close, a spending cap with no limit. The
+  amounts it quotes are always the ones the screen shows.
+- **Whether you have dealt with an address before.** "First time you have sent to this
+  address" means it is in neither the record of addresses Heylana has sent to for this
+  wallet nor the counterparties of its recent transactions. It is not a claim about your
+  whole history, and it is only ever asked while memory is on.
+- **A screen asking for your recovery phrase**, in any app, and **a domain that is a copy of
+  a real one** (phanton.app, jup1.ag, rnagiceden.io), or one on a public list of known
+  crypto phishing sites.
+
+**What it cannot.**
+
+- **It cannot read a transaction another app is about to sign.** On a wallet's screen it has
+  the words on that screen and nothing else: if the wallet does not say an amount, Heylana
+  cannot know it, and it says so rather than guessing.
+- **It cannot verify a shortened address.** 7c2y…SxSv could be any of a great many
+  addresses. It matches one against addresses you already know and, when it cannot, says
+  exactly that.
+- **It cannot tell you a program is honest.** It can say you have never used it before, and
+  what the instruction would do. It cannot audit what the program does once it runs.
+- **It cannot promise a site is safe.** The blocklist is a public one and always behind the
+  newest scams (Scam Sniffer's open feed runs a week behind their own); the look-alike check
+  only knows the forty real domains it carries. A site nobody has reported yet, under a name
+  nothing like a real one, passes both.
+- **It never says "safe".** Not about a transaction, not about a site, not about an address.
+  Every line says what was found and leaves the deciding to you.
+
+**Where the lists come from.** The blocklist is built from two public sources, both checked
+on Sept 20 2026: [scamsniffer/scam-database](https://github.com/scamsniffer/scam-database)
+(GPL-3.0), appended to daily and the feed Phantom's own product uses, read a day at a time
+from its archive files; and [phantom/blocklist](https://github.com/phantom/blocklist), about
+2,300 hand-picked Solana phishing domains, frozen since January 2025 and used as a seed
+rather than a live source. Heylana keeps the Solana-relevant slice of them — about 1,200
+domains, a 26 KB download — because a parcel-delivery scam is someone else's job.
 
 ## What Heylana may do: the tool registry
 

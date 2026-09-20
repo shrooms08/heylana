@@ -3,6 +3,7 @@ package xyz.heylana.app.eval
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import xyz.heylana.app.brain.DevQuestion
 import xyz.heylana.app.brain.HeylanaPrompt
 import java.io.File
 
@@ -43,6 +44,11 @@ class DevRequestTest {
             // Solana words load the knowledge and the lookups, and the knowledge base is
             // one of them: that is where a source chip comes from.
             "tools" to true,
+            // What `ProxyClient.ask` puts after the question when the question is a
+            // developer's one. The eval was sending the question without it, so it was
+            // measuring an answer the phone never asks for.
+            "dev_line" to HeylanaPrompt.DEV_LINE,
+            "dev_version_line" to HeylanaPrompt.DEV_VERSION_LINE,
         )
         out.writeText(json(request) + "\n")
 
@@ -50,6 +56,43 @@ class DevRequestTest {
         val system = request["system"] as String
         assertTrue("the Solana rules are loaded", system.contains("Solana"))
         assertTrue("the answer is still JSON", system.contains("say"))
+    }
+
+    /**
+     * Which of the set's questions the phone would give the developer's shape to.
+     *
+     * `ProxyClient.ask` adds [HeylanaPrompt.DEV_LINE] — the code, the trap, the source —
+     * only to a question [DevQuestion.isDev] recognises, and the dated line only when the
+     * answer moves with a release. The eval was sending every question without either, so
+     * for the questions the phone treats as a developer's it was scoring an answer Heylana
+     * never asks for. The verdict is worked out here, by the phone's own classifier, and
+     * written beside the question so the eval asks exactly what the phone would.
+     */
+    @Test
+    fun `the set carries the phone's verdict on each question`() {
+        val set = File(repo, "scripts/eval/dev_set.jsonl").readLines().filter { it.isNotBlank() }
+        assertEquals(60, set.size)
+        val verdicts = set.associate { line ->
+            val question = field(line, "q")
+            field(line, "id") to mapOf(
+                "dev" to DevQuestion.isDev(question),
+                "dated" to DevQuestion.movesWithVersion(question),
+            )
+        }
+        assertEquals(60, verdicts.size)
+        File(repo, "scripts/eval/dev_verdicts.json").writeText(json(verdicts) + "\n")
+    }
+
+    /** One string field out of a line of the set; org.json is a stub here. */
+    private fun field(line: String, name: String): String {
+        val at = line.indexOf("\"$name\": \"") + name.length + 5
+        val out = StringBuilder()
+        var i = at
+        while (i < line.length && line[i] != '"') {
+            if (line[i] == '\\') { i++; out.append(line[i]) } else out.append(line[i])
+            i++
+        }
+        return out.toString()
     }
 
     /** org.json is a stub in unit tests, so the writer is here, as the other eval's is. */

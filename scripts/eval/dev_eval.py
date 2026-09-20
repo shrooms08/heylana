@@ -94,12 +94,36 @@ def load_request():
         return json.load(f)
 
 
-def body_for(request, question):
+VERDICTS = os.path.join(HERE, "dev_verdicts.json")
+
+
+def load_verdicts():
+    """
+    Which questions the phone would give the developer's shape to, and which it would date.
+
+    `ProxyClient.ask` adds those lines itself, per question, so they are not in the fixed
+    prefix. `DevRequestTest` runs the phone's own classifier over the set and writes the
+    verdicts here, so the eval asks exactly what Heylana asks and no more.
+    """
+    if not os.path.exists(VERDICTS):
+        sys.exit("No dev_verdicts.json: run the app's unit tests to write it (DevRequestTest).")
+    with open(VERDICTS) as f:
+        return json.load(f)
+
+
+def body_for(request, case, verdicts):
+    question = case["q"]
+    verdict = verdicts.get(case["id"], {})
+    asked = request["user_prefix"] + question + request["user_suffix"]
+    if verdict.get("dev"):
+        asked += "\n\n" + request["dev_line"]
+        if verdict.get("dated"):
+            asked += request["dev_version_line"]
     return {
         "mode": request["mode"],
         "max_tokens": request["max_tokens"],
         "system": request["system"],
-        "messages": [{"role": "user", "content": request["user_prefix"] + question + request["user_suffix"]}],
+        "messages": [{"role": "user", "content": asked}],
         "said": question,
         "tools": request.get("tools", True),
     }
@@ -185,6 +209,7 @@ def main():
         sys.exit("No cases selected.")
 
     request = load_request()
+    verdicts = load_verdicts()
     state = load_state_at(args.state)
     worker = Worker(proxy_url(), state["device"])
     signed_in(worker, state)
@@ -193,7 +218,7 @@ def main():
 
     rows, calls = [], 0
     for case in cases:
-        status, raw, ms = worker.post("chat", body_for(request, case["q"]))
+        status, raw, ms = worker.post("chat", body_for(request, case, verdicts))
         calls += 1
         obj = reply_object(raw) if status == 200 else None
         if obj is None:

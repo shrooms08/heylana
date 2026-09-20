@@ -189,3 +189,100 @@ test('chat and quick actions are never offered the knowledge base', async () => 
   }), env)
   assert.equal(bodies[0].tools, undefined)
 })
+
+// ------------------------------------------------- the search that runs before the model
+
+/** A knowledge question as the phone sends one: the user's own words, and the lookups on. */
+const asksAbout = (said: string, extra: Record<string, unknown> = {}) => worker.fetch(new Request('https://proxy.heylana.xyz/chat', {
+  method: 'POST', headers: { 'X-Heylana-Device': DEVICE },
+  body: JSON.stringify({ mode: 'quick', system: 'S', tools: true, said, messages: [{ role: 'user', content: `User asks: ${said}` }], ...extra }),
+}), env)
+
+/** The answer written as the forced tool, which is what the model does once it is forced. */
+const answersWith = (input: Record<string, unknown>) => ({
+  stop_reason: 'tool_use',
+  content: [{ type: 'tool_use', id: 'ans', name: 'answer', input }],
+  usage: { input_tokens: 20, output_tokens: 10 },
+})
+
+test('a developer question is looked up before the model is asked, not left to it', async () => {
+  rounds = [answersWith({ say: 'It is derived from seeds.', cite: ['https://solana.com/docs/core/pda'] })]
+  const res = await asksAbout('How do I derive a PDA in Anchor?')
+  assert.equal(res.status, 200)
+
+  // The chunks are in the very first call, with their titles and their urls.
+  const first = bodies[0].messages.at(-1).content
+  assert.match(first, /How do I derive a PDA in Anchor\?/)
+  assert.match(first, /Program Derived Address \(solana\.com docs\)/)
+  assert.match(first, /https:\/\/solana\.com\/docs\/core\/pda/)
+  assert.match(first, /A PDA is an address derived from seeds/)
+  // And the tool is still on the table, for a second query once it has read them.
+  assert.ok(bodies[0].tools.some((t: any) => t.name === 'search_solana_kb'))
+
+  // One model call, no tool round, and the page it used is the answer's chip.
+  assert.equal(bodies.length, 1)
+  const reply = JSON.parse((await res.json()).content[0].text)
+  assert.equal(reply.say, 'It is derived from seeds.')
+  assert.deepEqual(reply.sources, [{ title: 'Program Derived Address', source: 'solana.com docs', url: 'https://solana.com/docs/core/pda' }])
+  assert.equal(JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!).kb_hits, 2)
+})
+
+test('a lesson turn says what to look up, since the words of the turn are not the topic', async () => {
+  rounds = [answersWith({ say: 'A PDA has no private key.' })]
+  await asksAbout('yes', { kb_query: 'program derived addresses', tool_names: ['search_solana_kb'] })
+  assert.match(bodies[0].messages.at(-1).content, /Program Derived Address/)
+})
+
+test('a question with nothing to look up is sent exactly as it was', async () => {
+  const fake = fakeIndex([])
+  env = { ...env, KB: fake.index }
+  rounds = [answersWith({ say: 'Nothing found, so from what I know.' })]
+  await asksAbout('How do I derive a PDA in Anchor?')
+  assert.equal(bodies[0].messages.at(-1).content, 'User asks: How do I derive a PDA in Anchor?')
+})
+
+test('an answer that used a chunk but cited nothing still carries the page it came from', async () => {
+  rounds = [answersWith({ say: 'It is derived from seeds and a program id.' })]
+  const res = await asksAbout('How do I derive a PDA in Anchor?')
+  const reply = JSON.parse((await res.json()).content[0].text)
+  assert.equal(reply.sources.length, 1)
+  assert.equal(JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!).sources_from, 'top')
+})
+
+// ------------------------------------------------- the answer's shape, forced and repaired
+
+test('the last call after a lookup has to write the answer as a tool', async () => {
+  rounds = [
+    { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 't1', name: 'search_solana_kb', input: { query: 'pda' } }], usage: { input_tokens: 10, output_tokens: 5 } },
+    answersWith({ say: 'Seeds and a program id.', code: 'const [pda] = PublicKey.findProgramAddressSync(seeds, id)', cite: ['https://solana.com/docs/core/pda'] }),
+  ]
+  const res = await asksAbout('How do I derive a PDA in Anchor?')
+  // Every round has to use a tool: a lookup while there are any, the answer after that.
+  assert.deepEqual(bodies[0].tool_choice, { type: 'any' })
+  assert.ok(bodies[0].tools.some((t: any) => t.name === 'answer'))
+  const reply = JSON.parse((await res.json()).content[0].text)
+  assert.equal(reply.say, 'Seeds and a program id.')
+  assert.match(reply.code, /findProgramAddressSync/)
+  assert.equal(reply.point_at, null)
+  assert.equal(reply.task, null)
+  assert.equal(reply.sources.length, 1)
+})
+
+test('prose where a reply was due is put into the contract, not asked for again', async () => {
+  rounds = [{
+    stop_reason: 'end_turn',
+    content: [{ type: 'text', text: '## Deriving a PDA\n\nYou use **findProgramAddressSync**. See [the docs](https://solana.com/docs/core/pda).\n\n```ts\nconst [pda] = PublicKey.findProgramAddressSync([Buffer.from("x")], id)\n```\n\nThe bump matters.' }],
+    usage: { input_tokens: 20, output_tokens: 10 },
+  }]
+  const res = await asksAbout('How do I derive a PDA in Anchor?')
+  // One call: the essay is taken as it is rather than bought a second time.
+  assert.equal(bodies.length, 1)
+  const reply = JSON.parse((await res.json()).content[0].text)
+  assert.equal(reply.say, 'Deriving a PDA You use findProgramAddressSync. See the docs. The bump matters.')
+  assert.match(reply.code, /findProgramAddressSync/)
+  assert.ok(!reply.say.includes('https://'), 'no url in the words')
+  assert.ok(!reply.say.includes('**'), 'no markdown in the words')
+  assert.equal(JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!).prose_wrapped, true)
+  // It used the chunks it was given, so it still carries the page.
+  assert.equal(reply.sources.length, 1)
+})

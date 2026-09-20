@@ -198,3 +198,72 @@ export async function ingest(kb: Kb, chunks: unknown): Promise<{ upserted: numbe
   })))
   return { upserted: clean.length }
 }
+
+// ------------------------------------------------- the search that runs before the model
+
+/** How many chunks are looked up before the model is asked, and how much of each it reads. */
+export const CONTEXT_K = 3
+export const CONTEXT_CHARS = 900
+
+/** What the pre-search fills in: the same counters the tool fills in when the model calls it. */
+export interface KbStats {
+  kbHits: number
+  found: Map<string, KbResult>
+  kbError?: string
+}
+
+/**
+ * The pages the question is about, put in front of the model instead of offered to it.
+ *
+ * The eval found the hole: on sixty developer questions the model called `search_solana_kb`
+ * about a third of the time, answered the rest from memory, and cited nothing — so answers
+ * that could have carried a source carried none, and facts that move with a release were
+ * whatever the weights remembered. A developer's or a lesson's question now has the closest
+ * three chunks read out of the index first and handed over with the question. The tool stays
+ * on the table for a second, different query once it has read them.
+ *
+ * Every chunk handed over is registered in [stats.found], which is what turns the model's
+ * `cite` into the answer's source chips — and what lets [withSources] fall back to the
+ * closest strong match when it used one and cited nothing.
+ */
+export async function lookUpFirst(kb: Kb | undefined, query: unknown, stats: KbStats): Promise<string | null> {
+  const asked = typeof query === 'string' ? query.trim() : ''
+  if (!kb || asked.length === 0) return null
+  let results: KbResult[]
+  try {
+    results = await searchKb(kb, asked, CONTEXT_K)
+  } catch (err) {
+    // A spent Workers AI allowance ("4006") or a Vectorize failure: the answer still comes,
+    // from what the model knows, with no chunks and no chip.
+    stats.kbError = String((err as any)?.message ?? err).slice(0, 80)
+    return null
+  }
+  if (results.length === 0) return null
+  stats.kbHits += results.length
+  for (const result of results) stats.found.set(result.url, result)
+  return contextBlock(results)
+}
+
+/** The chunks as the model reads them: each one titled, with the page it came from. */
+export function contextBlock(results: KbResult[]): string {
+  const pages = results.map((result, i) =>
+    `[${i + 1}] ${result.title} (${result.source})\n${result.url}\n${result.excerpt.slice(0, CONTEXT_CHARS)}`)
+  return (
+    "From Heylana's Solana knowledge base, the pages closest to this question:\n\n" +
+    pages.join('\n\n') +
+    '\n\nAnswer from these where they fit, and prefer them to what you remember: they are ' +
+    'current and your memory may not be. Name the one you used in a few words in say — never ' +
+    'a url — and put its url in "cite". If none of them answers it, say so and answer from ' +
+    'what you know; search_solana_kb is there if a different query would find it.'
+  )
+}
+
+/** [block] appended to the question, where an address check would go. */
+export function withKbContext(messages: unknown, block: string | null): unknown {
+  if (!Array.isArray(messages) || messages.length === 0 || !block) return messages
+  const copy = [...messages]
+  const last: any = copy[copy.length - 1]
+  if (last?.role !== 'user' || typeof last.content !== 'string') return messages
+  copy[copy.length - 1] = { ...last, content: `${last.content}\n\n${block}` }
+  return copy
+}

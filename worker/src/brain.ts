@@ -52,6 +52,83 @@ export interface LoopResult {
 const LIMIT_REACHED =
   'Not run: the lookup limit for this question was reached. Answer with what you already have.'
 
+/**
+ * The answer's own shape, as a tool.
+ *
+ * Thirteen of sixty developer questions in the eval came back as markdown prose with
+ * `stop_reason: end_turn` — the model had made a lookup, read the results and then wrote
+ * an essay instead of the contract. Asking again costs a second question and usually gets
+ * the same thing. So the final call after a lookup forces this tool, exactly as a send
+ * forces `propose_send`: there is no prose to write, only fields to fill in.
+ */
+export const ANSWER_TOOL = {
+  name: 'answer',
+  description:
+    'Give your final answer to the user. Always answer with this tool: never write the answer as prose.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      say: {
+        type: 'string',
+        description:
+          '1 to 3 short sentences, written to be read aloud. No markdown, no headings, no bullet points, no urls, no code.',
+      },
+      steps: {
+        type: 'array',
+        description:
+          'Instead of say, and only when the answer walks the user around the screen: up to four sentences, each with the element it is about.',
+        items: {
+          type: 'object',
+          properties: {
+            text: { type: 'string' },
+            point_at: { type: ['integer', 'null'] },
+          },
+          required: ['text'],
+        },
+      },
+      point_at: {
+        type: ['integer', 'null'],
+        description: 'The id of the one element on screen the answer is about, or null.',
+      },
+      task: {
+        type: ['object', 'null'],
+        description: 'Only when this is something to do step by step: {goal, done}.',
+        properties: { goal: { type: 'string' }, done: { type: 'boolean' } },
+      },
+      code: {
+        type: 'string',
+        description:
+          'For a developer: the smallest snippet that works, under 12 lines, with a comment naming the library and version. It is shown, never read aloud.',
+      },
+      cite: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'The url of each knowledge-base page you used.',
+      },
+    },
+    required: [],
+  },
+} as const
+
+/** A filled-in [ANSWER_TOOL] as the reply body the rest of the worker already understands. */
+export function answerFromTool(input: any, usage: Record<string, unknown>): string {
+  const reply: Record<string, unknown> = { say: '', point_at: null, task: null }
+  const steps = Array.isArray(input?.steps) ? input.steps : null
+  if (steps && steps.length > 0) reply.say = steps
+  else if (typeof input?.say === 'string') reply.say = input.say
+  if (typeof input?.point_at === 'number') reply.point_at = input.point_at
+  if (input?.task && typeof input.task === 'object') reply.task = input.task
+  if (typeof input?.code === 'string' && input.code.trim()) reply.code = input.code
+  if (Array.isArray(input?.cite)) reply.cite = input.cite
+  return JSON.stringify({
+    type: 'message',
+    role: 'assistant',
+    stop_reason: 'end_turn',
+    content: [{ type: 'text', text: JSON.stringify(reply) }],
+    usage,
+  })
+}
+
 export async function answerWithTools(options: {
   callModel: (payload: unknown) => Promise<Response>
   base: ModelPayload
@@ -61,9 +138,15 @@ export async function answerWithTools(options: {
   tools?: typeof TOOL_DEFINITIONS
   /** The user's own words: a send's recipient must be in them, never only on the screen. */
   said?: string | null
+  /** Whether the answer is forced into [ANSWER_TOOL] rather than left to prose. */
+  forceShape?: boolean
 }): Promise<LoopResult> {
   const { callModel, base, now } = options
   const offered = options.tools ?? TOOL_DEFINITIONS
+  // Offered every round, so the tool list — and with it the cached prefix — does not change
+  // between them; forced only on the last one.
+  const forceShape = options.forceShape === true
+  const onTable = forceShape ? [...offered, ANSWER_TOOL] : offered
   const started = now()
   const controller = new AbortController()
   const deadline = setTimeout(() => controller.abort(), toolLimits.ms)
@@ -88,8 +171,16 @@ export async function answerWithTools(options: {
       const res = await callModel({
         ...base,
         messages,
-        tools: offered,
-        ...(finalRound ? { tool_choice: { type: 'none' } } : {}),
+        tools: onTable,
+        // With the answer itself on the table, every round is a tool call: a lookup while
+        // there are lookups left, the answer on the last one. Prose has nowhere to come out.
+        ...(finalRound
+          ? forceShape
+            ? { tool_choice: { type: 'tool', name: ANSWER_TOOL.name } }
+            : { tool_choice: { type: 'none' } }
+          : forceShape
+            ? { tool_choice: { type: 'any' } }
+            : {}),
       })
       rounds++
       const text = await res.text()
@@ -98,6 +189,13 @@ export async function answerWithTools(options: {
       output += Number(reply?.usage?.output_tokens ?? 0)
 
       const uses = Array.isArray(reply?.content) ? reply.content.filter((block: any) => block?.type === 'tool_use') : []
+      // The answer tool is the answer: whichever round it comes in, that is the end of it.
+      const answered = uses.find((use: any) => use.name === ANSWER_TOOL.name)
+      if (res.ok && answered) {
+        const usage = { input_tokens: input, output_tokens: output, tool_ms: toolMs, tools: timings.join(',') }
+        const body = answerFromTool(answered.input, usage)
+        return { status: res.status, body, input, output, rounds, toolCalls, timedOut, toolMs, timings, decisions }
+      }
       if (!res.ok || !reply || finalRound || reply.stop_reason !== 'tool_use' || uses.length === 0) {
         const usage = { input_tokens: input, output_tokens: output, tool_ms: toolMs, tools: timings.join(',') }
         const body = reply ? JSON.stringify({ ...reply, usage }) : text

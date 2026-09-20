@@ -50,12 +50,12 @@ import { checkSend, type PreparedSend } from './send.ts'
 import { buildAndSimulate, labelFor, needsAccount, tokenAccountRent, type Built } from './build.ts'
 import { ASSOCIATED_TOKEN_PROGRAM, type TransferPlan } from './tx.ts'
 import { short, unitsToDecimal } from './solana.ts'
-import { checkedBody } from './say.ts'
+import { checkedBody, wrappedProse } from './say.ts'
 import {
   FRAME_AUDIO, FRAME_REPLY, FRAME_VOICE_FAILED, SAY_STREAM_TYPE, SayReader, frame, readModelStream, replyBody, textFrame,
 } from './saystream.ts'
 import { addCacheUse, noCacheUse, withCache, withCacheTotals } from './cache.ts'
-import { ingest, searchKb, withSources, type Ai, type Kb, type KbResult, type VectorIndex } from './kb.ts'
+import { ingest, lookUpFirst, searchKb, withKbContext, withSources, type Ai, type Kb, type KbResult, type VectorIndex } from './kb.ts'
 import {
   GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, deepgramSpeakUrl, deepgramVoiceFor, geminiPcmStream, geminiRequest,
   geminiVoiceFor, providerOf, rawPcmStream, voiceInfo,
@@ -500,6 +500,7 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
   let actionsRemoved = 0
   let sourcesSent = 0
   let sourcesFrom = 'none'
+  let proseWrapped = false
   if (actionIntent) {
     // Never left to prose either: the action written down, and the app says the words.
     const result = await proposeAction({ callModel, base })
@@ -544,6 +545,16 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
       }
     }
     const offered = toolsNamed(body.tool_names)
+    // The knowledge base is read, not offered. A question that may be answered from it —
+    // a developer's, an infrastructure one, a lesson turn — has its closest three chunks
+    // looked up here and handed over with the question, because left to itself the model
+    // answered two out of three from memory and cited nothing. The tool stays offered for
+    // a follow-up query once it has read them.
+    const knowledge = offered.some((tool) => tool.name === 'search_solana_kb')
+    if (knowledge) {
+      const query = typeof body.kb_query === 'string' && body.kb_query.trim() ? body.kb_query : said
+      base.messages = withKbContext(base.messages, await lookUpFirst(kbOf(env), query, kbStats))
+    }
     if (offered.length === 0) {
       // Nothing to look up (a signing screen with only shortened addresses, already
       // checked above): one round, no tool definitions to pay for.
@@ -554,7 +565,12 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
       tokensIn = usage.input
       tokensOut = usage.output
     } else {
-      const result = await answerWithTools({ callModel, base, context, now: clock.now, tools: offered, said })
+      const result = await answerWithTools({
+        callModel, base, context, now: clock.now, tools: offered, said,
+        // The last call after a lookup has to write the answer as a tool, so it comes back
+        // in the shape the phone reads rather than as markdown prose.
+        forceShape: knowledge,
+      })
       status = result.status
       text = result.body
       tokensIn = result.input
@@ -589,6 +605,10 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     const checked = checkedBody(text)
     text = checked.body
     saySegments = checked.segments
+    // Prose where a reply was due: put into the contract here rather than asked for again.
+    const wrapped = wrappedProse(text)
+    text = wrapped.body
+    proseWrapped = wrapped.wrapped
     // An action rides only on the routes made for it: never on an ordinary answer.
     const stripped = withoutActions(text)
     text = stripped.body
@@ -657,6 +677,7 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     // Prompt caching: tokens read from the cache and written to it, over every round.
     kb_hits: kbStats.kbHits,
     kb_error: kbStats.kbError,
+    prose_wrapped: proseWrapped || undefined,
     sources: sourcesSent,
     sources_from: sourcesFrom,
     // Whose key paid for the model: never the key itself.

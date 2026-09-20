@@ -219,8 +219,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
      */
     suspend fun lessonTurn(message: String, topic: String, step: Int): BrainReply {
         HeylanaLog.state("brain: mode=$MODE_QUICK why=lesson lesson=$topic step=$step screen=not_read tools=sent names=$SEARCH_KB")
-        // The note leads; the knowledge base is there for a fact it lacks.
-        val extra = JSONObject().put("tool_names", JSONArray(listOf(SEARCH_KB)))
+        // The note leads; the knowledge base is read before the model is asked, on the topic
+        // rather than on the user's turn — "yes" is not a query anyone can look up.
+        val extra = JSONObject().put("tool_names", JSONArray(listOf(SEARCH_KB))).put("kb_query", topic)
         return send(message, MODE_QUICK, tools = true, extra = extra, system = HeylanaPrompt.LESSON_SYSTEM)
     }
 

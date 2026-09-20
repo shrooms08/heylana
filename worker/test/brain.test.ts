@@ -41,6 +41,12 @@ const answer = (say: string, usage = { input_tokens: 50, output_tokens: 10 }) =>
   content: [{ type: 'text', text: JSON.stringify({ say, point_at: null, task: null }) }],
   usage,
 })
+/** The answer written as the forced tool, which is what the real model does on the last round. */
+const usesAnswerTool = (say: string, input: Record<string, unknown> = {}, usage = { input_tokens: 50, output_tokens: 10 }) => ({
+  stop_reason: 'tool_use',
+  content: [{ type: 'tool_use', id: 'ans', name: 'answer', input: { say, ...input } }],
+  usage,
+})
 const wantsPrice = (ids: string[], usage = { input_tokens: 100, output_tokens: 20 }) => ({
   stop_reason: 'tool_use',
   content: ids.map((id) => ({ type: 'tool_use', id, name: 'get_price', input: { symbol_or_mint: 'SOL' } })),
@@ -59,10 +65,17 @@ beforeEach(() => {
     if (url === ANTHROPIC) {
       const body = JSON.parse(String(init.body))
       modelBodies.push(body)
-      // Asked to answer without tools, the model answers.
-      const next = body.tool_choice?.type === 'none'
-        ? answer('Here is what I found.')
-        : script[Math.min(modelBodies.length - 1, script.length - 1)]
+      // Asked to answer without tools, the model answers; forced into the answer tool, it fills it in.
+      const forced = body.tool_choice?.type === 'tool' && body.tool_choice.name === 'answer'
+      // `any` means "use one of these"; the script says which, as the real model would.
+      if (body.tool_choice?.type === 'any' && script.length === 0) {
+        return new Response(JSON.stringify(usesAnswerTool('Here is what I found.')))
+      }
+      const next = forced
+        ? usesAnswerTool('Here is what I found.')
+        : body.tool_choice?.type === 'none'
+          ? answer('Here is what I found.')
+          : script[Math.min(modelBodies.length - 1, script.length - 1)]
       return new Response(JSON.stringify(next), { status: next?.status ?? 200 })
     }
     if (url.startsWith('https://api.jup.ag/price/v3')) {
@@ -111,7 +124,9 @@ test('the worker runs the lookup the model asks for, and returns the final answe
   assert.equal(results.content[0].type, 'tool_result')
   assert.equal(results.content[0].tool_use_id, 't1')
   assert.equal(JSON.parse(results.content[0].content).usd, 150)
-  assert.equal('tool_choice' in modelBodies[1], false)
+  // With the answer on the table as a tool, every round has to use one: no round can be prose.
+  assert.deepEqual(modelBodies[1].tool_choice, { type: 'any' })
+  assert.ok(modelBodies[1].tools.some((tool: any) => tool.name === 'answer'))
 })
 
 test('four lookups at most: the rest are refused and the model is made to answer', async () => {
@@ -122,7 +137,8 @@ test('four lookups at most: the rest are refused and the model is made to answer
   assert.equal(modelBodies.length, 3)
   const secondResults = modelBodies[2].messages.at(-1).content
   assert.deepEqual(secondResults.map((r: any) => Boolean(r.is_error)), [false, true, true])
-  assert.deepEqual(modelBodies[2].tool_choice, { type: 'none' })
+  // The last call after a lookup is forced into the answer's own shape.
+  assert.deepEqual(modelBodies[2].tool_choice, { type: 'tool', name: 'answer' })
   assert.equal(JSON.parse((await res.json()).content[0].text).say, 'Here is what I found.')
 })
 
@@ -139,7 +155,7 @@ test('a lookup that hangs is cut off at the time limit, and the model answers wi
     const res = await worker.fetch(ask({ tools: true }), env())
     assert.equal(res.status, 200)
     assert.equal(modelBodies.length, 2)
-    assert.deepEqual(modelBodies[1].tool_choice, { type: 'none' })
+    assert.deepEqual(modelBodies[1].tool_choice, { type: 'tool', name: 'answer' })
     assert.equal(JSON.parse(modelBodies[1].messages.at(-1).content[0].content).error, 'timed_out')
   } finally {
     toolLimits.ms = saved

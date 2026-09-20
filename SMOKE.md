@@ -1,106 +1,112 @@
-# Smoke test — polish-6-value
+# Smoke test — polish-7-lookout
 
-For Minos. Three things changed: the price of Pro, a weekly card on Home, and how quickly
-Heylana starts speaking. The server is deployed already; install the app as usual.
+For Minos. This one is about the signing moment: what a transaction really does, whether
+you have dealt with an address before, and the buddy noticing a scam screen on its own.
+The server is deployed already. Install the app, then run `./scripts/a11y.sh` once.
 
-**Live calls this test spends: 4 chat, 4 spoken answers (they now come back together), 4
-pairs of ears.** Nothing here signs anything. **Never tap Confirm or Pay.**
-
-After installing from Android Studio, run `./scripts/a11y.sh` once.
-
----
-
-## 1. Pro is $5 a month, or $40 a year (no live calls)
-
-1. Open **Heylana**. Tap the **three lines** at the top left.
-2. The **Plan** row: on Free it now reads **"30 talks a month · $5 a month, or $40 a
-   year"**. (On your Judge account it still says "Unlimited until Nov 9" — that is right.)
-3. Tap **Plan**, then **Go Pro**.
-4. The sheet shows two buttons above the price: **Monthly** and **Yearly**.
-   - **Monthly** selected: **$5**.
-   - Tap **Yearly**: **$40**, and under it **"Save $20"**.
-5. Tap **USDC** and **SKR** in turn. Each shows the amount to send for whichever of the two
-   periods is selected, and the amount changes when you switch Monthly ↔ Yearly.
-6. **Close the sheet.** Do not tap Pay.
-
-## 2. The weekly card on Home (no live calls)
-
-**The seeded card**
-
-1. Menu → **Settings**, scroll to the bottom (debug section) → **Seed the week's card** →
-   tap **Seed**. It takes you back to Home.
-2. Home shows a card above the message bar: **"What I caught"** and one line —
-   *"This week: 14 screens explained, 2 sends checked, 1 stopped before signing."*
-3. Tap **See it all**. Every kind is listed with its count: screens explained,
-   transactions explained, sends checked, stopped before signing, new addresses looked up,
-   lessons finished, questions answered. **Check there is no address, no amount and
-   nothing from any screen anywhere on it.**
-4. Tap **Share**. The phone's share sheet opens with a picture of the card. Share it to
-   yourself (or just look at the preview) and check the picture, too, has only numbers and
-   what they count. Then come back.
-5. Tap **Dismiss**. The card goes, and it does not come back on Home for the rest of the
-   week.
-
-**The real card**
-
-6. Menu → **Memory**. If the switch is **off**, turn it on (hold the round button).
-7. Ask Heylana two or three things (see part 3 below — those count).
-8. Force-stop Heylana (or just leave and come back tomorrow) and open it again: the card is
-   there with **your own counts** — mine read *"This week: 6 screens explained, 10 questions
-   answered."* after a morning of testing.
-9. Menu → **Memory** → turn the switch **off**. Go back to Home and re-open the app: **no
-   card at all.** Nothing is counted while memory is off, and turning it off throws the
-   week away. Turn it back on if you want it.
-
-## 3. How quickly she starts speaking (4 chat, 4 spoken answers, 4 pairs of ears)
-
-The change: she no longer waits for the whole answer before starting to talk. As soon as
-she has finished a **sentence**, that sentence is on its way to your ear while the rest is
-still being written.
-
-1. Menu → **Start buddy** (hold the round button until it ticks). Press **Home**.
-2. **Hold the disc** and ask **"tell me a short joke"**. Let go.
-3. Listen: she should start talking about a second sooner than you are used to, and the
-   first sentence should arrive before the whole answer is on the strip.
-4. Do the same three more times — **"how are you today"**, **"what is the capital of
-   Ghana"**, **"what should I have for lunch"**.
-5. Each answer should be **one continuous line of speech** — no gap in the middle, nothing
-   said twice, and nothing cut off. That is the thing to listen for; if a sentence is ever
-   repeated or clipped, tell me.
-
-**What I measured (Sept 20, on the Seeker, ten questions the old way and seven the new):**
-from letting go of the disc to the first spoken word, **3.5s before, 3.0s after** at the middle.
-The model's share of the wait went from about 1.8s to about 0.7s. It is **not** under the
-1.5s the brief asked for — what is left is about 1s of ears (Deepgram deciding you have
-stopped talking), half a second of making the audio, and a third of a second of Lagos to
-Cloudflare and back. Cutting the ears further would cost accuracy, so I stopped and left
-that decision to you.
-
-To see the numbers yourself, with the phone plugged in:
-
-```
-adb logcat -s HeylanaState | grep speed:
-```
-
-One line per spoken answer, e.g.
-`speed: ears_ms=969 brain_ms=2565 tts_first_byte_ms=1698 play_ms=7 rest_ms=0 total_ms=2674 trips=one`.
-`total_ms` is what you feel. `trips=one` means the new way; `trips=two` means it fell back
-to the old way (a send, a quick action, or a walk-through — all of those still speak the old
-way on purpose).
-
-## 4. Nothing else changed (1 of the chats above is enough)
-
-- Ask **"what's my SOL balance"**: answers as before.
-- Say **"set a timer for two minutes"**: the Clock opens as before, and she says one line.
-- Both of those still speak the old way, and should sound exactly as they did.
+**Live calls this test spends: 2 chat, 2 spoken answers, a handful of ear passes.**
+Devnet. **Never tap Confirm, and never tap Pay.** Stop at "Simulation passed".
 
 ---
 
-### If something is wrong
+## 1. The buddy wakes at a signing screen (no live calls)
 
-- **An answer is said twice, or in two halves with a gap:** tell me which question. The log
-  line `speak: already said as it was written` should appear exactly once per spoken answer.
-- **She goes silent but the words are on the strip:** that is the voice failing, and it is
-  meant to fall back like that. `adb logcat -s HeylanaState | grep voice_failed` says why.
-- **No card on Home:** memory must be on and you must have a wallet connected; with memory
-  off there is deliberately no card.
+1. Menu → **Start buddy** (hold the round button). Press **Home**.
+2. With the phone plugged in: `adb logcat -s HeylanaState | grep watch=` — it says
+   `watch=signing on`, and a moment later `lookout: list updated domains=…`.
+3. **The Wallet's confirm sheet.** Open the Seed Vault Wallet and start any send (devnet),
+   far enough to reach the confirm screen — **do not approve it**. Within a second or so
+   the buddy shows one line beside itself with a **watching** chip: what kind of request it
+   is, the amount and who it is for, and "Tap me to check it."
+   - It must **not** speak.
+   - It must **not** dim the screen or cover the Approve button — you can still tap
+     anything on the wallet's screen.
+   - Back out of the send. The line goes.
+4. Tap the buddy while that line is up: the box opens as usual and you can ask about the
+   screen. That is where it talks.
+
+**If you have no send to hand**, the same wake can be played without a wallet:
+
+```
+adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es glance signing
+adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es glance secret
+```
+
+## 2. "No real Solana app asks for your recovery phrase" (no live calls)
+
+1. Make a page that asks for one. Anything works — a note in a text editor is not enough,
+   it has to be a page in a browser. The quickest:
+   - on the Mac, `cd /tmp && printf '<h1>Wallet sync</h1><p>Enter your 12-word recovery phrase to restore access</p><input>' > seed.html && python3 -m http.server 8099`
+   - on the phone, `adb reverse tcp:8099 tcp:8099`, then open Chrome and go to
+     `http://127.0.0.1:8099/seed.html`.
+2. As the page appears the buddy shows, unasked, with a **heads up** chip: *"No real Solana
+   app asks for your recovery phrase. If you type it in, whoever is asking can take
+   everything."*
+3. It says it **once** for that page, and never speaks.
+4. Open Phantom or Solflare and go to their own "import recovery phrase" screen: **no
+   warning**. A wallet asking for your phrase is what a wallet is for; only everything else
+   is warned about.
+5. Settings → **Watch signing screens** → off. Reload the page: nothing at all. Turn it
+   back on.
+
+## 3. Prepare a send to a brand new address (2 chat, devnet)
+
+1. Menu → **Memory**: the switch must be **on** (the first-time check is memory's).
+2. Make an address you have never sent to. Any devnet address will do — ask a friend, or
+   use the one the eval script prints:
+   `python3 scripts/firstcheck.py` (it spends no talks and signs nothing).
+3. Hold the buddy and say, or type in the box: **"send 0.01 SOL to \<that address\>"**.
+4. The strip goes up, says it is checking with the network, and then shows the confirmation
+   with, underneath it:
+   - **• First time you have sent to this address.**
+   - **• Sends 0.01 SOL to \<short address\>.** — that second line is read back out of the
+     bytes that were actually built, not out of what was asked for.
+5. **Tap Cancel.** Do not tap Confirm.
+6. Ask the same thing again for an address you *have* sent to before: no first-time line.
+
+## 4. Pro is $5 or $40, and the Plan row opens (no live calls)
+
+1. Menu → tap the **Plan** row itself. It opens the plan — what you are on, how much of it
+   is left, and a Go Pro button. (It used to do nothing at all.)
+2. Menu → Settings → scroll to **Debug** → **Simulate Free plan** → on.
+3. Menu again: the Plan row now says **Free**, "30 talks a month · $5 a month, or $40 a
+   year", with a talks bar and **Go Pro**.
+4. Tap **Go Pro**: the sheet offers **Monthly $5** and **Yearly $40** with "Save $20", in
+   USDC or SKR. **Close it — do not tap Pay.**
+5. Turn **Simulate Free plan** back off; the Plan row says Judge again.
+
+## 5. Home (no live calls)
+
+- The six chips read: **What am I signing?**, **Check my balance**, **Explain this
+  screen**, **Learn Solana**, **Set a timer**, **Play a song**. The first and third start
+  the buddy (the app itself never reads a screen).
+- With the buddy running, under "What do you need?" it says **"Watching for signing
+  screens."**
+- Menu → **Privacy** sits above **Advanced**, and the Privacy screen has two new lines:
+  what watching signing screens means, and that the phishing list is checked on the phone.
+- The week's card leads with the sends: "This week: 2 sends checked, 1 stopped before
+  signing, …". (Settings → Debug → **Seed the week's card** if yours has none yet.)
+
+## 6. Rotate the phone twice (no live calls)
+
+1. With the buddy docked at the right, turn the phone to landscape and back.
+2. The disc is still on screen, on the same edge, about as far down it as it was.
+   `adb logcat -s HeylanaState | grep re-docked` says
+   `overlay: re-docked after a turn side=right x=… y=…`.
+   (It used to end up off the side of the screen and stay there.)
+
+## 7. Ten holds, no ear failures (no chat calls if you say nothing)
+
+1. Hold the buddy and let go without saying anything, ten times, a couple of seconds apart.
+2. `adb logcat -s HeylanaState | grep -c token_refused` → **0**.
+   It used to be about one hold in three, and the ear that lost its pass sat out the race.
+
+---
+
+### What to tell me
+
+- Any moment the buddy woke up when it should not have — on a screen that is not a signing
+  screen, or twice for the same one.
+- Any warning that reads like a verdict. They should all say what was found and "check the
+  address bar", and never the word safe.
+- Anything it said aloud without being asked. It should never speak unasked.

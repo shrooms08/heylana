@@ -132,9 +132,12 @@ fun HomeScreen(
                         Text("One moment.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
                         Text("Thinking…", style = HeylanaType.display, color = palette.ink)
                     }
+                    // An answer the user just asked for beats anything Heylana wants to say
+                    // for itself: with the week's card up, every answer on Home was invisible
+                    // — no words, no source chips, only the voice (found on the Seeker).
+                    last != null -> AnswerStrip(chat, history, onHistory = { history = !history })
                     // The week's card sits where the greeting would be, once a week.
                     week != null && week.show -> WeekCard(week)
-                    last != null -> AnswerStrip(chat, history, onHistory = { history = !history })
                     else -> Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(if (name.isBlank()) "Hi." else "Hi, $name.", style = HeylanaType.bodyLight, color = palette.inkSecondary)
                         Text("What do you need?", style = HeylanaType.display, color = palette.ink, textAlign = TextAlign.Center)

@@ -286,6 +286,28 @@ object HeylanaPrompt {
     const val SIGNING_LOOKUP: String =
         "Call explain_address on each full address; shortened ones are checked for you below. "
 
+    /**
+     * The shape a developer's answer takes: the code first, then the trap, then the source.
+     *
+     * The eval that measures this found what prose costs a developer. The answer was often
+     * right and useless — no snippet, no version, no page to check — and where the fact had
+     * moved (a slot is 300ms now, a v1 transaction is 4,096 bytes) the model answered from
+     * whatever it remembered rather than looking. So a developer's question asks for the
+     * search first, the code first, and the date on anything that moves.
+     */
+    const val DEV_LINE: String =
+        "This is a developer's question. Search the Solana knowledge base first and answer from what it returns, " +
+            "not from memory. Reply with \"code\" as well as \"say\": \"code\" is the smallest working snippet, " +
+            "under 12 lines, with the library or tool and its version on the first line as a comment; it is shown, " +
+            "never read aloud. \"say\" is one short line naming the trap people hit with this — the rename, the " +
+            "missing flag, the check that is not what it looks like — and nothing else. Put the url you used in " +
+            "\"cite\". "
+
+    /** Said when the answer depends on which release the reader is on. */
+    const val DEV_VERSION_LINE: String =
+        "This fact depends on the version: say \"as of September 2026\" in the answer, and name the release the " +
+            "code is for. "
+
     /** Explanations walk the screen: a piece per sentence, pointing as it goes. */
     const val SEGMENTS_LINE: String =
         "Answer in say pieces, one sentence each, with point_at on every sentence that names a button on screen."

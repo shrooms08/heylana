@@ -194,9 +194,11 @@ class AppChat(
         } else Routing.CHAT
         val history = memory.asPromptText(null)
         return when (val reply = brain.ask(question, "", history, null, route)) {
-            is BrainReply.Say -> reply.text.also {
+            is BrainReply.Say -> {
                 answerSources = reply.sources
-                memory.record(question, it, null)
+                // What is remembered and spoken is the words; the code is shown with them.
+                memory.record(question, reply.text, null)
+                xyz.heylana.app.brain.Sources.shown(reply.code, reply.text)
             }
             is BrainReply.Failed -> reply.message
         }

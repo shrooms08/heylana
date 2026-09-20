@@ -32,7 +32,31 @@ export function validSegments(say: unknown): Segment[] | null {
 }
 
 /** One reply object, checked. Returns the object to send on, and how many pieces it says. */
-export function checkedReply(reply: Record<string, unknown>): { reply: Record<string, unknown>; segments: number } {
+/** A snippet is shown on a phone's strip, not in an editor: this is as much as fits. */
+export const MAX_CODE_CHARS = 600
+
+/**
+ * A developer's answer may carry `code` beside `say`. It is shown and never spoken, so the
+ * only thing to check is that it is a string and that it is not a essay: anything else is
+ * dropped rather than passed on for the phone to work out.
+ */
+function checkedCode(reply: Record<string, unknown>): Record<string, unknown> {
+  if (!('code' in reply)) return reply
+  const code = reply.code
+  if (typeof code !== 'string') {
+    const { code: _dropped, ...rest } = reply
+    return rest
+  }
+  const trimmed = code.trim()
+  if (trimmed.length === 0) {
+    const { code: _empty, ...rest } = reply
+    return rest
+  }
+  return { ...reply, code: trimmed.slice(0, MAX_CODE_CHARS) }
+}
+
+export function checkedReply(input: Record<string, unknown>): { reply: Record<string, unknown>; segments: number } {
+  const reply = checkedCode(input)
   const segments = validSegments(reply.say)
   if (segments === null) return { reply, segments: typeof reply.say === 'string' ? 1 : 0 }
   if (segments.length === 0) return { reply: { ...reply, say: '' }, segments: 0 }

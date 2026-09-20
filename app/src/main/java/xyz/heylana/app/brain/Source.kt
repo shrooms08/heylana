@@ -14,6 +14,17 @@ data class Source(val title: String, val url: String)
  */
 object Sources {
 
+    /**
+     * A developer's answer as it is shown: the code first, then the line about it.
+     *
+     * The code is only ever shown. [Sources.spoken] is what reaches the voice, and the
+     * voice is given the words alone — a snippet read aloud is noise, and the words are
+     * written to stand without it.
+     */
+    fun shown(code: String?, words: String): String =
+        if (code.isNullOrBlank()) words else code.trim() + "\n\n" + words
+
+
     const val MAX_TITLE = 40
     const val MAX_CHIPS = 2
 

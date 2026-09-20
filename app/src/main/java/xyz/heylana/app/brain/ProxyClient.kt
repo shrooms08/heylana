@@ -50,7 +50,12 @@ sealed interface BrainReply {
         /** Where the answer came from, as up to two chips under it; never read aloud. */
         val sources: List<Source> = emptyList(),
         /** On a page that continues below: the model said the answer isn't in the part on screen. */
-        val unseen: Boolean = false
+        val unseen: Boolean = false,
+        /**
+         * A developer's answer starts with the code. It is **shown and never spoken** — a
+         * snippet read aloud is noise — and it is what the words underneath are about.
+         */
+        val code: String? = null
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -74,6 +79,9 @@ sealed interface BrainReply {
  * never talks to Anthropic itself, and the key is never logged or written anywhere else.
  */
 class ProxyClient(private val settings: HeylanaSettings) {
+
+    /** A snippet is shown on a strip, not in an editor: enough for a dozen lines. */
+    private val CODE_CHARS = 600
 
     private val proxy = Proxy(settings)
 
@@ -147,6 +155,15 @@ class ProxyClient(private val settings: HeylanaSettings) {
         } else {
             HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching, walkThrough, lens)
         }
+        // A developer's question gets the developer's shape: the code, the trap, the source,
+        // and the date when the answer depends on which release they are on.
+        val asked = if (route.solana != null && DevQuestion.isDev(question)) {
+            val dated = DevQuestion.movesWithVersion(question)
+            HeylanaLog.state("brain: developer question dated=$dated")
+            message + "\n\n" + HeylanaPrompt.DEV_LINE + if (dated) HeylanaPrompt.DEV_VERSION_LINE else ""
+        } else {
+            message
+        }
         if (walkThrough) HeylanaLog.state("teach: walk-through asked, a task if it takes taps")
         else if (teaching) HeylanaLog.state("teach: first step asked with reasons")
         // The user's own words, apart from the screen: the worker's second check that a
@@ -173,7 +190,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 }
             }
         val reply = send(
-            message,
+            asked,
             route.mode,
             solana = route.solana != null,
             tools = tools,
@@ -551,7 +568,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
         return Attempt.Done(
             BrainReply.Say(
                 Sources.spoken(AddressText.shorten(parsed.say)), pointAt, task, action, quick, segments, clarify, quickId,
-                readLesson(json), sources, unseen = json.optBoolean("unseen", false)
+                readLesson(json), sources, unseen = json.optBoolean("unseen", false),
+                code = json.optString("code").trim().takeIf { it.isNotEmpty() }?.take(CODE_CHARS)
             )
         )
     }

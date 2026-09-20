@@ -1448,7 +1448,9 @@ class BuddyOverlayService : Service() {
         // A spoken answer normally leaves nothing on screen; the Settings switch
         // is what puts its words in a box.
         if (view.wasSpoken && settings.showTextForVoice) view.ensurePanelOpen()
-        view.showAnswer(reply.text)
+        // The code first where there is code: it is what a developer came for, and it is
+        // shown only — what is spoken below is the line about it.
+        view.showAnswer(xyz.heylana.app.brain.Sources.shown(reply.code, reply.text))
         view.showSources(sources)
         // The snapshot is still in hand, so the id resolves to real bounds.
         snapshot.node(reply.pointAt)?.let { node ->

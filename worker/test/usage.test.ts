@@ -2,7 +2,8 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
 import {
-  DEFAULT_PRICES, SAMPLE_CAP, USAGE_PREFIX, apply, costOf, dayOf, daysBack, emptyDay, priceSheet, summarise,
+  DEFAULT_PRICES, SAMPLE_CAP, USAGE_PREFIX, apply, costOf, dayOf, daysBack, emptyDay, latencyOver, percentile,
+  priceSheet, summarise,
 } from '../src/usage.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
@@ -111,7 +112,7 @@ test('two models share the day\'s tokens by their share of the calls', () => {
   assert.equal(cost.model, 4)
 })
 
-test.skip('percentiles are nearest-rank, and the window leaves out what is older than a day', () => {
+test('percentiles are nearest-rank, and the window leaves out what is older than a day', () => {
   assert.equal(percentile([], 0.5), 0)
   assert.equal(percentile([5], 0.95), 5)
   assert.equal(percentile([1, 2, 3, 4], 0.5), 2)
@@ -134,7 +135,7 @@ test('the report totals the days, counts wallets across them, and never lists on
   let one = apply(emptyDay('2026-09-19'), { chatModel: 'claude-sonnet-5', tokensIn: 10, tokensOut: 2 }, 'wallet-hash-a', MINUTE)
   let two = apply(emptyDay('2026-09-20'), { chatModel: 'claude-sonnet-5', tokensIn: 30, tokensOut: 4 }, 'wallet-hash-a', MINUTE)
   two = apply(two, { sendsPrepared: 2, sendsConfirmed: 1 }, 'wallet-hash-b', MINUTE)
-  const report = summarise([two, one], DEFAULT_PRICES)
+  const report = summarise([two, one], DEFAULT_PRICES, NOON)
 
   assert.deepEqual([report.from, report.to], ['2026-09-19', '2026-09-20'])
   assert.deepEqual(report.days.map((d) => d.date), ['2026-09-19', '2026-09-20'])
@@ -183,6 +184,7 @@ test('/admin/usage returns the days, their cost and the last day\'s latencies', 
   assert.equal(body.days[0].wallets, 1)
   assert.deepEqual(body.totals.rpc, { rpcfast: 2 })
   assert.equal(body.totals.cost.total > 0, true)
+  assert.deepEqual(body.latency_24h, [{ provider: 'rpcfast', method: 'getBalance', calls: 2, p50: 80, p95: 120 }])
   assert.equal(body.prices.models['claude-haiku-4-5-20251001'].in, DEFAULT_PRICES.models['claude-haiku-4-5-20251001'].in)
   assert.ok(body.notes.some((n: string) => n.includes('estimates')))
 })

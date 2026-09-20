@@ -221,6 +221,48 @@ export function costOf(day: DayUsage, prices: PriceSheet): DayCost {
   return { model: money(model), tts: money(tts), ears: money(ears), rpc: money(rpc), total: money(total) }
 }
 
+// --------------------------------------------------------------- latency
+
+/** The value at [fraction] through [sorted], nearest-rank. */
+export function percentile(sorted: number[], fraction: number): number {
+  if (sorted.length === 0) return 0
+  const rank = Math.ceil(fraction * sorted.length)
+  return sorted[Math.min(sorted.length, Math.max(1, rank)) - 1]
+}
+
+export interface LatencyRow {
+  provider: string
+  method: string
+  calls: number
+  p50: number
+  p95: number
+}
+
+/**
+ * Median and p95 for every provider and method seen in [days] within [sinceMinute], so RPC
+ * Fast and Helius can be compared from where the phone actually is.
+ */
+export function latencyOver(days: DayUsage[], sinceMinute: number): LatencyRow[] {
+  const gathered = new Map<string, number[]>()
+  for (const day of days) {
+    for (const [key, samples] of Object.entries(day.latency)) {
+      for (const sample of samples) {
+        if (sample.at < sinceMinute) continue
+        const into = gathered.get(key) ?? []
+        into.push(sample.ms)
+        gathered.set(key, into)
+      }
+    }
+  }
+  const rows: LatencyRow[] = []
+  for (const [key, values] of gathered) {
+    const [provider, method] = key.split('|')
+    const sorted = [...values].sort((a, b) => a - b)
+    rows.push({ provider, method, calls: sorted.length, p50: percentile(sorted, 0.5), p95: percentile(sorted, 0.95) })
+  }
+  return rows.sort((a, b) => a.provider.localeCompare(b.provider) || b.calls - a.calls)
+}
+
 // ---------------------------------------------------------------- reading
 
 export interface UsageReport {
@@ -242,11 +284,13 @@ export interface UsageReport {
     pro_usd: number
     cost: DayCost
   }
+  /** Median and p95 per provider per method over the last 24 hours. */
+  latency_24h: LatencyRow[]
   notes: string[]
 }
 
 /** The days, their costs, the totals and the last day's latencies. Wallets are counted, never listed. */
-export function summarise(days: DayUsage[], prices: PriceSheet): UsageReport {
+export function summarise(days: DayUsage[], prices: PriceSheet, nowMs: number): UsageReport {
   const ordered = [...days].sort((a, b) => a.date.localeCompare(b.date))
   const wallets = new Set<string>()
   const totals = {
@@ -287,6 +331,7 @@ export function summarise(days: DayUsage[], prices: PriceSheet): UsageReport {
     prices,
     days: shown,
     totals,
+    latency_24h: latencyOver(ordered, Math.floor(nowMs / 60_000) - 24 * 60),
     notes: [
       'Costs are estimates from the PRICES sheet above, not a bill.',
       'Ears are counted as sessions: the worker mints the pass and never hears the audio, so seconds are sessions × ears_session_seconds.',

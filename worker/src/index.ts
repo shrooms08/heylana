@@ -1834,8 +1834,9 @@ async function hashWallet(wallet: string, secret: string): Promise<string> {
 }
 
 /**
- * What Heylana has been costing: the day's counters and an estimate from the price sheet.
- * Behind ADMIN_SECRET
+ * What Heylana has been costing: the day's counters and an estimate from the price sheet,
+ * with the median and p95 of each RPC provider's methods over the last 24 hours, so RPC Fast
+ * and Helius can be compared from where the phone is. Behind ADMIN_SECRET
  * in X-Heylana-Admin; without the secret set the route does not exist. Counts only: no
  * wallet, no device, no words.
  */
@@ -1855,7 +1856,7 @@ async function adminUsage(request: Request, env: Env): Promise<Response> {
       return []
     }
   })
-  const report = summarise(found, priceSheet(env.PRICES))
+  const report = summarise(found, priceSheet(env.PRICES), clock.now())
   log({ route: 'admin/usage', days, found: found.length })
   return json(200, report)
 }

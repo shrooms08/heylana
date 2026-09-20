@@ -159,9 +159,9 @@ test('a blockhash is only handed out for the cluster the worker takes payments o
   assert.equal(right.blockhash, 'EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k')
 })
 
-async function quoted(e: Env, over: Record<string, unknown> = {}) {
+async function quoted(e: Env, over: Record<string, unknown> = {}, asked: Record<string, unknown> = {}) {
   const who = await connected(e)
-  const q = await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, who.session), e)).json()
+  const q = await (await worker.fetch(req('/pay/quote', { currency: 'usdc', ...asked }, who.session), e)).json()
   chain.tx = paymentTx({ payer: who.pubkey, sender: who.pubkey, amount: q.amount, reference: q.reference, ...over })
   return { ...who, q }
 }
@@ -175,6 +175,50 @@ test('a correct payment makes the wallet Pro for thirty days', async () => {
   assert.equal(me.plan, 'pro')
   assert.equal(me.limit, null)
   assert.equal(me.pro_until, '2026-10-15T12:00:00.000Z')
+})
+
+test('a month and a year are quoted at their own prices, in USDC and in SKR', async () => {
+  const e = env({ PRICE_USD: '5', PRICE_YEAR_USD: '40' } as any)
+  const { session } = await connected(e)
+
+  const month = await (await worker.fetch(req('/pay/quote', { currency: 'usdc', period: 'month' }, session), e)).json()
+  assert.deepEqual([month.period, month.price_usd, month.days, month.amount], ['month', '5', 30, '5000000'])
+
+  const year = await (await worker.fetch(req('/pay/quote', { currency: 'usdc', period: 'year' }, session), e)).json()
+  assert.deepEqual([year.period, year.price_usd, year.days, year.amount], ['year', '40', 365, '40000000'])
+
+  // SKR follows the same dollars through Jupiter: $40 at $0.05 is 800 SKR.
+  const skr = await (await worker.fetch(req('/pay/quote', { currency: 'skr', period: 'year' }, session), e)).json()
+  assert.deepEqual([skr.period, skr.days, skr.amount], ['year', 365, '800000000'])
+
+  // An app that says nothing still gets a month, as it always did.
+  const old = await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, session), e)).json()
+  assert.deepEqual([old.period, old.days, old.amount], ['month', 30, '5000000'])
+
+  const nonsense = await worker.fetch(req('/pay/quote', { currency: 'usdc', period: 'decade' }, session), e)
+  assert.deepEqual([nonsense.status, (await nonsense.json()).reason], [400, 'bad_period'])
+})
+
+test('with no year price a year cannot be bought, and a month still can', async () => {
+  const e = env({ PRICE_USD: '5', PRICE_YEAR_USD: undefined } as any)
+  const { session } = await connected(e)
+  const refused = await worker.fetch(req('/pay/quote', { currency: 'usdc', period: 'year' }, session), e)
+  assert.deepEqual([refused.status, (await refused.json()).reason], [503, 'not_configured'])
+  assert.equal((await (await worker.fetch(req('/pay/quote', { currency: 'usdc' }, session), e)).json()).amount, '5000000')
+})
+
+test('a year\'s payment extends Pro by 365 days, a month\'s by 30', async () => {
+  const e = env({ PRICE_USD: '5', PRICE_YEAR_USD: '40' } as any)
+  const year = await quoted(e, {}, { period: 'year' })
+  const first = await (await worker.fetch(req('/pay/confirm', { reference: year.q.reference, signature: SIG }, year.session), e)).json()
+  assert.equal(first.plan, 'pro')
+  assert.equal(first.pro_until, '2027-09-15T12:00:00.000Z', 'a year from today')
+
+  const month = await quoted(e)
+  const second = await (await worker.fetch(
+    req('/pay/confirm', { reference: month.q.reference, signature: '7'.repeat(88) }, month.session), e,
+  )).json()
+  assert.equal(second.pro_until, '2026-10-15T12:00:00.000Z')
 })
 
 test('a treasury wallet paying itself is refused and unlocks nothing', async () => {

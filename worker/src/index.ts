@@ -49,7 +49,7 @@ import {
 } from './plans.ts'
 import {
   type Quote, QUOTE_TTL_MS, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, USDC_DECIMALS, checkPayment, decimalToUnits,
-  mintInfo, newReference, usdPrice, usdToTokenUnits,
+  PERIOD_DAYS, isPeriod, mintInfo, newReference, usdPrice, usdToTokenUnits, type Period,
 } from './pay.ts'
 
 /** The smallest slice of Workers KV this needs; keeps the types dependency-free. */
@@ -118,7 +118,10 @@ export interface Env {
   /** Filled in from Solscan before deploying; "replace-me" turns SKR off. */
   SKR_MINT: string
   /** The price of 30 days of Pro in US dollars, as text: "15", or "0.10" to test. */
+  /** 30 days of Pro, in dollars. */
   PRICE_USD: string
+  /** A year of it, in dollars. Unset means a year cannot be bought. */
+  PRICE_YEAR_USD?: string
   PRO_DAYS: string
   /** "mainnet-beta", or "devnet" to test with play money. Anything else is mainnet. */
   CLUSTER?: string
@@ -1070,6 +1073,15 @@ async function payQuote(request: Request, env: Env, who: Who, rpc: Rpc): Promise
   if (!payConfigured(env)) return fail(503, 'not_configured', 'Payments are not set up.')
   const body = await readJson(request)
 
+  // A month or a year. An older app sends no period at all, and means a month.
+  const period: Period = body.period === undefined ? 'month' : isPeriod(body.period) ? body.period : 'invalid' as Period
+  if (!isPeriod(period)) return fail(400, 'bad_period', 'period must be month or year.')
+  const priceUsd = period === 'year' ? env.PRICE_YEAR_USD : env.PRICE_USD
+  if (!priceUsd || !/^\d+(\.\d+)?$/.test(priceUsd)) {
+    return fail(503, 'not_configured', period === 'year' ? 'A year of Pro is not set up.' : 'Payments are not set up.')
+  }
+  const days = period === 'year' ? PERIOD_DAYS.year : Number(env.PRO_DAYS) || PERIOD_DAYS.month
+
   let mint: string
   let decimals: number
   let program: string
@@ -1078,7 +1090,7 @@ async function payQuote(request: Request, env: Env, who: Who, rpc: Rpc): Promise
     mint = env.USDC_MINT
     decimals = USDC_DECIMALS
     program = TOKEN_PROGRAM
-    amount = decimalToUnits(env.PRICE_USD, decimals)
+    amount = decimalToUnits(priceUsd, decimals)
   } else if (body.currency === 'skr') {
     if (clusterOf(env) === 'devnet') return fail(503, 'not_on_devnet', 'There is no SKR on devnet.')
     if (!isAddress(env.SKR_MINT)) return fail(503, 'not_configured', 'SKR payments are not set up.')
@@ -1090,7 +1102,7 @@ async function payQuote(request: Request, env: Env, who: Who, rpc: Rpc): Promise
     }
     decimals = info.decimals
     program = info.program
-    amount = usdToTokenUnits(env.PRICE_USD, await usdPrice(mint, env.JUPITER_API_KEY), decimals)
+    amount = usdToTokenUnits(priceUsd, await usdPrice(mint, env.JUPITER_API_KEY), decimals)
   } else {
     return fail(400, 'bad_currency', 'currency must be usdc or skr.')
   }
@@ -1098,6 +1110,9 @@ async function payQuote(request: Request, env: Env, who: Who, rpc: Rpc): Promise
   const now = clock.now()
   const quote: Quote = {
     currency: body.currency,
+    period,
+    price_usd: priceUsd,
+    days,
     mint,
     amount: amount.toString(),
     decimals,
@@ -1109,11 +1124,11 @@ async function payQuote(request: Request, env: Env, who: Who, rpc: Rpc): Promise
   }
   // Kept for an hour: a payment sent just before the quote expired still confirms.
   await env.CAPS.put(`quote:${quote.reference}`, JSON.stringify(quote), { expirationTtl: 3600 })
-  log({ route: 'pay/quote', device: who.device, wallet: who.wallet.slice(0, 8), currency: quote.currency })
+  log({ route: 'pay/quote', device: who.device, wallet: who.wallet.slice(0, 8), currency: quote.currency, period, price_usd: priceUsd })
 
   // The dollar price rides along so the app can say what a moving token is worth.
   const { pubkey: _owner, ...shown } = quote
-  return json(200, { ...shown, price_usd: env.PRICE_USD })
+  return json(200, shown)
 }
 
 /** A recent blockhash, fetched at the moment Pay is tapped so it is still fresh. */
@@ -1200,12 +1215,13 @@ async function payConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Promi
   // Marked paid before Pro is extended, so a repeated confirm cannot extend twice.
   await env.CAPS.put(`paid:${reference}`, JSON.stringify({ signature, pubkey: who.wallet, at: now.toISOString() }))
   await env.CAPS.put(`sig:${signature}`, reference)
-  const account = extendPro(await loadAccount(env, who.key), now, Number(env.PRO_DAYS))
+  // A quote from before periods existed has no days of its own: it was a month.
+  const account = extendPro(await loadAccount(env, who.key), now, Number(quote.days) || Number(env.PRO_DAYS))
   await saveAccount(env, who.key, account)
-  count({ proPayments: 1, proUsd: Number(env.PRICE_USD) || 0 })
+  count({ proPayments: 1, proUsd: Number(quote.price_usd ?? env.PRICE_USD) || 0 })
   log({
     route: 'pay/confirm', device: who.device, wallet: who.wallet.slice(0, 8),
-    accepted: true, currency: quote.currency, amount: verdict.amount,
+    accepted: true, currency: quote.currency, period: quote.period ?? 'month', amount: verdict.amount,
   })
   return json(200, {
     ...standing(account, await talksUsed(env, who.key, now), now),

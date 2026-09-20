@@ -13,7 +13,26 @@ import java.util.Locale
  */
 object PlanText {
 
-    const val GO_PRO = "Go Pro, \$15/month"
+    const val GO_PRO = "Go Pro, \$5/month"
+
+    /** What each period costs, and what a year saves against twelve months. */
+    const val MONTH_USD = 5
+    const val YEAR_USD = 40
+    const val PERIOD_MONTH = "month"
+    const val PERIOD_YEAR = "year"
+
+    /** The two buttons on the Go Pro sheet: "Monthly \$5", "Yearly \$40". */
+    fun periodLabel(period: String): String =
+        if (period == PERIOD_YEAR) "Yearly \$$YEAR_USD" else "Monthly \$$MONTH_USD"
+
+    /** "Save \$20" — twelve months against a year, when there is something to save. */
+    fun yearSaving(): String? = (MONTH_USD * 12 - YEAR_USD).takeIf { it > 0 }?.let { "Save \$$it" }
+
+    /** What the sheet says it buys: the days and how they are paid for. */
+    fun periodDetail(period: String): String =
+        if (period == PERIOD_YEAR) "Unlimited talks for a year. Paid once from your wallet; nothing renews by itself."
+        else "Unlimited talks for 30 days. Paid once from your wallet; nothing renews by itself."
+
 
     fun name(plan: String): String = when (plan) {
         "pro" -> "Pro"
@@ -23,6 +42,9 @@ object PlanText {
 
     /** Free's allowance, as the plan says it (welcome talks are extra, once). */
     const val FREE_TALKS = 30
+
+    /** What Free's row says it can become: the cheaper of the two, a month at a time. */
+    const val UPGRADE = "\$$MONTH_USD a month, or \$$YEAR_USD a year"
 
     /** What the plan gives: "30 talks a month", "Unlimited talks", "Unlimited until Nov 9". */
     fun summary(standing: Standing): String = when (standing.plan) {

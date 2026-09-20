@@ -2,6 +2,7 @@ package xyz.heylana.app.wallet
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.TimeZone
 
@@ -73,5 +74,20 @@ class PlanTextTest {
         assertNull(PlanText.worth(quote("usdc", 100_000)))
         assertEquals("You'll send 3.333334 SKR", PlanText.send(quote("skr", 3_333_334)))
         assertEquals("About \$0.10 at today's SKR price", PlanText.worth(quote("skr", 3_333_334)))
+    }
+
+    @Test
+    fun `Pro is five dollars a month or forty a year, and the year says what it saves`() {
+        assertEquals("Go Pro, $5/month", PlanText.GO_PRO)
+        assertEquals("Monthly $5", PlanText.periodLabel(PlanText.PERIOD_MONTH))
+        assertEquals("Yearly $40", PlanText.periodLabel(PlanText.PERIOD_YEAR))
+        assertEquals("Save $20", PlanText.yearSaving())
+        assertEquals("$5 a month, or $40 a year", PlanText.UPGRADE)
+        assertTrue(PlanText.periodDetail(PlanText.PERIOD_YEAR).startsWith("Unlimited talks for a year."))
+        assertTrue(PlanText.periodDetail(PlanText.PERIOD_MONTH).startsWith("Unlimited talks for 30 days."))
+        // Nothing renews by itself, whichever is bought.
+        for (period in listOf(PlanText.PERIOD_MONTH, PlanText.PERIOD_YEAR)) {
+            assertTrue(PlanText.periodDetail(period).contains("nothing renews by itself"))
+        }
     }
 }

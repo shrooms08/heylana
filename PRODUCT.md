@@ -86,7 +86,7 @@ Light, and Stop buddy.
 | Plan  | In the app              | Talks                                   | How you get it                                   |
 |-------|-------------------------|-----------------------------------------|--------------------------------------------------|
 | Free  | 30 talks a month        | 30 a calendar month (+20 welcome, once) | Default. The 20 come the first time a wallet connects. |
-| Pro   | Unlimited talks         | Unlimited                               | $15 for 30 days, paid once in USDC or SKR from Seed Vault. Stacks. |
+| Pro   | Unlimited talks         | Unlimited                               | $5 for 30 days, or $40 for a year (two months free), paid once in USDC or SKR from Seed Vault. Stacks. |
 | Judge | Unlimited until Nov 9   | Unlimited                               | The judge code. Lasts until the end of Nov 9, 2026 (UTC). |
 
 A talk is a question that got an answer; a refused or failed one does not count.

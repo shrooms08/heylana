@@ -43,8 +43,12 @@ data class Quote(
     val treasury: String,
     val reference: String,
     val expiresAt: String,
-    /** The dollar price this amount was worked out from, e.g. "15". */
-    val priceUsd: String? = null
+    /** The dollar price this amount was worked out from, e.g. "5". */
+    val priceUsd: String? = null,
+    /** Which period it buys: "month" or "year". An older worker says nothing, which is a month. */
+    val period: String = "month",
+    /** How many days it adds. */
+    val days: Int = 30
 )
 
 /** A signed-in wallet, as the worker hands it back. */
@@ -151,8 +155,8 @@ class WalletApi(private val settings: HeylanaSettings) {
     suspend fun judge(code: String): Answer<Standing> =
         post("judge", JSONObject().put("code", code)) { standingOf(it) }
 
-    suspend fun quote(currency: String): Answer<Quote> =
-        post("pay/quote", JSONObject().put("currency", currency)) {
+    suspend fun quote(currency: String, period: String = "month"): Answer<Quote> =
+        post("pay/quote", JSONObject().put("currency", currency).put("period", period)) {
             Quote(
                 currency = it.getString("currency"),
                 mint = it.getString("mint"),
@@ -162,7 +166,9 @@ class WalletApi(private val settings: HeylanaSettings) {
                 treasury = it.getString("treasury"),
                 reference = it.getString("reference"),
                 expiresAt = it.getString("expires_at"),
-                priceUsd = it.optString("price_usd").ifEmpty { null }
+                priceUsd = it.optString("price_usd").ifEmpty { null },
+                period = it.optString("period").ifEmpty { "month" },
+                days = it.optInt("days", 30)
             )
         }
 

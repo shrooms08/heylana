@@ -640,6 +640,7 @@ private fun GoProSheet(
     val scope = rememberCoroutineScope()
     val payment = remember { ProPayment(api, seedVault) }
     var currency by remember { mutableStateOf(CURRENCY_USDC) }
+    var period by remember { mutableStateOf(PlanText.PERIOD_MONTH) }
     var quote by remember { mutableStateOf<Quote?>(null) }
     var line by remember { mutableStateOf("") }
     var paying by remember { mutableStateOf(false) }
@@ -647,11 +648,11 @@ private fun GoProSheet(
     // The payment is built and simulated before Pay can be tapped; null while it is checked.
     var simulation by remember { mutableStateOf<SimulationResult?>(null) }
 
-    LaunchedEffect(currency, refresh) {
+    LaunchedEffect(currency, period, refresh) {
         quote = null
         simulation = null
         line = "Getting the price\u2026"
-        when (val answer = api.quote(currency)) {
+        when (val answer = api.quote(currency, period)) {
             is Answer.Ok -> {
                 quote = answer.value
                 line = BuildText.SIMULATING
@@ -682,11 +683,34 @@ private fun GoProSheet(
             Text(text = "Go Pro", style = glassText(HeylanaTokens.TITLE_SP, HeylanaTokens.textPrimary))
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_2_DP.dp))
             Text(
-                text = "Unlimited talks for 30 days. Paid once from your " +
-                    "wallet; nothing renews by itself.",
+                text = PlanText.periodDetail(period),
                 style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.textSecondary)
             )
             Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_4_DP.dp))
+
+            // A month or a year; the year says what it saves.
+            Row(horizontalArrangement = Arrangement.spacedBy(HeylanaTokens.SPACE_2_DP.dp)) {
+                GlassButton(
+                    text = PlanText.periodLabel(PlanText.PERIOD_MONTH),
+                    primary = period == PlanText.PERIOD_MONTH,
+                    enabled = !paying,
+                    onClick = { period = PlanText.PERIOD_MONTH }
+                )
+                GlassButton(
+                    text = PlanText.periodLabel(PlanText.PERIOD_YEAR),
+                    primary = period == PlanText.PERIOD_YEAR,
+                    enabled = !paying,
+                    onClick = { period = PlanText.PERIOD_YEAR }
+                )
+            }
+            PlanText.yearSaving()?.let {
+                Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_1_DP.dp))
+                Text(
+                    text = xyz.heylana.app.ui.theme.monoNumbers("$it a year"),
+                    style = glassText(HeylanaTokens.LABEL_SP, HeylanaTokens.success)
+                )
+            }
+            Spacer(modifier = Modifier.height(HeylanaTokens.SPACE_3_DP.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(HeylanaTokens.SPACE_2_DP.dp)) {
                 GlassButton(

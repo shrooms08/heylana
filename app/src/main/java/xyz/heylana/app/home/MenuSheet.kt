@@ -62,7 +62,10 @@ object MenuText {
     fun planName(standing: Standing?): String = standing?.let { PlanText.name(it.plan) } ?: ""
 
     /** What the plan gives: "30 talks a month", "Unlimited talks", "Unlimited until Nov 9". */
-    fun planLine(standing: Standing?): String = standing?.let { PlanText.summary(it) } ?: CHECKING
+    fun planLine(standing: Standing?): String = standing?.let {
+        // On Free the row also says what Pro costs, both ways.
+        if (it.plan == "free") "${PlanText.summary(it)} · ${PlanText.UPGRADE}" else PlanText.summary(it)
+    } ?: CHECKING
 
     /** How full the talks bar is, 0 to 1, or null when there is no limit. */
     fun planFill(standing: Standing?): Float? {

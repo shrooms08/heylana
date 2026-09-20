@@ -20,8 +20,22 @@ export const JUPITER_PRICE_URL = 'https://api.jup.ag/price/v3'
 
 export type Currency = 'usdc' | 'skr'
 
+/** What is being bought: 30 days of Pro, or a year of it. */
+export type Period = 'month' | 'year'
+
+export const PERIOD_DAYS: Record<Period, number> = { month: 30, year: 365 }
+
+export function isPeriod(given: unknown): given is Period {
+  return given === 'month' || given === 'year'
+}
+
 export interface Quote {
   currency: Currency
+  /** Which one this quote is for; an older app that says nothing means a month. */
+  period: Period
+  /** What it costs in dollars, and how many days it adds. */
+  price_usd: string
+  days: number
   mint: string
   /** Base units, as a decimal string: token amounts outgrow JavaScript numbers. */
   amount: string

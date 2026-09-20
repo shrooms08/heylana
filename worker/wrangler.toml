@@ -32,9 +32,12 @@ USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
 # address, SKR quotes answer "not set up" and USDC still works.
 SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3"
 
-# Price of 30 days of Pro in US dollars. "0.10" for a live smoke test, and
-# back to "15" before submission. See README.md.
-PRICE_USD = "0.10"
+# What Pro costs: 30 days, and a year. Set PRICE_USD to "0.10" for a live smoke
+# test and back to "5" before submission; a year is "40" (two months free).
+# PRICE_YEAR_USD unset means a year cannot be bought and the sheet offers only a
+# month. See README.md.
+PRICE_USD = "5"
+PRICE_YEAR_USD = "40"
 PRO_DAYS = "30"
 
 # Which mainnet RPC is tried first: "rpcfast" (RPC Fast, the default) or "helius".

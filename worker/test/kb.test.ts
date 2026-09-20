@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
 import { EMBEDDING_MODEL, MIN_SCORE, embeddingText, ingest, searchKb, withSources, type Ai, type KbResult, type VectorIndex } from '../src/kb.ts'
 import { LOOKUP_TOOLS } from '../src/registry.ts'
+import { ANSWER_MAX_TOKENS } from '../src/brain.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages'
@@ -259,6 +260,8 @@ test('the last call after a lookup has to write the answer as a tool', async () 
   const res = await asksAbout('How do I derive a PDA in Anchor?')
   // Every round has to use a tool: a lookup while there are any, the answer after that.
   assert.deepEqual(bodies[0].tool_choice, { type: 'any' })
+  // The same two sentences cost more as JSON with a snippet in them than as plain text.
+  assert.equal(bodies[0].max_tokens, ANSWER_MAX_TOKENS)
   assert.ok(bodies[0].tools.some((t: any) => t.name === 'answer'))
   const reply = JSON.parse((await res.json()).content[0].text)
   assert.equal(reply.say, 'Seeds and a program id.')

@@ -110,6 +110,16 @@ export const ANSWER_TOOL = {
   },
 } as const
 
+/**
+ * The room an answer written as a tool needs.
+ *
+ * The phone asks for 300 tokens, which is plenty for two spoken sentences; the same two
+ * sentences inside a tool call are JSON with field names, escaping and possibly a snippet
+ * in `code`, and the first live run came back cut off mid-word. The extra is a ceiling, not
+ * a target: the prompt still asks for 1 to 3 short sentences and the app still caps them.
+ */
+export const ANSWER_MAX_TOKENS = 700
+
 /** A filled-in [ANSWER_TOOL] as the reply body the rest of the worker already understands. */
 export function answerFromTool(input: any, usage: Record<string, unknown>): string {
   const reply: Record<string, unknown> = { say: '', point_at: null, task: null }
@@ -171,6 +181,7 @@ export async function answerWithTools(options: {
       const res = await callModel({
         ...base,
         messages,
+        ...(forceShape ? { max_tokens: Math.max(base.max_tokens, ANSWER_MAX_TOKENS) } : {}),
         tools: onTable,
         // With the answer itself on the table, every round is a tool call: a lookup while
         // there are lookups left, the answer on the last one. Prose has nowhere to come out.

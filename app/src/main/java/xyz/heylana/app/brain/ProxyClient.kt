@@ -99,7 +99,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         teaching: Boolean = false,
         walkThrough: Boolean = false,
         /** One more line for this question: "explain this" over Solana docs, or "why" after it. */
-        lens: String? = null
+        lens: String? = null,
+        /** Where the answer is to be spoken from as it is written, if it may be. */
+        voice: SpokenAnswer? = null
     ): BrainReply {
         val tools = route.toolsWanted
         val quickAction = route.why == Routing.Why.QUICK_ACTION
@@ -156,6 +158,20 @@ class ProxyClient(private val settings: HeylanaSettings) {
         if (quickAction) extra.put("intent", "quick_action")
         // For the week's card: which kind of thing this was, in one word. Never the question.
         weekKind(route, screenText)?.let { extra.put("caught", it) }
+        // Spoken as it is written, but only where the answer is plain prose: a send and a
+        // quick action come back as an action with no words, and the worker ignores it there.
+        val heardSomething = java.util.concurrent.atomic.AtomicBoolean(false)
+        val spoken = voice
+            .takeIf { route.why != Routing.Why.SEND_QUESTION && !quickAction }
+            ?.let { inner ->
+                object : SpokenAnswer {
+                    override fun speaking(audio: java.io.InputStream, rate: Int) {
+                        heardSomething.set(true)
+                        inner.speaking(audio, rate)
+                    }
+                    override fun notSpoken(reason: String) = inner.notSpoken(reason)
+                }
+            }
         val reply = send(
             message,
             route.mode,
@@ -164,10 +180,19 @@ class ProxyClient(private val settings: HeylanaSettings) {
             extra = extra,
             skill = carried,
             signing = route.explainsSigning,
-            quickRules = quickRules
+            quickRules = quickRules,
+            voice = spoken
         )
         // A reply that starts a task is a spoken step: under 25 words.
         val startsTask = reply is BrainReply.Say && reply.task?.done == false
+        // An answer already being said is never rewritten: the shorter wording would be
+        // spoken over the top of it. It was asked for in 1 to 3 short sentences either way.
+        if (heardSomething.get()) {
+            val words = AnswerLength.words((reply as? BrainReply.Say)?.text.orEmpty())
+            val cap = AnswerLength.capFor(route.explainsSigning, startsTask)
+            if (words > cap) HeylanaLog.state("answer: over cap words=$words cap=$cap spoken=already")
+            return reply
+        }
         return limitLength(reply, AnswerLength.capFor(route.explainsSigning, startsTask))
     }
 
@@ -311,19 +336,20 @@ class ProxyClient(private val settings: HeylanaSettings) {
         skill: Skill? = null,
         signing: Boolean = false,
         quickRules: Boolean = false,
-        system: String? = null
+        system: String? = null,
+        voice: SpokenAnswer? = null
     ): BrainReply = withContext(Dispatchers.IO) {
         // A send or a quick action comes back with an empty say and the action (or none):
         // an empty say is expected there, not a reply to ask for again.
         val expectsAction = extra?.optString("intent").orEmpty().isNotEmpty()
-        when (val first = attempt(userMessage, mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system)) {
+        when (val first = attempt(userMessage, mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system, voice)) {
             is Attempt.Done -> first.reply
             is Attempt.Unreadable -> {
                 HeylanaLog.state("reply: unreadable reason=${first.reason} retry=once")
                 logRawReply(first.raw)
                 val retry = attempt(
                     userMessage + "\n\n" + ReplyParser.JSON_ONLY,
-                    mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system
+                    mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system, null
                 )
                 when (retry) {
                     is Attempt.Done -> retry.reply.also { HeylanaLog.state("reply: retry readable") }
@@ -338,7 +364,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
     }
 
     /** One request and its reply: read, unreadable (with the raw text, for the debug log only), or failed. */
-    private sealed interface Attempt {
+    internal sealed interface Attempt {
         data class Done(val reply: BrainReply) : Attempt
         data class Unreadable(val reason: String, val raw: String) : Attempt
     }
@@ -353,10 +379,11 @@ class ProxyClient(private val settings: HeylanaSettings) {
         signing: Boolean,
         quickRules: Boolean,
         expectsAction: Boolean,
-        systemOverride: String?
+        systemOverride: String?,
+        voice: SpokenAnswer? = null
     ): Attempt {
         val system = systemOverride ?: HeylanaPrompt.system(solana, skill, signing, quickRules)
-        val request = proxyRequest(userMessage, mode, system, tools, extra)
+        val request = proxyRequest(userMessage, mode, system, tools, extra, voice != null)
             ?: return Attempt.Done(BrainReply.Failed(NO_PROXY))
 
         val warmed = proxy.warm
@@ -367,6 +394,11 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 // first byte back — the part a warm connection actually changes.
                 logFirstByte(SystemClock.elapsedRealtime() - started, warmed)
                 proxy.spendWarmth()
+                if (voice != null && response.isSuccessful &&
+                    response.header("content-type").orEmpty().startsWith(SpokenAnswer.STREAM_TYPE)
+                ) {
+                    return SpokenStream(response, voice).read(expectsAction, ::extractReply)
+                }
                 val body = response.body.string()
                 if (!response.isSuccessful) {
                     return Attempt.Done(BrainReply.Failed(httpError(response.code, body)))
@@ -399,12 +431,15 @@ class ProxyClient(private val settings: HeylanaSettings) {
         mode: String,
         system: String,
         tools: Boolean,
-        extra: JSONObject?
+        extra: JSONObject?,
+        speak: Boolean = false
     ): Request? {
         if (!proxy.isConfigured) return null
         // The worker owns the tool definitions; the app only says whether to send them.
         val body = payload(userMessage, system).put("mode", mode)
         if (tools) body.put("tools", true)
+        // One trip: the worker speaks each sentence as it is written, in the chosen voice.
+        if (speak) body.put("speak", true).put("voice", settings.voice)
         extra?.keys()?.forEach { key -> body.put(key, extra.get(key)) }
         return withOwnKey(proxy.post("chat", body.toString()))
     }

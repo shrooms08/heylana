@@ -159,6 +159,12 @@ class BuddyOverlayService : Service() {
     /** Deciding whose words to use, from the long press until one is chosen. */
     private var race: EarsRace? = null
 
+    /**
+     * How long this spoken question took to answer, stretch by stretch. Starts when the
+     * user lets go and ends at the first sound; times only, never a word.
+     */
+    private var answerClock: xyz.heylana.app.voice.AnswerClock? = null
+
     /** When the user let go, for the log. */
     private var releasedAt = 0L
 
@@ -212,6 +218,7 @@ class BuddyOverlayService : Service() {
             speakingNow = speaking
             main.post {
                 HeylanaLog.state("speak: speaking=$speaking")
+                if (speaking) reportSpeed()
                 overlayView?.setTalking(speaking)
                 main.removeCallbacks(settleToIdle)
                 // Mid-teaching, the end of a sentence is the cue for the next one, not to settle.
@@ -322,6 +329,7 @@ class BuddyOverlayService : Service() {
                         "aai_token_ms=${assembly?.tokenMillis ?: -1} aai_socket_ms=${assembly?.socketMillis ?: -1}"
                 )
                 captureEars(verdict)
+                answerClock?.heard(SystemClock.uptimeMillis())
                 endRace()
                 ask(verdict.text)
             }
@@ -522,6 +530,7 @@ class BuddyOverlayService : Service() {
     private fun ask(asked: String) {
         val question = withClarified(asked)
         HeylanaLog.state("ask: sending")
+        answerClock?.asked(SystemClock.uptimeMillis())
         val view = overlayView ?: return
         if (inFlight?.isActive == true) return
 
@@ -739,8 +748,13 @@ class BuddyOverlayService : Service() {
             mode(BuddyMode.THINKING)
             val asked = brain.ask(
                 question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough,
-                lenses.joinToString("\n\n").ifEmpty { null }
+                lenses.joinToString("\n\n").ifEmpty { null },
+                // A teaching walk-through is spoken step by step as the disc flies, never ahead of it.
+                voice = if (teaching || walkThrough) null else spokenSink()
             )
+            answerClock?.answered(SystemClock.uptimeMillis())
+            // A one-trip answer is already being said by now, so this is what completes the line.
+            main.post { reportSpeed() }
             val reply = if (longPage && asked is BrainReply.Say) onScreenOnly(asked, snapshot) else asked
             mode(null)
             // The answer is here: from now on settling back to idle is allowed.
@@ -1888,8 +1902,55 @@ class BuddyOverlayService : Service() {
     /** Set while a quick action's line must survive the box closing itself. */
     private var keepSpeechThroughClose = false
 
+    /** True once the worker's own voice has started on this answer: nothing says it twice. */
+    @Volatile private var alreadySpeaking = false
+
+    /** Why the worker's voice stayed silent, if it tried and could not. */
+    @Volatile private var spokenFailure: String? = null
+
+    /**
+     * Where an answer is spoken from while it is still being written. The worker sends the
+     * audio of each sentence as it finishes it, so the first word is heard about a second
+     * earlier than it was when the voice was a second trip of its own.
+     */
+    private val spokenAloud = object : xyz.heylana.app.brain.SpokenAnswer {
+        override fun speaking(audio: java.io.InputStream, rate: Int) {
+            alreadySpeaking = true
+            HeylanaLog.state("speak: from the answer itself")
+            val clock = answerClock?.takeIf { !it.done }
+            clock?.voiceRidesWithTheQuestion()
+            mouth?.play(audio, rate, clock)
+        }
+
+        override fun notSpoken(reason: String) {
+            if (reason != xyz.heylana.app.brain.SpokenAnswer.NOT_SPOKEN) spokenFailure = reason
+        }
+    }
+
+    /** Whether this question's answer may be spoken as it is written. */
+    private fun spokenSink(): xyz.heylana.app.brain.SpokenAnswer? {
+        alreadySpeaking = false
+        spokenFailure = null
+        val voice = mouth ?: return null
+        if (settings.voiceMuted || !voice.available) return null
+        return spokenAloud
+    }
+
     /** True if the answer really is being read out, so speech will report its end. */
     private fun speak(text: String): Boolean {
+        // Already being said, from the answer itself: this is the same words arriving late.
+        if (alreadySpeaking) {
+            alreadySpeaking = false
+            HeylanaLog.state("speak: already said as it was written chars=${text.length}")
+            return true
+        }
+        // The worker tried and its voice was refused: the words are shown, not asked for again.
+        spokenFailure?.let { reason ->
+            spokenFailure = null
+            HeylanaLog.state("speak: the answer's own voice failed reason=$reason")
+            showUnspoken(text, xyz.heylana.app.voice.VoiceFailure.reasonFor(codeOf(reason), reasonWord(reason)))
+            return false
+        }
         val voice = mouth ?: return false.also { HeylanaLog.state("speak: no voice") }
         if (settings.voiceMuted) return false.also { HeylanaLog.state("speak: muted") }
         if (!voice.available) {
@@ -1902,8 +1963,26 @@ class BuddyOverlayService : Service() {
         }
         // The length only: never the words.
         HeylanaLog.state("speak: line chars=${text.length}")
-        return voice.speak(text)
+        // Only the answer to a spoken question is timed; a notice or a step is not that question.
+        val clock = answerClock?.takeIf { !it.done }
+        return voice.speak(text, clock)
     }
+
+    /**
+     * The one line that says how long the answer took to start: released, heard, asked,
+     * answered, first sound. Printed once, when every stretch of it is in.
+     */
+    private fun reportSpeed() {
+        answerClock?.takeIf { it.complete }?.let { clock ->
+            HeylanaLog.state(clock.line())
+            answerClock = null
+        }
+    }
+
+    /** "429 daily_cap" as the app's own voice failure: the code, then the word. */
+    private fun codeOf(reason: String): Int = reason.substringBefore(' ').toIntOrNull() ?: 0
+
+    private fun reasonWord(reason: String): String = reason.substringAfter(' ', "")
 
     // ---------------------------------------------------------------- voice
 
@@ -2138,6 +2217,7 @@ class BuddyOverlayService : Service() {
         // Waiting on the final words: the capsule turns into the aurora.
         view.showThinkingCapsule()
         releasedAt = SystemClock.uptimeMillis()
+        answerClock = xyz.heylana.app.voice.AnswerClock(releasedAt)
         val phone = phoneEars
         val deepgram = cloudEars
         val assembly = assemblyEars

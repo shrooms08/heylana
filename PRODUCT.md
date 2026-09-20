@@ -104,6 +104,16 @@ unlimited, with a 2000-a-day ceiling against abuse. Heylana's voice is Deepgram'
 (Hera or Aries, picked in Settings); if the voice cannot be had — the day's limit,
 Google's quota, or too slow — the answer is shown as text and Heylana stays silent.
 
+**She starts speaking before she has finished thinking.** A spoken question used to be two
+trips: ask, wait for the whole answer, then ask for the voice and wait again. Now it is one.
+The answer is written straight into the reply as it comes, and the moment a **sentence** is
+finished it goes to the voice and its audio starts coming back — while the rest is still
+being written. Measured on the Seeker over ten questions on Sept 20, the wait from letting go
+of the buddy to the first spoken word fell from **3.5s to 3.0s** at the median, and the model's
+share of it from about 1.8s to 0.7s. Where an answer is not plain prose — a send, a quick
+action, a walk-through that points at things — nothing is spoken early and the phone says it
+the old way, so no answer is ever said twice or said in part.
+
 ## Roadmap
 
 - **Skill market.** A public list of more reference notes (Chrome is the first), each
@@ -320,7 +330,7 @@ Counters are written once per request, so two requests landing together can lose
 3. The app sends the question and listing to a Cloudflare Worker, naming only the kind of work (quick or task); the worker picks the model, holds every key, and for Solana questions runs lookups first (balances, prices, addresses, activity, names, send checks).
 4. The model replies with strict JSON: what to say, which element to point at, and whether this is a multi-step task.
 5. A separate, untouchable window draws the pointer; during a task each step re-reads the screen.
-6. Deepgram, AssemblyAI and the phone's recogniser all listen from the long press (the two cloud ears share one microphone); the first cloud final waits a moment for the other and the more confident wins, the phone's words are the fallback; answers stream back as audio from Deepgram Aura, and if the voice cannot be had the answer is shown as text instead.
+6. Deepgram, AssemblyAI and the phone's recogniser all listen from the long press (the two cloud ears share one microphone); the first cloud final waits a moment for the other and the more confident wins, the phone's words are the fallback; an ordinary answer comes back down one connection, the worker speaking each sentence to Deepgram Aura as the model finishes writing it and streaming the audio on as it is made, and if the voice cannot be had the answer is shown as text instead.
 7. Wallets connect over Mobile Wallet Adapter to Seed Vault; signing a message earns a 30-day session sealed by the worker.
 8. Plans, talks and profiles live in Workers KV, keyed by wallet, or by install id without one.
 9. Pro: the phone builds a USDC or SKR transfer with a unique reference, Seed Vault signs and sends it, and the worker verifies it on chain before extending Pro.

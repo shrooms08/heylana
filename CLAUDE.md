@@ -66,6 +66,7 @@ xyz.heylana.app
 │   └── SendActivity         invisible; hosts SendFlow, since Seed Vault needs an activity to open from
 ├── brain/                   talking to the model
 │   ├── ProxyClient          POST /chat through the proxy; says quick or task, never a model
+│   ├── SpokenAnswer / SpokenStream  the one-trip answer: its frames, and where its audio goes
 │   ├── QuotaMessage         the words for talks_cap, daily_cap and an ended session
 │   ├── Greeting             the user's name on the first answer after the buddy starts, never after
 │   ├── SolanaCore           the Solana knowledge block and rules, and when to load them
@@ -107,6 +108,8 @@ xyz.heylana.app
 │   └── Proxy                the address, the device header, the shared client, the warmup
 ├── voice/                   Heylana's mouth and ears
 │   ├── HeylanaVoice         streams the spoken answer from /tts and plays it as it arrives; silent on failure
+│   ├── PcmPipe              audio handed from the thread reading the answer to the one playing it
+│   ├── AnswerClock          the release to the first spoken word: ears, brain, tts, play
 │   ├── VoiceFailure         why it stayed silent: 429 daily_cap, quota, timeout, error
 │   ├── DeepgramEars         PCM16 over a websocket while the buddy is held, with keyterms
 │   ├── Listener             the phone's own recogniser, behind the same Ears interface
@@ -390,6 +393,15 @@ knows one address — `heylana.proxyUrl` in `local.properties`, into `BuildConfi
   model. **The app must never name a model or hold a key to send with one.**
 - `/tts` — the answer text comes back as raw 16-bit audio, streamed, so the
   phone can start playing before the sentence is finished.
+- `/chat` with `speak: true` — **one trip**: the answer and its voice down one
+  connection. The worker streams the model, pulls `say` apart as it is written
+  (`worker/src/saystream.ts`) and sends each finished sentence to the voice at once, so
+  audio comes back while the rest of the answer is still being written. The body is
+  frames — 1 byte kind, 4 bytes length — of audio (kind 1), the finished reply (kind 2,
+  exactly the JSON `/chat` always answered) and, if nothing was spoken, why (kind 3).
+  Honoured only on an ordinary answer (no tools, no forced action) with a provider whose
+  audio streams; anything else is answered as plain JSON and the phone speaks it the old
+  way. `test/saystream.test.ts`.
 - `/stt-token` — a Deepgram key that stops working after two minutes, so the
   phone can open the listening socket itself without holding the real one.
 - `/admin/usage?days=30` — the day-by-day counters and their estimated cost, behind
@@ -1038,6 +1050,30 @@ assemblyai` does the same; `--ez ears_capture true` keeps every ear's words from
 in the app's private `files/ears_capture.txt` for counting word errors (`false` deletes it) —
 never in a log. Measured Sept 19, ten holds through the Mac's speaker: AssemblyAI won 6,
 Deepgram 4, the phone 0; the winning words had no errors.
+
+**Heylana speaks before she has finished thinking.** An ordinary spoken answer is one
+trip (`brain: … speak=true`): `/chat` with `speak: true`, the worker streaming the model
+and sending each finished sentence to the voice as it lands, the phone playing the audio
+through `voice/PcmPipe` into the same queue and speaker as everything else
+(`speak: from the answer itself`). **Nothing is ever said twice**: while the worker's voice
+is playing, the app's own `speak()` of that same answer is a no-op
+(`speak: already said as it was written`), and an answer being said is never sent to
+shorten (`answer: over cap … spoken=already`) — it was asked for in 1 to 3 short sentences
+either way. A send, a quick action and a teaching walk-through never ask for it (the first
+two carry no prose; the third is spoken step by step as the disc flies), and a segmented
+`say` is left alone by the worker, which sends `not_spoken` so the phone says it the old
+way. `SpeedTest`, `test/saystream.test.ts`.
+
+**How long an answer takes to start is measured, not guessed.** `voice/AnswerClock` runs
+from the release of the hold to the first sound and logs one line per spoken answer:
+`speed: ears_ms=… brain_ms=… tts_first_byte_ms=… play_ms=… rest_ms=… total_ms=… trips=one|two`.
+On one trip the model runs *inside* the voice's stretch, so `tts_first_byte_ms` is the whole
+way from the question to the first sound and the model is not counted twice. Measured on the
+Seeker on Sept 20, ten questions the old way and five the new: median 3498ms → 3049ms, the
+model's share 1780ms → about 700ms. What is left is the ears (about 1000ms: 400ms of trailing
+audio, then Deepgram's finalize), the voice itself (about 500ms) and Lagos to Cloudflare and
+back (about 350ms). The worker's chat line carries `first_sentence_ms` and `first_audio_ms`
+for the same answer from its own side.
 
 **One voice queue.** `HeylanaVoice` plays its lines one at a time, in order
 (`voice/VoiceQueue`, a mutex so there is only ever one writer on one `AudioTrack`): a new line

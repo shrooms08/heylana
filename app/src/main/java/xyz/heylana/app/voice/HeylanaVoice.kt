@@ -66,7 +66,13 @@ class HeylanaVoice(
         get() = proxy.isConfigured
 
     /** A line waiting its turn, and the voice it is to be said in. */
-    private class Line(val text: String, val voice: String) {
+    private class Line(
+        val text: String,
+        val voice: String,
+        val clock: AnswerClock? = null,
+        /** Audio already on its way from the worker: nothing to ask for, just play it. */
+        val ready: Playing? = null
+    ) {
         var gen: Int = 0
     }
 
@@ -86,13 +92,27 @@ class HeylanaVoice(
      * voice is being asked, which is what tells the caller that either "finished speaking"
      * or [onFailed] will follow.
      */
-    fun speak(said: String): Boolean {
+    fun speak(said: String, clock: AnswerClock? = null): Boolean {
         // A web address is never read aloud: whatever line comes here, its links are chips.
         val text = xyz.heylana.app.brain.Sources.spoken(said)
         if (text.isBlank()) return false
         if (!proxy.isConfigured) return false
-        val length = lines.add(Line(text, settings.voice))
+        val length = lines.add(Line(text, settings.voice, clock = clock))
         HeylanaLog.state("voice: queued length=$length")
+        scope.launch(Dispatchers.IO) { drain() }
+        return true
+    }
+
+    /**
+     * Audio the worker is already making, played as it lands.
+     *
+     * The one-trip answer speaks the first sentence while the rest is still being written,
+     * so there is nothing to ask for here: the stream is open and this only plays it, in
+     * the same queue and on the same speaker as everything else.
+     */
+    fun play(stream: java.io.InputStream, rate: Int, clock: AnswerClock? = null): Boolean {
+        val length = lines.add(Line("", settings.voice, clock = clock, ready = Playing(stream, rate) { stream.close() }))
+        HeylanaLog.state("voice: streamed from the answer rate=$rate queued=$length")
         scope.launch(Dispatchers.IO) { drain() }
         return true
     }
@@ -110,7 +130,8 @@ class HeylanaVoice(
 
     private fun speakOne(line: Line) {
         val started = SystemClock.uptimeMillis()
-        val opened = open(line.text, line.voice)
+        line.clock?.voiceAsked(started)
+        val opened = line.ready?.let { Opened.Ok(it) } ?: open(line.text, line.voice)
         if (line.gen != generation) {
             (opened as? Opened.Ok)?.playing?.close()
             return
@@ -119,7 +140,7 @@ class HeylanaVoice(
             is Opened.Failed -> fail(line, opened.reason)
             is Opened.Ok -> {
                 HeylanaLog.state("voice=proxy voice=${line.voice} headers_ms=${SystemClock.uptimeMillis() - started} queued=${pending()}")
-                val outcome = play(opened.playing, line.gen)
+                val outcome = play(opened.playing, line.gen, line.clock)
                 if (outcome != null && line.gen == generation) fail(line, outcome)
             }
         }
@@ -128,6 +149,7 @@ class HeylanaVoice(
     private fun fail(line: Line, reason: String) {
         // Silent: the words go back to be shown, nothing else speaks them.
         HeylanaLog.state("voice_failed reason=$reason")
+        if (line.text.isBlank()) return
         scope.launch(Dispatchers.Main) { if (line.gen == generation) onFailed(line.text, reason) }
     }
 
@@ -149,7 +171,7 @@ class HeylanaVoice(
                 return Opened.Failed(VoiceFailure.reasonFor(response.code, refusal))
             }
             val rate = response.header("x-sample-rate")?.toIntOrNull() ?: DEFAULT_SAMPLE_RATE
-            Opened.Ok(Playing(response, rate))
+            Opened.Ok(Playing(response.body.byteStream(), rate) { response.close() })
         } catch (e: java.io.InterruptedIOException) {
             Opened.Failed(VoiceFailure.TIMEOUT)
         } catch (e: Exception) {
@@ -161,7 +183,7 @@ class HeylanaVoice(
      * Writes the audio out as it arrives, and reports when it is really over. Null when
      * it played (or was stopped); a [VoiceFailure] reason when nothing could be heard.
      */
-    private fun play(playing: Playing, gen: Int): String? {
+    private fun play(playing: Playing, gen: Int, clock: AnswerClock? = null): String? {
         // This line is over the moment a stop moves the generation on.
         fun stopped() = gen != generation
         val rate = playing.sampleRate
@@ -213,11 +235,12 @@ class HeylanaVoice(
         }
 
         try {
-            playing.response.body.byteStream().use { input ->
+            playing.stream.use { input ->
                 val chunk = ByteArray(CHUNK_BYTES)
                 while (!stopped()) {
                     val read = input.read(chunk)
                     if (read <= 0) break
+                    clock?.firstAudio(SystemClock.uptimeMillis())
                     capture?.write(chunk, 0, read)
 
                     // Whole samples only: a socket does not care where a sample
@@ -234,10 +257,11 @@ class HeylanaVoice(
                     if (speaking) reportHeard()
 
                     if (!speaking && bytesWritten >= preRollBytes) {
-                        // Three hundred milliseconds in hand before the first
-                        // sound, so the speaker never runs dry mid-sentence.
+                        // A little audio in hand before the first sound, so the speaker
+                        // never runs dry mid-sentence.
                         player.play()
                         speaking = true
+                        clock?.spoke(SystemClock.uptimeMillis())
                         onSpeaking(true)
                     }
                 }
@@ -247,6 +271,7 @@ class HeylanaVoice(
             if (!speaking && bytesWritten > 0 && !stopped()) {
                 player.play()
                 speaking = true
+                clock?.spoke(SystemClock.uptimeMillis())
                 onSpeaking(true)
             }
 
@@ -324,9 +349,13 @@ class HeylanaVoice(
         stop()
     }
 
-    /** The open reply and the rate its audio is in. */
-    private class Playing(val response: okhttp3.Response, val sampleRate: Int) {
-        fun close() = runCatching { response.close() }
+    /** Audio on its way, and the rate it is in: the worker's reply, or a stream already open. */
+    private class Playing(
+        val stream: java.io.InputStream,
+        val sampleRate: Int,
+        private val onClose: () -> Unit = {}
+    ) {
+        fun close() = runCatching { onClose() }
     }
 
     private companion object {

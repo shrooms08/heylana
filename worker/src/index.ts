@@ -42,6 +42,9 @@ import { buildAndSimulate, labelFor, needsAccount, tokenAccountRent, type Built 
 import type { TransferPlan } from './tx.ts'
 import { short, unitsToDecimal } from './solana.ts'
 import { checkedBody } from './say.ts'
+import {
+  FRAME_AUDIO, FRAME_REPLY, FRAME_VOICE_FAILED, SAY_STREAM_TYPE, SayReader, frame, readModelStream, replyBody, textFrame,
+} from './saystream.ts'
 import { addCacheUse, noCacheUse, withCache, withCacheTotals } from './cache.ts'
 import { ingest, searchKb, withSources, type Ai, type Kb, type KbResult, type VectorIndex } from './kb.ts'
 import {
@@ -330,7 +333,7 @@ export default {
     })
     current = { rpc, logged: false, usage: {}, week: {} }
     try {
-      if (route === 'chat') return await chat(request, env, who, started, rpc)
+      if (route === 'chat') return await chat(request, env, who, started, rpc, context)
       if (route === 'tts') return await speak(request, env, device, started)
       if (route === 'stt-token') return await sttToken(env, device, started)
       if (route === 'stt-token-aai') return await sttTokenAai(env, device, started)
@@ -381,7 +384,7 @@ export default {
 // ------------------------------------------------------------------- routes
 
 /** A question. The app says what kind of work it is; we choose the model. */
-async function chat(request: Request, env: Env, who: Who, started: number, rpc: Rpc): Promise<Response> {
+async function chat(request: Request, env: Env, who: Who, started: number, rpc: Rpc, context?: WaitUntil): Promise<Response> {
   const device = who.device
   const body = await readJson(request)
   const model = MODELS[String(body.mode)]
@@ -542,6 +545,14 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
       toolTimings = result.timings
       decisions = result.decisions
     }
+  } else if (speakable(body, env)) {
+    // One trip: the answer is streamed and each finished sentence goes straight to the
+    // voice, so the first word is heard while the rest is still being written.
+    return await spokenAnswer({
+      env, who, started, model, base, userKey, spent, now, context,
+      voice: body.voice === 'archie' ? 'archie' : 'skylar',
+      caughtKind: typeof body.caught === 'string' ? body.caught : '',
+    })
   } else {
     const upstream = await callModel(base)
     status = upstream.status
@@ -650,7 +661,244 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
   })
 }
 
-/** The model did not answer: the status it gave rides along, never its message. */
+/**
+ * Whether this question can be answered and spoken in one trip: an ordinary answer, no
+ * tools, no forced action, and a provider whose voice streams raw audio.
+ */
+function speakable(body: any, env: Env): boolean {
+  if (body.speak !== true) return false
+  const provider = providerOf(env.VOICE_PROVIDER)
+  return provider === 'deepgram' || provider === 'gemini'
+}
+
+/**
+ * The answer, streamed, speaking as it is written.
+ *
+ * The model is asked to stream; [SayReader] takes `say` apart as it arrives, and each
+ * finished sentence is sent to the voice at once — the next sentence's audio is already
+ * being made while the one before it is still being sent. The phone gets one stream of
+ * frames: the audio, then the finished reply as soon as the model has written it.
+ *
+ * The plain path's accounting is all here too, since the request is long over by the time
+ * the last word is said: the talk is counted, the day's counters written, the week's
+ * counts kept, and one log line carries what it cost.
+ */
+async function spokenAnswer(options: {
+  env: Env
+  who: Who
+  started: number
+  model: string
+  base: { model: string; max_tokens: number; system?: string; messages: unknown[] }
+  userKey: string | null
+  spent: { allowed: boolean; account: Account; used: number }
+  now: Date
+  context?: WaitUntil
+  voice: 'skylar' | 'archie'
+  caughtKind: string
+}): Promise<Response> {
+  const { env, who, started, model, base, userKey, spent, now, context, voice } = options
+  const device = who.device
+
+  const upstream = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    headers: {
+      'x-api-key': userKey ?? env.ANTHROPIC_API_KEY,
+      'anthropic-version': ANTHROPIC_VERSION,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ ...withCache(base as Record<string, unknown>), stream: true }),
+  })
+
+  // A refusal is answered exactly as it always was: plain JSON, nothing streamed.
+  if (!upstream.ok || !upstream.body) {
+    await upstream.text().catch(() => '')
+    log({ route: 'chat', device, wallet: who.wallet?.slice(0, 8), ms: clock.now() - started, model, spoken: true, status: upstream.status })
+    if (userKey && upstream.status === 401) {
+      return fail(401, 'own_key_refused', 'Anthropic refused your own key. Check it in Advanced.')
+    }
+    return brainUnavailable(upstream.status)
+  }
+
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>()
+  const writer = writable.getWriter()
+  const pump = speakWhileWriting({ ...options, body: upstream.body, writer, voice })
+  if (context?.waitUntil) context.waitUntil(pump)
+  return new Response(readable, { status: 200, headers: { 'content-type': SAY_STREAM_TYPE, 'x-sample-rate': String(SPOKEN_RATE) } })
+}
+
+/** 24 kHz mono 16-bit, what both providers make and what the phone plays. */
+const SPOKEN_RATE = 24000
+
+async function speakWhileWriting(options: {
+  env: Env
+  who: Who
+  started: number
+  model: string
+  userKey: string | null
+  spent: { allowed: boolean; account: Account; used: number }
+  now: Date
+  voice: 'skylar' | 'archie'
+  caughtKind: string
+  body: ReadableStream<Uint8Array>
+  writer: WritableStreamDefaultWriter<Uint8Array>
+}): Promise<void> {
+  const { env, who, started, model, userKey, spent, now, voice, body, writer } = options
+  const device = who.device
+  const reader = new SayReader()
+
+  let spokenChars = 0
+  let sentences = 0
+  let firstSentenceMs = -1
+  let firstAudioMs = -1
+  let voiceFailure: string | null = null
+  // Every write goes through this one chain, so no frame is ever cut in half by another.
+  let writes: Promise<void> = Promise.resolve()
+
+  const say = (text: string) => {
+    if (voiceFailure) return
+    if (sentences === 0) firstSentenceMs = clock.now() - started
+    sentences++
+    // The voice is asked for now; its audio joins the stream when the sentence before it is done.
+    const asked = voiceStream(env, text, voice)
+    writes = writes.then(async () => {
+      const audio = await asked.catch(() => ({ stream: null, failure: '0 error' }) as VoiceStream)
+      if (!audio.stream) {
+        voiceFailure = voiceFailure ?? audio.failure ?? '0 error'
+        return
+      }
+      const pcm = audio.stream.getReader()
+      for (;;) {
+        const { done, value } = await pcm.read()
+        if (done) break
+        if (value.length === 0) continue
+        if (firstAudioMs < 0) firstAudioMs = clock.now() - started
+        await writer.write(frame(FRAME_AUDIO, value))
+      }
+      // Only what was really heard is counted against the voice's day.
+      spokenChars += text.length
+    })
+  }
+
+  let streamError: string | null = null
+  let usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+  try {
+    const read = await readModelStream(body, (delta) => {
+      for (const sentence of reader.take(delta)) say(sentence)
+    })
+    usage = read.usage
+    streamError = read.error
+    const last = reader.flush()
+    if (last) say(last)
+  } catch {
+    streamError = streamError ?? 'stream_broken'
+  }
+
+  // The finished reply, in the shape the app has always read, checked the same way.
+  let text = replyBody(reader.body, usage, model)
+  const checked = checkedBody(text)
+  text = withoutActions(checked.body).body
+
+  writes = writes.then(async () => {
+    await writer.write(textFrame(FRAME_REPLY, scrub(text, env, [userKey])))
+    // Nothing was heard: the phone says it the old way, so an answer is never silent.
+    const heard = firstAudioMs >= 0
+    const note = !heard ? (voiceFailure ?? NOT_SPOKEN) : voiceFailure ? PARTLY_SPOKEN : null
+    if (note) await writer.write(textFrame(FRAME_VOICE_FAILED, note))
+  })
+
+  try {
+    await writes
+  } catch {
+    // The phone hung up: nothing left to say, and the counting below still happens.
+  }
+  await writer.close().catch(() => {})
+
+  const ok = !streamError && reader.body.length > 0
+  if (ok && !userKey) {
+    await saveAccount(env, who.key, spent.account)
+    await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
+  }
+  log({
+    route: 'chat',
+    device,
+    wallet: who.wallet?.slice(0, 8),
+    ms: clock.now() - started,
+    model,
+    spoken: true,
+    sentences,
+    // Where the first word came from in the answer's life, which is what this is all for.
+    first_sentence_ms: firstSentenceMs,
+    first_audio_ms: firstAudioMs,
+    chars: spokenChars,
+    voice_failed: voiceFailure ?? undefined,
+    stream_error: streamError ?? undefined,
+    key: userKey ? 'user' : 'heylana',
+    tokens_in: usage.input,
+    tokens_out: usage.output,
+    cache_read: usage.cacheRead,
+    cache_write: usage.cacheWrite,
+    say_segments: checked.segments,
+  })
+
+  if (!ok) return
+  const patch: UsagePatch = {
+    wallet: who.wallet,
+    chatModel: model,
+    tokensIn: usage.input,
+    tokensOut: usage.output,
+    ...(spokenChars > 0 ? { tts: { provider: providerOf(env.VOICE_PROVIDER), chars: spokenChars } } : {}),
+  }
+  await recordUsage(env, patch).catch(() => {})
+  if (who.wallet) {
+    const kind = options.caughtKind
+    await recordWeek(env, who.wallet, {
+      questions: 1,
+      screens: kind === 'screen' ? 1 : 0,
+      transactions: kind === 'transaction' ? 1 : 0,
+      lessons: kind === 'lesson' ? 1 : 0,
+    }).catch(() => {})
+  }
+}
+
+/** Nothing was spoken at all, so the phone speaks the answer itself, the old way. */
+const NOT_SPOKEN = 'not_spoken'
+/** Part of it was heard: the rest is let go rather than said twice. */
+const PARTLY_SPOKEN = 'partly_spoken'
+
+interface VoiceStream {
+  stream: ReadableStream<Uint8Array> | null
+  failure?: string
+}
+
+/** One sentence as raw 16-bit audio, from whichever provider is configured. */
+async function voiceStream(env: Env, text: string, slot: 'skylar' | 'archie'): Promise<VoiceStream> {
+  const provider = providerOf(env.VOICE_PROVIDER)
+  try {
+    if (provider === 'gemini') {
+      if (!env.GEMINI_API_KEY) return { stream: null, failure: '503 not_set_up' }
+      const model = env.GEMINI_TTS_MODEL || GEMINI_TTS_MODEL
+      const upstream = await fetch(`${GEMINI_TTS_URL}?key=${env.GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-revision': GEMINI_API_REVISION },
+        body: JSON.stringify(geminiRequest(text, geminiVoiceFor(slot), model)),
+      })
+      if (!upstream.ok || !upstream.body) return { stream: null, failure: `${upstream.status} upstream` }
+      return { stream: geminiPcmStream(upstream.body, {}) }
+    }
+    const upstream = await fetch(deepgramSpeakUrl(deepgramVoiceFor(slot)), {
+      method: 'POST',
+      headers: { authorization: `Token ${env.DEEPGRAM_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    if (!upstream.ok || !upstream.body) {
+      return { stream: null, failure: upstream.status === 429 ? '429 quota' : `${upstream.status} upstream` }
+    }
+    return { stream: rawPcmStream(upstream.body) }
+  } catch {
+    return { stream: null, failure: '0 error' }
+  }
+}
+
 /** Which cloud ears the phone may borrow a pass for: the privacy line names each one that listens. */
 export function earsOf(env: Pick<Env, 'ASSEMBLYAI_API_KEY'>): string[] {
   return env.ASSEMBLYAI_API_KEY ? ['deepgram', 'assemblyai'] : ['deepgram']

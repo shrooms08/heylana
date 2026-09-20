@@ -389,7 +389,11 @@ class ProxyClient(private val settings: HeylanaSettings) {
         val warmed = proxy.warm
         val started = SystemClock.elapsedRealtime()
         return try {
-            Proxy.http.newCall(request).execute().use { response ->
+            val response = Proxy.http.newCall(request).execute()
+            // A spoken answer is still coming when the words are in hand, so the reply is
+            // not the end of it: whoever takes it over closes it when the audio is done.
+            var handedOver = false
+            try {
                 // execute() returns as the response headers land, which is the
                 // first byte back — the part a warm connection actually changes.
                 logFirstByte(SystemClock.elapsedRealtime() - started, warmed)
@@ -397,6 +401,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 if (voice != null && response.isSuccessful &&
                     response.header("content-type").orEmpty().startsWith(SpokenAnswer.STREAM_TYPE)
                 ) {
+                    handedOver = true
                     return SpokenStream(response, voice).read(expectsAction, ::extractReply)
                 }
                 val body = response.body.string()
@@ -405,6 +410,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 }
                 logUsage(mode, body)
                 extractReply(body, expectsAction)
+            } finally {
+                if (!handedOver) response.close()
             }
         } catch (e: IOException) {
             val kind = PlainError.forIo(e)

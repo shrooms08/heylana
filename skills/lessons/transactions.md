@@ -22,7 +22,7 @@ The transaction message adds a header (how many signers, how many read-only acco
 Key facts:
 - A recent blockhash acts as a timestamp: a transaction is only valid for about 150 blocks after it, roughly a minute to a minute and a half, then it expires.
 - The first signer is the fee payer.
-- Size limit: 1,232 bytes per transaction. Address lookup tables (versioned v0 transactions) let you reference many more accounts cheaply.
+- Size limit, as of September 2026: a legacy or v0 transaction is capped at 1,232 bytes; the v1 format raises it to 4,096 bytes and is live on mainnet. Address lookup tables (v0) let you reference many more accounts cheaply; v1 drops them and writes every address inline.
 - Every account is declared in advance so the runtime can lock writable accounts and run non-overlapping transactions in parallel.
 - Signing proves consent; wallets like Seed Vault sign, and the RPC submits.
 

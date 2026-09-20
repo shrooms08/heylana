@@ -392,6 +392,10 @@ knows one address — `heylana.proxyUrl` in `local.properties`, into `BuildConfi
   phone can start playing before the sentence is finished.
 - `/stt-token` — a Deepgram key that stops working after two minutes, so the
   phone can open the listening socket itself without holding the real one.
+- `/admin/usage?days=30` — the day-by-day counters and their estimated cost, behind
+  `ADMIN_SECRET` in `X-Heylana-Admin` (the value is in the git-ignored
+  `worker/.admin_secret`, as the knowledge base's is). Without the secret set, the route
+  does not exist.
 - `/stt-token-aai` — a single-use AssemblyAI streaming token (`ASSEMBLYAI_API_KEY`
   secret; good for 60 seconds, one session of at most 120), minted at every touch
   of the disc; 600 a device a day. Without the secret it answers `503 not_set_up`
@@ -431,6 +435,43 @@ are Gemini prebuilt voices: `skylar` is **Sulafat** (Google: "Warm", female) and
 is **Achird** ("Friendly", male — no male voice is described as warm). Each call logs
 `provider`, `voice` and `model`, and `tts_end` logs events and bytes; never the text.
 Google's 429 comes back as `429 quota`.
+
+## The RPC layer and what things cost
+
+**Every chain call goes through one caller (`worker/src/rpc.ts`).** `makeRpc(env)` is built
+once per request and used by balances, token accounts, account info, signatures, simulation,
+blockhashes, signature statuses and .skr name resolution — the tool context carries it
+(`ToolContext.rpc`), and `buildAndSimulate`, `needsAccount`, `tokenAccountRent`, `mintInfo`
+and `rpcClusterMismatch` take it. **No module holds an RPC address any more.** On mainnet the
+providers are RPC Fast (`RPCFAST_URL`) and Helius (`MAINNET_RPC_URL`), in the order
+`RPC_PRIMARY` gives ("rpcfast" by default); on devnet there is `RPC_URL` alone and no
+fallback, whatever `RPC_PRIMARY` says, and a devnet worker never reaches for a mainnet
+provider except for names, which are always mainnet (`{ cluster: 'mainnet-beta' }`,
+`rpc.has('mainnet-beta')` when there is none). A call that fails, answers with a retryable
+JSON-RPC error (-32004, -32005, -32014, -32603, or a message about rate limits, being behind,
+unhealthy, out of capacity), or takes longer than `RPC_TIMEOUT_MS` (1200ms) is tried once on
+the other; a second failure throws `RpcError` with its code and a plain message. Every call
+is logged as `{"route":"rpc","method":…,"provider":"rpcfast|helius|devnet","ms":…,"outcome":"ok|fallback|failed"}`,
+and each request's own log line carries `rpc: [{method, provider, ms}]` and `rpc_ms` (added by
+`log()` itself, so every route gets them). **A provider's URL is a secret**: only its name is
+ever logged or returned, and `RPCFAST_URL` is in the scrub list. `test/rpc.test.ts`.
+
+**What each day costs (`worker/src/usage.ts`).** One KV record a day (`usage:<date>`, 120
+days): active wallets as salted hashes (counted, never listed), chat calls by model with the
+day's input and output tokens, characters spoken by voice provider, listening sessions by ear,
+chain calls and milliseconds by RPC provider, latency samples (ms and the minute, capped at
+`SAMPLE_CAP` 200 a provider and method), sends prepared and confirmed, and Pro payments with
+their dollars. Each request folds its own counters in once, after it has answered
+(`recordUsage`, on `waitUntil`); two requests landing together can lose an increment, as the
+talk counts can. The `PRICES` var (dollars per million tokens by model, per million characters
+spoken, per listening minute, RPC free, plus `ears_session_seconds`) turns them into an
+estimate — the ears are sessions × that length, since the worker mints the pass and never
+hears the audio, and the endpoint echoes the sheet back so it reads as an estimate, not a
+bill. `GET /admin/usage?days=30` returns the days, their costs, the totals and
+`latency_24h`: the median and p95 of every provider and method over the last 24 hours,
+nearest-rank, for comparing RPC Fast and Helius from Lagos. Checked live on Sept 20: a
+balance question logged three `devnet` calls (86–462ms) and a .skr lookup one `rpcfast` call
+(67ms). `test/usage.test.ts`.
 
 ## Plans, wallets and payment
 

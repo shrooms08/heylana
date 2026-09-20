@@ -203,8 +203,8 @@ Exactly what leaves the phone, and where it goes:
 6. **A random install id** — to Heylana's server, to count the daily budget.
 7. **Solana lookups, only for Solana questions** — Heylana's server looks things up
    before answering: your connected wallet's address, and any address or .skr/.sol
-   name in your question or on a signing screen, go to the **Solana RPC provider
-   (Helius)**; token prices come from **Jupiter**; .sol names from **Bonfida's**
+   name in your question or on a signing screen, go to a **Solana RPC provider
+   (RPC Fast, or Helius when it stands in)**; token prices come from **Jupiter**; .sol names from **Bonfida's**
    public resolver. Nothing else from the screen goes to them.
    For how Solana works, and for error messages, Heylana can search its own **Solana
    library**: the Solana, Anchor and Solana Mobile docs, the Solana Cookbook, top answers
@@ -284,6 +284,35 @@ blueprint puts transfers in a separate R4 "high impact" class; here R4 means nev
 transfers are R3 with the strictest confirmation — a passing simulation, the strip, and
 the wallet's own screen.)
 
+## Infrastructure
+
+**Two RPC providers, one fallback.** Every chain call the server makes — balances, token
+accounts, account information, signatures, simulations, blockhashes, signature statuses and
+.skr name lookups — goes through one function. On mainnet it asks **RPC Fast** first and
+**Helius** second (`RPC_PRIMARY` swaps them); a call that fails, comes back with an error
+worth retrying (the node is behind, unhealthy or busy), or takes longer than 1.2 seconds is
+tried once on the other, and a second failure is a plain sentence, never a provider's raw
+words. On devnet there is one address and no fallback. Addresses are secrets: the logs and
+the endpoint below name the provider, never the URL.
+
+**What is measured.** Each call is logged with its method, provider, milliseconds and whether
+it was served, came from the fallback or failed, and each request's own log line carries the
+calls it made and their total. A record a day in the server's store (kept 120 days) counts:
+active wallets (by a salted hash — counted, never listed), questions by model with their
+input and output tokens, characters spoken by each voice, listening sessions by each ear,
+chain calls and milliseconds by provider, sends prepared and confirmed, and Pro payments with
+what they came to. A price sheet turns those into an estimated daily cost; the estimate comes
+with the sheet it used, because prices change and this is a budget watch, not a bill. The
+listening figure is sessions times an assumed session length: the server mints the pass and
+never hears the audio.
+
+`GET /admin/usage?days=30`, behind `ADMIN_SECRET` in `X-Heylana-Admin`, returns those days,
+their costs, the totals, and the **median and p95 of every provider and method over the last
+24 hours**, so RPC Fast and Helius can be compared from where the phone actually is. Without
+the secret the route does not exist. Nothing personal is in it: no wallet, no device, no words.
+Counters are written once per request, so two requests landing together can lose an increment
+— close, like the talk counts, not exact.
+
 ## Architecture in ten lines
 
 1. Android app (Kotlin, minSdk 31): a foreground overlay service draws the buddy in Views with one glass recipe; the app itself (sign in, Home with the orb and chat, voice, menu, settings) is Compose, flat and dark, with thinking-orbs as its character.
@@ -295,7 +324,7 @@ the wallet's own screen.)
 7. Wallets connect over Mobile Wallet Adapter to Seed Vault; signing a message earns a 30-day session sealed by the worker.
 8. Plans, talks and profiles live in Workers KV, keyed by wallet, or by install id without one.
 9. Pro: the phone builds a USDC or SKR transfer with a unique reference, Seed Vault signs and sends it, and the worker verifies it on chain before extending Pro.
-10. The worker enforces the daily caps and monthly talk limits, and scrubs every error of anything secret.
+10. The worker enforces the daily caps and monthly talk limits, scrubs every error of anything secret, and counts what each day cost (models, voice, ears, chain calls) behind /admin/usage.
 
 ## Known issues
 

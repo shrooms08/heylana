@@ -32,3 +32,6 @@ scripts/eval/.state.json
 # The knowledge base: fetched text (other people's, rebuilt by scripts/kb/build.sh) and the admin secret
 scripts/kb/data/
 scripts/kb/.admin_secret
+
+# The secret /admin/usage asks for, so the operator can read it without it being in git.
+worker/.admin_secret

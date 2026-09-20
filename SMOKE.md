@@ -1,48 +1,77 @@
-# Smoke test — polish-4-palette
+# Smoke test — polish-5-rpc
 
-For Minos, on the Seeker. The new colours: a blue-black page, one blue accent, a white orb,
-and numbers in a monospace face.
+For Minos. Nothing changed in the app: this is all the server. It is deployed already.
+Devnet stays on `RPC_URL`, so the phone's sends and payments are exactly as they were.
 
-**Live calls this test spends: 1 chat (step 4), about 2 tts.** Never tap Confirm or Pay.
+**Live calls this test spends: 1 chat, about 1 tts.** Never tap Confirm or Pay.
 
-## 0. Set up
+The secret for step 2 is in `worker/.admin_secret` (git-ignored, as the knowledge base's is):
 
-Install this build, run `./scripts/a11y.sh`, open **Heylana**.
+```
+cd worker && SEC=$(cat .admin_secret)
+```
 
-## 1. Home
+## 1. Ask something that reads the chain (1 chat)
 
-Expected: the page is near-black with a faint blue cast in the top-right corner and a fainter
-one bottom-left — no visible rings or bands. The orb is white dots, with only the outermost
-dots faintly blue. The mic button is blue with a dark mic icon. The suggestion chips are dark
-pills with a thin grey outline.
+Open **Heylana**, type **what's my SOL balance** and tap the arrow. You get your balance as
+usual.
 
-## 2. The menu
+## 2. Read the table
 
-Tap the menu (top left). Expected: the drawer is a dark grey panel; nothing purple. Hold
-**Start buddy**: the ring that fills around the button is blue.
+```
+curl -s "https://heylana-proxy.heylana.workers.dev/admin/usage?days=7" \
+  -H "X-Heylana-Admin: $SEC" | python3 -m json.tool
+```
 
-## 3. The voice screen
+Expected, for today:
 
-Tap the mic once. Expected: the glow rising from the bottom and the wave are blue, the big mic
-is blue with a dark icon, and the timer's digits don't jitter as they count (monospace). Tap
-the close button.
+- `wallets: 1` — a count, never an address.
+- `chat` naming the model that answered, with `tokens_in` and `tokens_out`.
+- `rpc` with `devnet` and how many calls it served, and `rpc_ms` with their total.
+- `tts` with the characters Heylana spoke.
+- `cost` — an estimate in dollars from the `prices` sheet printed above it.
+- `latency_24h` — one row per provider and method with `calls`, `p50` and `p95`. Your balance
+  question shows `devnet / getBalance` and `devnet / getTokenAccountsByOwner`.
 
-## 4. The buddy (1 chat)
+Without the header it is a 404: `curl -s -o /dev/null -w "%{http_code}\n" ".../admin/usage"`.
 
-1. In Chrome, open **example.com** (a white page).
-2. Tap the disc, type **what is this page about**, tap **ask**.
+## 3. See the per-call lines (optional)
 
-   Expected while it thinks: a blue light laps the box's edge and the disc; the disc's dots are
-   white. The answer: white words in the glass box, with a chip under it.
+In one terminal `cd worker && npx wrangler tail --format pretty`, then ask another question.
+Each chain call prints `"route":"rpc"` with its method, provider, ms and `ok`; the request's
+own line carries the same calls under `rpc` with `rpc_ms`.
 
-3. Tap outside the box to close it. Close the example.com tab.
+## 4. Confirm RPC Fast is the mainnet primary
 
-## 5. Numbers
+Two ways — the second is the one in the brief:
 
-On Home, paste **Error Code: ConstraintSeeds. Error Number: 2006** and tap the arrow (no chat).
-Expected: in the answer, "2006" is in a monospace face; the rest is the usual rounded font.
-Menu → the Plan row: the date's number ("Nov 9") is monospace too.
+**Already proved live.** Ask **who owns toly.skr** in the app. A .skr name is always looked
+up on mainnet, so that call goes to the mainnet primary; `/admin/usage` then shows
+`rpc: { devnet: …, rpcfast: 1 }`. (Done on Sept 20: one `rpcfast` `getAccountInfo`, 67ms.)
 
-## Put it back
+**Locally, without deploying.** In `worker/`, put the addresses in a `.dev.vars` file (it is
+git-ignored; `wrangler secret list` names the ones in use):
 
-Menu → hold **Start buddy** to stop it if you want it off.
+```
+RPC_URL=<devnet address>
+RPCFAST_URL=<RPC Fast mainnet address>
+MAINNET_RPC_URL=<Helius mainnet address>
+SESSION_SECRET=anything-for-local
+ADMIN_SECRET=local
+```
+
+Then edit `wrangler.toml` and set `CLUSTER = "mainnet-beta"`, run `npx wrangler dev`, and in
+another terminal:
+
+```
+curl -s localhost:8787/admin/usage -H "X-Heylana-Admin: local" | python3 -m json.tool | head
+```
+
+Ask the local worker anything that reads the chain (or just watch its output): the per-call
+lines say `"provider":"rpcfast"`. **Put `CLUSTER` back to `"devnet"`** when you are done —
+`git diff wrangler.toml` should come back empty — and stop `wrangler dev`.
+
+## If a provider is down
+
+Nothing to do. The other is tried once, and the log line says `"outcome":"fallback"`. If both
+fail, the phone says "I can't reach my brain right now" or the plain line for that route.

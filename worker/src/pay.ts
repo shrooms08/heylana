@@ -10,6 +10,7 @@
  * Nothing here holds or moves funds, and nothing trusts the phone's word for it.
  */
 import { encodeBase58 } from './base58.ts'
+import type { Rpc } from './rpc.ts'
 
 export const TOKEN_PROGRAM = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
 export const TOKEN_2022_PROGRAM = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'
@@ -63,21 +64,9 @@ export function newReference(): string {
   return encodeBase58(crypto.getRandomValues(new Uint8Array(32)))
 }
 
-/** One JSON-RPC call to the configured Solana RPC. */
-export async function rpc(url: string, method: string, params: unknown[]): Promise<any> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-  })
-  const body: any = await res.json()
-  if (body?.error) throw new Error(`rpc ${method}: ${body.error.code}`)
-  return body?.result
-}
-
 /** A mint's decimals and which token program owns it, read from the chain. */
-export async function mintInfo(url: string, mint: string): Promise<{ decimals: number; program: string }> {
-  const result = await rpc(url, 'getAccountInfo', [mint, { encoding: 'jsonParsed', commitment: 'confirmed' }])
+export async function mintInfo(rpc: Rpc, mint: string): Promise<{ decimals: number; program: string }> {
+  const result = await rpc('getAccountInfo', [mint, { encoding: 'jsonParsed', commitment: 'confirmed' }])
   const value = result?.value
   const decimals = value?.data?.parsed?.info?.decimals
   if (!value || typeof decimals !== 'number') throw new Error('mint not found')

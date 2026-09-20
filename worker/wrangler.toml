@@ -37,6 +37,13 @@ SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3"
 PRICE_USD = "0.10"
 PRO_DAYS = "30"
 
+# Which mainnet RPC is tried first: "rpcfast" (RPC Fast, the default) or "helius".
+# The other is the fallback, tried once when the first fails, answers a retryable
+# error, or takes longer than 1200ms. Devnet always uses RPC_URL and has no
+# fallback. The addresses themselves are secrets (RPCFAST_URL, MAINNET_RPC_URL,
+# RPC_URL); see README.md.
+RPC_PRIMARY = "rpcfast"
+
 # Which Solana payments are taken on: "mainnet-beta", or "devnet" to test with
 # play money (then RPC_URL and USDC_MINT must be devnet too). See README.md.
 CLUSTER = "devnet"

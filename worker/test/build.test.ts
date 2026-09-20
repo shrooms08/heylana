@@ -382,6 +382,30 @@ test('the build log carries amounts and four characters of an address, never mor
   for (const address of [pubkey, FRIEND, id]) assert.equal(line.includes(address.slice(0, 5)), false)
 })
 
+test('every chain call is logged, and rolled into the request line by provider and ms', async () => {
+  const e = env()
+  const { pubkey, session } = await connected(e)
+  chain.balances[pubkey] = '5000000'
+  const id = await preparedSend(e, session)
+  logs = []
+  await build(e, session, { id })
+
+  const perCall = logs.map((l) => JSON.parse(l)).filter((l) => l.route === 'rpc')
+  assert.ok(perCall.length > 0)
+  for (const call of perCall) {
+    assert.equal(call.provider, 'devnet', 'a devnet worker names its one provider')
+    assert.equal(call.outcome, 'ok')
+    assert.equal(typeof call.ms, 'number')
+    assert.ok(typeof call.method === 'string' && call.method.startsWith('get') || call.method === 'simulateTransaction')
+  }
+  const line = JSON.parse(logs.find((l) => l.includes('"route":"send/build"'))!)
+  assert.equal(line.rpc.length, perCall.length)
+  assert.deepEqual([...new Set(line.rpc.map((c: any) => c.provider))], ['devnet'])
+  assert.equal(line.rpc_ms, line.rpc.reduce((sum: number, c: any) => sum + c.ms, 0))
+  // The addresses stay out of it: only the provider's name.
+  assert.equal(JSON.stringify(line.rpc).includes('http'), false)
+})
+
 /** A landed transferChecked from [from] to FRIEND carrying [reference], as getTransaction returns it. */
 function landedTokenTx(from: string, reference: string) {
   const fromAta = 'FGETo8T8wMcN2wCjav8VK6eh3dLk63evNDPxzLSJra8B'

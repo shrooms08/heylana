@@ -10,7 +10,7 @@
  * be unverifiable, never guessed.
  */
 import { isAddress } from './base58.ts'
-import { KNOWN, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, rpcCall } from './solana.ts'
+import { KNOWN, TOKEN_2022_PROGRAM, TOKEN_PROGRAM } from './solana.ts'
 import type { ToolContext } from './tools.ts'
 
 const SHORT = /^([1-9A-HJ-NP-Za-km-z]{4,8})(?:…|\.\.\.)([1-9A-HJ-NP-Za-km-z]{4,8})$/
@@ -101,7 +101,7 @@ export function withAddressChecks(messages: unknown, lines: string): unknown {
 async function ownTokenAccounts(wallet: string, context: ToolContext): Promise<{ address: string; label: string }[]> {
   const results = await Promise.all(
     [TOKEN_PROGRAM, TOKEN_2022_PROGRAM].map((programId) =>
-      rpcCall(context.rpcUrl, 'getTokenAccountsByOwner', [wallet, { programId }, { encoding: 'jsonParsed' }], context.signal).catch(() => null),
+      context.rpc('getTokenAccountsByOwner', [wallet, { programId }, { encoding: 'jsonParsed' }], { signal: context.signal }).catch(() => null),
     ),
   )
   return results.flatMap((result) =>
@@ -121,15 +121,16 @@ async function recentCounterparties(wallet: string, context: ToolContext, store?
     // A cache that cannot be read is just a cache miss.
   }
 
-  const signatures = await rpcCall(context.rpcUrl, 'getSignaturesForAddress', [wallet, { limit: RECENT }], context.signal).catch(() => [])
+  const signatures = await context.rpc('getSignaturesForAddress', [wallet, { limit: RECENT }], { signal: context.signal }).catch(() => [])
   const transactions = await Promise.all(
     (Array.isArray(signatures) ? signatures : []).slice(0, RECENT).map((entry: any) =>
-      rpcCall(
-        context.rpcUrl,
-        'getTransaction',
-        [entry.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }],
-        context.signal,
-      ).catch(() => null),
+      context
+        .rpc(
+          'getTransaction',
+          [entry.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }],
+          { signal: context.signal },
+        )
+        .catch(() => null),
     ),
   )
   const found = new Set<string>()

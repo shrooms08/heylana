@@ -6,6 +6,7 @@ import { answerWithTools } from '../src/brain.ts'
 import { REGISTRY, authorize, actionRisk, entry, validate } from '../src/registry.ts'
 import { TOOL_DEFINITIONS } from '../src/tools.ts'
 import { readConfirmation, readSession, signConfirmation } from '../src/session.ts'
+import { makeRpc } from '../src/rpc.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
 const OTHER_DEVICE = '11111111-2222-4333-8444-555555555555'
@@ -150,7 +151,7 @@ test('in the loop, a rejected call never runs, the model is told, and the decisi
       return new Response(JSON.stringify(script[Math.min(bodies.length - 1, script.length - 1)]))
     },
     base: { model: 'm', max_tokens: 10, messages: [{ role: 'user', content: 'sign it' }] },
-    context: { rpcUrl: RPC, usdcMint: 'u', skrMint: 's', cluster: 'devnet', wallet: null, now: () => { ran++; return SEPT } },
+    context: { rpc: makeRpc({ RPC_URL: RPC, CLUSTER: 'devnet' }), usdcMint: 'u', skrMint: 's', cluster: 'devnet', wallet: null, now: () => { ran++; return SEPT } },
     now: () => SEPT,
   })
   assert.deepEqual(result.toolCalls, [], 'nothing ran')

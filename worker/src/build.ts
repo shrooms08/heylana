@@ -12,7 +12,8 @@
  * Nothing here signs, and nothing here submits. Seed Vault does both.
  */
 import { buildTransfer, toBase64, type TransferPlan } from './tx.ts'
-import { KNOWN, SOL_DECIMALS, TOKEN_2022_PROGRAM, rpcCall, short, unitsToDecimal } from './solana.ts'
+import type { Rpc } from './rpc.ts'
+import { KNOWN, SOL_DECIMALS, TOKEN_2022_PROGRAM, short, unitsToDecimal } from './solana.ts'
 
 /** What the strip shows, in its own words; addresses only ever shortened. */
 export interface Preview {
@@ -72,22 +73,22 @@ const TOKEN_ACCOUNT_SIZE = 165
 const TOKEN_2022_ACCOUNT_SIZE = 170
 
 /** A fresh blockhash, the transfer built on it, then simulated. One rebuild if the blockhash went stale. */
-export async function buildAndSimulate(rpcUrl: string, plan: TransferPlan, facts: BuildFacts): Promise<Built> {
+export async function buildAndSimulate(rpc: Rpc, plan: TransferPlan, facts: BuildFacts): Promise<Built> {
   let attempt = 0
   for (;;) {
     attempt++
-    const latest = await rpcCall(rpcUrl, 'getLatestBlockhash', [{ commitment: 'confirmed' }])
+    const latest = await rpc('getLatestBlockhash', [{ commitment: 'confirmed' }])
     const blockhash = String(latest?.value?.blockhash ?? '')
     const lastValid = Number(latest?.value?.lastValidBlockHeight ?? 0)
     const { message, transaction } = await buildTransfer(plan, blockhash)
     const encoded = toBase64(transaction)
 
     const [simulated, fee] = await Promise.all([
-      rpcCall(rpcUrl, 'simulateTransaction', [
+      rpc('simulateTransaction', [
         encoded,
         { encoding: 'base64', sigVerify: false, replaceRecentBlockhash: false, commitment: 'confirmed' },
       ]).catch(() => null),
-      rpcCall(rpcUrl, 'getFeeForMessage', [toBase64(message), { commitment: 'confirmed' }]).catch(() => null),
+      rpc('getFeeForMessage', [toBase64(message), { commitment: 'confirmed' }]).catch(() => null),
     ])
     const simulation = simulated
       ? explainSimulation(simulated.value, plan, facts)
@@ -125,14 +126,14 @@ export function previewOf(plan: TransferPlan, facts: BuildFacts, feeLamports: bi
 }
 
 /** Rent for a new token account under [tokenProgram], in lamports. */
-export async function tokenAccountRent(rpcUrl: string, tokenProgram: string | null): Promise<bigint> {
+export async function tokenAccountRent(rpc: Rpc, tokenProgram: string | null): Promise<bigint> {
   const size = tokenProgram === TOKEN_2022_PROGRAM ? TOKEN_2022_ACCOUNT_SIZE : TOKEN_ACCOUNT_SIZE
-  return BigInt((await rpcCall(rpcUrl, 'getMinimumBalanceForRentExemption', [size])) ?? 0)
+  return BigInt((await rpc('getMinimumBalanceForRentExemption', [size])) ?? 0)
 }
 
 /** Whether [owner] has no account for [mint] yet, so the transfer would open one. */
-export async function needsAccount(rpcUrl: string, owner: string, mint: string): Promise<boolean> {
-  const found = await rpcCall(rpcUrl, 'getTokenAccountsByOwner', [owner, { mint }, { encoding: 'jsonParsed' }])
+export async function needsAccount(rpc: Rpc, owner: string, mint: string): Promise<boolean> {
+  const found = await rpc('getTokenAccountsByOwner', [owner, { mint }, { encoding: 'jsonParsed' }])
   return (found?.value ?? []).length === 0
 }
 

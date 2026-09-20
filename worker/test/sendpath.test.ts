@@ -4,6 +4,7 @@ import worker, { clock, type Env } from '../src/index.ts'
 import { checkShortAddresses, matchesShort } from '../src/shortaddr.ts'
 import { PROPOSE_ACTION } from '../src/brain.ts'
 import type { ToolContext } from '../src/tools.ts'
+import { makeRpc } from '../src/rpc.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
 const RPC = 'https://rpc.test/secret-token-abc'
@@ -136,7 +137,7 @@ test('the treasury on a signing screen is named before the model sees the questi
 })
 
 const context = (over: Partial<ToolContext> = {}): ToolContext => ({
-  rpcUrl: RPC, usdcMint: 'mint', skrMint: 'replace-me', cluster: 'devnet', wallet: null, treasury: TREASURY, now: () => SEPT, ...over,
+  rpc: makeRpc({ RPC_URL: RPC, CLUSTER: 'devnet' }), usdcMint: 'mint', skrMint: 'replace-me', cluster: 'devnet', wallet: null, treasury: TREASURY, now: () => SEPT, ...over,
 })
 
 test('your own wallet, its token accounts and what you typed are recognised', async () => {

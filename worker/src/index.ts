@@ -23,6 +23,7 @@ import { aboutBlock, newRecord, parseMemory, refusal, relevant, withRecord, type
 import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
+import { makeRpc, type Rpc, type RpcSample } from './rpc.ts'
 import { answerWithTools, forcedAnswer, proposeAction, proposeSend, toolsNamed } from './brain.ts'
 import { sentryFor, type WaitUntil } from './sentry.ts'
 import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
@@ -31,7 +32,7 @@ import { prepareSend } from './tools.ts'
 import { checkSend, type PreparedSend } from './send.ts'
 import { buildAndSimulate, labelFor, needsAccount, tokenAccountRent, type Built } from './build.ts'
 import type { TransferPlan } from './tx.ts'
-import { rpcCall, short, unitsToDecimal } from './solana.ts'
+import { short, unitsToDecimal } from './solana.ts'
 import { checkedBody } from './say.ts'
 import { addCacheUse, noCacheUse, withCache, withCacheTotals } from './cache.ts'
 import { ingest, searchKb, withSources, type Ai, type Kb, type KbResult, type VectorIndex } from './kb.ts'
@@ -44,7 +45,7 @@ import {
 } from './plans.ts'
 import {
   type Quote, QUOTE_TTL_MS, TOKEN_2022_PROGRAM, TOKEN_PROGRAM, USDC_DECIMALS, checkPayment, decimalToUnits,
-  mintInfo, newReference, rpc, usdPrice, usdToTokenUnits,
+  mintInfo, newReference, usdPrice, usdToTokenUnits,
 } from './pay.ts'
 
 /** The smallest slice of Workers KV this needs; keeps the types dependency-free. */
@@ -72,7 +73,12 @@ export interface Env {
   /** The code that turns an account into a judge's. */
   JUDGE_CODE: string
   /** A Solana mainnet RPC endpoint. Its URL carries a token, so it is a secret. */
+  /** Devnet's RPC. On devnet this is the only provider; on mainnet the two below are used instead. */
   RPC_URL: string
+  /** RPC Fast, mainnet. */
+  RPCFAST_URL?: string
+  /** Which mainnet provider is tried first: "rpcfast" (the default) or "helius". */
+  RPC_PRIMARY?: string
   /** Optional: raises Jupiter's rate limit above the keyless one. */
   JUPITER_API_KEY?: string
   /** Optional: a mainnet RPC for .skr names, which live on mainnet whatever CLUSTER is. */
@@ -295,21 +301,29 @@ export default {
     }
 
     const started = clock.now()
+    // One RPC caller for this request: every chain call goes through it, and it keeps what
+    // each call cost so the log below can carry them.
+    const rpc = makeRpc(env, {
+      now: clock.now,
+      // One line per chain call: which method, which provider, how long, how it went.
+      onCall: (call) => log({ route: 'rpc', method: call.method, provider: call.provider, ms: call.ms, outcome: call.outcome }),
+    })
+    current = { rpc, logged: false }
     try {
-      if (route === 'chat') return await chat(request, env, who, started)
+      if (route === 'chat') return await chat(request, env, who, started, rpc)
       if (route === 'tts') return await speak(request, env, device, started)
       if (route === 'stt-token') return await sttToken(env, device, started)
       if (route === 'stt-token-aai') return await sttTokenAai(env, device, started)
       if (route === 'wallet/challenge') return await walletChallenge(request, env, who)
       if (route === 'wallet/verify') return await walletVerify(request, env, who)
       if (route === 'judge') return await judge(request, env, who)
-      if (route === 'pay/quote') return await payQuote(request, env, who)
-      if (route === 'pay/blockhash') return await payBlockhash(request, env, who)
-      if (route === 'pay/confirm') return await payConfirm(request, env, who)
+      if (route === 'pay/quote') return await payQuote(request, env, who, rpc)
+      if (route === 'pay/blockhash') return await payBlockhash(request, env, who, rpc)
+      if (route === 'pay/confirm') return await payConfirm(request, env, who, rpc)
       if (route === 'profile') return await profile(request, env, who)
-      if (route === 'send/prepare') return await sendPrepare(request, env, who)
-      if (route === 'send/confirm') return await sendConfirm(request, env, who)
-      if (route === 'send/build') return await sendBuild(request, env, who)
+      if (route === 'send/prepare') return await sendPrepare(request, env, who, rpc)
+      if (route === 'send/confirm') return await sendConfirm(request, env, who, rpc)
+      if (route === 'send/build') return await sendBuild(request, env, who, rpc)
       if (route === 'confirm') return await confirm(request, env, who)
       if (route === 'memory' || route.startsWith('memory/')) return await memory(route, request, env, who)
       return await me(env, who)
@@ -320,6 +334,10 @@ export default {
       sentryFor(request, env.SENTRY_DSN, context, (text) => scrub(text, env))?.captureException(error)
       // The phone says "Something went wrong on my side."; what happened is in the log and Sentry.
       return fail(500, 'internal', 'Something went wrong on Heylana\'s side.')
+    } finally {
+      // A route that logs nothing of its own still says what its chain calls cost.
+      if (rpc.calls.length > 0 && !current.logged) log({ route, device, ms: clock.now() - started })
+      current = null
     }
   },
 }
@@ -327,7 +345,7 @@ export default {
 // ------------------------------------------------------------------- routes
 
 /** A question. The app says what kind of work it is; we choose the model. */
-async function chat(request: Request, env: Env, who: Who, started: number): Promise<Response> {
+async function chat(request: Request, env: Env, who: Who, started: number, rpc: Rpc): Promise<Response> {
   const device = who.device
   const body = await readJson(request)
   const model = MODELS[String(body.mode)]
@@ -453,7 +471,7 @@ async function chat(request: Request, env: Env, who: Who, started: number): Prom
       text = forcedAnswer(null, tokensIn, tokensOut)
     }
   } else if (withTools) {
-    const context = { ...toolContext(env, who), stats: kbStats }
+    const context = { ...toolContext(env, who, rpc), stats: kbStats }
     const signing = body.signing as { short?: unknown; typed?: unknown } | undefined
     if (signing && typeof signing === 'object') {
       const checkStarted = clock.now()
@@ -1018,7 +1036,7 @@ async function me(env: Env, who: Who): Promise<Response> {
  * What to send for 30 days of Pro, in USDC or SKR. The reference is a fresh
  * address the phone puts in the transaction so this exact payment can be found.
  */
-async function payQuote(request: Request, env: Env, who: Who): Promise<Response> {
+async function payQuote(request: Request, env: Env, who: Who, rpc: Rpc): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   if (!payConfigured(env)) return fail(503, 'not_configured', 'Payments are not set up.')
   const body = await readJson(request)
@@ -1037,7 +1055,7 @@ async function payQuote(request: Request, env: Env, who: Who): Promise<Response>
     if (!isAddress(env.SKR_MINT)) return fail(503, 'not_configured', 'SKR payments are not set up.')
     mint = env.SKR_MINT
     // Decimals and token program come from the chain, not from a guess.
-    const info = await mintInfo(env.RPC_URL, mint)
+    const info = await mintInfo(rpc, mint)
     if (info.program !== TOKEN_PROGRAM && info.program !== TOKEN_2022_PROGRAM) {
       return fail(502, 'upstream', 'The SKR mint is not a token mint.')
     }
@@ -1070,7 +1088,7 @@ async function payQuote(request: Request, env: Env, who: Who): Promise<Response>
 }
 
 /** A recent blockhash, fetched at the moment Pay is tapped so it is still fresh. */
-async function payBlockhash(request: Request, env: Env, who: Who): Promise<Response> {
+async function payBlockhash(request: Request, env: Env, who: Who, rpc: Rpc): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   if (!env.RPC_URL) return fail(503, 'not_configured', 'Payments are not set up.')
   // A blockhash from one cluster makes a transaction the other cannot land.
@@ -1080,12 +1098,12 @@ async function payBlockhash(request: Request, env: Env, who: Who): Promise<Respo
     return fail(409, 'wrong_cluster', `Payments are on ${cluster}.`)
   }
   // A blockhash from the wrong network makes a transaction the wallet will refuse.
-  const mismatch = await rpcClusterMismatch(env.RPC_URL, cluster)
+  const mismatch = await rpcClusterMismatch(rpc, cluster)
   if (mismatch) {
     log({ route: 'pay/blockhash', device: who.device, rpc_wrong_cluster: true, cluster })
     return fail(503, 'rpc_wrong_cluster', mismatch)
   }
-  const result = await rpc(env.RPC_URL, 'getLatestBlockhash', [{ commitment: 'confirmed' }])
+  const result = await rpc('getLatestBlockhash', [{ commitment: 'confirmed' }])
   return json(200, {
     blockhash: result?.value?.blockhash,
     last_valid_block_height: result?.value?.lastValidBlockHeight,
@@ -1099,7 +1117,7 @@ async function payBlockhash(request: Request, env: Env, who: Who): Promise<Respo
  * reason if the transaction is not the payment quoted; and Pro once it is. A
  * reference is only ever paid for once.
  */
-async function payConfirm(request: Request, env: Env, who: Who): Promise<Response> {
+async function payConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   if (!payConfigured(env)) return fail(503, 'not_configured', 'Payments are not set up.')
   const body = await readJson(request)
@@ -1126,9 +1144,9 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
       already_confirmed: true,
     })
   }
-  const signature = given ?? (await paymentByReference(env, reference, quote))
+  const signature = given ?? (await paymentByReference(env, rpc, reference, quote))
   if (!signature) {
-    const gone = await expired(env, reference)
+    const gone = await expired(env, rpc, reference)
     log({ route: 'pay/confirm', device: who.device, wallet: who.wallet.slice(0, 8), looked_up: true, found: false, expired: gone })
     return gone ? json(410, { reason: 'expired' }) : json(409, { reason: 'not_confirmed' })
   }
@@ -1137,7 +1155,7 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
     return fail(409, 'signature_used', 'That transaction already paid for something else.')
   }
 
-  const tx = await rpc(env.RPC_URL, 'getTransaction', [
+  const tx = await rpc('getTransaction', [
     signature,
     { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
   ])
@@ -1145,7 +1163,7 @@ async function payConfirm(request: Request, env: Env, who: Who): Promise<Respons
   if (!verdict.ok) {
     log({ route: 'pay/confirm', device: who.device, wallet: who.wallet.slice(0, 8), accepted: false, reason: verdict.reason })
     if (verdict.reason === 'not_confirmed') {
-      return (await expired(env, reference)) ? json(410, { reason: 'expired' }) : json(409, { reason: 'not_confirmed' })
+      return (await expired(env, rpc, reference)) ? json(410, { reason: 'expired' }) : json(409, { reason: 'not_confirmed' })
     }
     return json(402, { reason: verdict.reason })
   }
@@ -1182,10 +1200,10 @@ const SEND_TTL_SECONDS = 900
  * builds and simulates it; the user signs it in Seed Vault. Logs amounts, never
  * more than the first four characters of an address.
  */
-async function sendPrepare(request: Request, env: Env, who: Who): Promise<Response> {
+async function sendPrepare(request: Request, env: Env, who: Who, rpc: Rpc): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   if (!env.RPC_URL) return fail(503, 'not_configured', 'Sending is not set up.')
-  const mismatch = await rpcClusterMismatch(env.RPC_URL, clusterOf(env))
+  const mismatch = await rpcClusterMismatch(rpc, clusterOf(env))
   if (mismatch) {
     log({ route: 'send/prepare', device: who.device, rpc_wrong_cluster: true, cluster: clusterOf(env) })
     return json(503, { reason: 'rpc_wrong_cluster', detail: mismatch })
@@ -1197,7 +1215,7 @@ async function sendPrepare(request: Request, env: Env, who: Who): Promise<Respon
     logDecision(who, 'send', 'rejected', 'recipient_not_in_user_words')
     return json(422, { reason: 'not_in_user_words', detail: 'I can only send to someone you named yourself.' })
   }
-  const quote = await prepareSend({ to: body.to, amount: body.amount, token: body.token }, toolContext(env, who))
+  const quote = await prepareSend({ to: body.to, amount: body.amount, token: body.token }, toolContext(env, who, rpc))
   if ('error' in quote) {
     log({ route: 'send/prepare', device: who.device, wallet: who.wallet.slice(0, 4), token, amount: String(body.amount ?? ''), refused: quote.error })
     return json(422, { reason: quote.error, detail: quote.detail ?? '' })
@@ -1226,7 +1244,7 @@ interface BuildRecord {
  * for and the simulation passed: a transfer that fails simulation never reaches a
  * wallet. Nothing is signed or submitted here.
  */
-async function sendBuild(request: Request, env: Env, who: Who): Promise<Response> {
+async function sendBuild(request: Request, env: Env, who: Who, rpc: Rpc): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   if (!env.RPC_URL) return fail(503, 'not_configured', 'Sending is not set up.')
   const body = await readJson(request)
@@ -1238,13 +1256,13 @@ async function sendBuild(request: Request, env: Env, who: Who): Promise<Response
       detail: `This is for ${String(body.cluster)}, but Heylana is on ${cluster}. I stopped before building it.`,
     })
   }
-  const mismatch = await rpcClusterMismatch(env.RPC_URL, cluster)
+  const mismatch = await rpcClusterMismatch(rpc, cluster)
   if (mismatch) {
     log({ route: 'send/build', device: who.device, rpc_wrong_cluster: true, cluster })
     return json(503, { reason: 'rpc_wrong_cluster', detail: mismatch })
   }
 
-  const target = await buildTarget(body, env, who)
+  const target = await buildTarget(body, env, who, rpc)
   if ('error' in target) return target.error
   const final = body.final === true
   // R3: the bytes for Seed Vault only with the user's confirmation of exactly this send or payment.
@@ -1254,7 +1272,7 @@ async function sendBuild(request: Request, env: Env, who: Who): Promise<Response
     logDecision(who, target.kind, holds ? 'allowed' : 'rejected', holds ? undefined : 'confirmation_required')
     if (!holds) return json(403, { reason: 'confirmation_required', detail: 'Tap Confirm first.' })
   }
-  const built = await buildAndSimulate(env.RPC_URL, target.plan, target.facts)
+  const built = await buildAndSimulate(rpc, target.plan, target.facts)
   const record: BuildRecord = { sim_ok: built.simulation.ok, last_valid_block_height: built.last_valid_block_height, at: clock.now() }
   await env.CAPS.put(`built:${target.subject}`, JSON.stringify(record), { expirationTtl: SEND_TTL_SECONDS })
   log({
@@ -1277,7 +1295,7 @@ type BuildTarget =
   | { error: Response }
 
 /** The transfer a prepared send or a Pro quote describes, and the facts its words need. */
-async function buildTarget(body: any, env: Env, who: Who): Promise<BuildTarget> {
+async function buildTarget(body: any, env: Env, who: Who, rpc: Rpc): Promise<BuildTarget> {
   const cluster = clusterOf(env)
   if (typeof body.id === 'string' && body.id) {
     const stored = await env.CAPS.get(`send:${body.id}`)
@@ -1285,7 +1303,7 @@ async function buildTarget(body: any, env: Env, who: Who): Promise<BuildTarget> 
     const sent = JSON.parse(stored) as PreparedSend
     if (sent.from !== who.wallet) return { error: fail(403, 'not_yours', 'That send belongs to another wallet.') }
     const [createsAccount, rent] = sent.mint
-      ? await Promise.all([needsAccount(env.RPC_URL, sent.to_address, sent.mint), tokenAccountRent(env.RPC_URL, sent.token_program)])
+      ? await Promise.all([needsAccount(rpc, sent.to_address, sent.mint), tokenAccountRent(rpc, sent.token_program)])
       : [false, 0n]
     return {
       kind: 'send',
@@ -1316,9 +1334,9 @@ async function buildTarget(body: any, env: Env, who: Who): Promise<BuildTarget> 
     const quote = JSON.parse(stored) as Quote
     if (quote.pubkey !== who.wallet) return { error: fail(403, 'not_yours', 'That quote is for another wallet.') }
     const [createsAccount, rent, holdings] = await Promise.all([
-      needsAccount(env.RPC_URL, quote.treasury, quote.mint),
-      tokenAccountRent(env.RPC_URL, quote.token_program),
-      rpcCall(env.RPC_URL, 'getTokenAccountsByOwner', [quote.pubkey, { mint: quote.mint }, { encoding: 'jsonParsed' }]).catch(() => null),
+      needsAccount(rpc, quote.treasury, quote.mint),
+      tokenAccountRent(rpc, quote.token_program),
+      rpc('getTokenAccountsByOwner', [quote.pubkey, { mint: quote.mint }, { encoding: 'jsonParsed' }]).catch(() => null),
     ])
     const units = (holdings?.value ?? []).reduce(
       (sum: bigint, account: any) => sum + BigInt(account?.account?.data?.parsed?.info?.tokenAmount?.amount ?? '0'),
@@ -1353,12 +1371,12 @@ async function buildTarget(body: any, env: Env, who: Who): Promise<BuildTarget> 
  * Whether a built transfer can no longer land: the chain has passed the last block
  * its blockhash was good for. Then it was never submitted, and never will be.
  */
-async function expired(env: Env, subject: string): Promise<boolean> {
+async function expired(env: Env, rpc: Rpc, subject: string): Promise<boolean> {
   const stored = await env.CAPS.get(`built:${subject}`)
   if (!stored) return false
   const record = JSON.parse(stored) as BuildRecord
   if (!record.last_valid_block_height) return false
-  const height = await rpc(env.RPC_URL, 'getBlockHeight', [{ commitment: 'confirmed' }]).catch(() => null)
+  const height = await rpc('getBlockHeight', [{ commitment: 'confirmed' }]).catch(() => null)
   return typeof height === 'number' && height > record.last_valid_block_height
 }
 
@@ -1411,7 +1429,7 @@ async function confirm(request: Request, env: Env, who: Who): Promise<Response> 
 }
 
 /** The user signed; did it land as prepared? 409 while it is not confirmed yet. */
-async function sendConfirm(request: Request, env: Env, who: Who): Promise<Response> {
+async function sendConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Promise<Response> {
   if (!who.wallet) return fail(401, 'session_required', 'Connect a wallet first.')
   const body = await readJson(request)
   const id = String(body.id ?? '')
@@ -1432,7 +1450,7 @@ async function sendConfirm(request: Request, env: Env, who: Who): Promise<Respon
     const used = await env.CAPS.get(`sentsig:${signature}`)
     if (used && used !== id) return fail(409, 'signature_used', 'That transaction already counted for another send.')
     // The status is cheap: only a confirmed transaction is worth reading in full.
-    const statuses = await rpc(env.RPC_URL, 'getSignatureStatuses', [[signature], { searchTransactionHistory: true }])
+    const statuses = await rpc('getSignatureStatuses', [[signature], { searchTransactionHistory: true }])
     const status = statuses?.value?.[0]
     const landed = status && (status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized')
     if (!landed) {
@@ -1440,18 +1458,18 @@ async function sendConfirm(request: Request, env: Env, who: Who): Promise<Respon
     } else if (status.err) {
       verdict = { ok: false, reason: 'failed_on_chain' }
     } else {
-      const tx = await rpc(env.RPC_URL, 'getTransaction', [
+      const tx = await rpc('getTransaction', [
         signature,
         { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
       ])
       verdict = checkSend(tx, sent)
     }
   } else {
-    signature = await findLandedSend(env, sent, id)
+    signature = await findLandedSend(env, rpc, sent, id)
     verdict = signature ? { ok: true } : { ok: false, reason: 'not_confirmed' }
   }
   // Not on chain, and its blockhash has run out: it was never submitted and never will be.
-  if (!verdict.ok && verdict.reason === 'not_confirmed' && (await expired(env, id))) {
+  if (!verdict.ok && verdict.reason === 'not_confirmed' && (await expired(env, rpc, id))) {
     verdict = { ok: false, reason: 'expired' }
   }
   const logged = {
@@ -1485,9 +1503,9 @@ const LANDED_SLACK_MS = 120_000
  * latest transactions: newer than when it was prepared, succeeded, doing exactly
  * what was prepared, and not already counted for another send.
  */
-async function findLandedSend(env: Env, sent: PreparedSend, id: string): Promise<string | null> {
+async function findLandedSend(env: Env, rpc: Rpc, sent: PreparedSend, id: string): Promise<string | null> {
   // A send built here carries its id as a read-only reference: that finds it directly.
-  const byReference = await rpc(env.RPC_URL, 'getSignaturesForAddress', [id, { limit: 5 }]).catch(() => [])
+  const byReference = await rpc('getSignaturesForAddress', [id, { limit: 5 }]).catch(() => [])
   const newerThan = (sent.prepared_at ?? 0) - LANDED_SLACK_MS
   for (const entry of Array.isArray(byReference) ? byReference : []) {
     const signature = String(entry?.signature ?? '')
@@ -1495,7 +1513,7 @@ async function findLandedSend(env: Env, sent: PreparedSend, id: string): Promise
     if (entry?.blockTime && entry.blockTime * 1000 < newerThan) continue
     const used = await env.CAPS.get(`sentsig:${signature}`)
     if (used && used !== id) continue
-    const tx = await rpc(env.RPC_URL, 'getTransaction', [
+    const tx = await rpc('getTransaction', [
       signature,
       { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
     ])
@@ -1505,11 +1523,11 @@ async function findLandedSend(env: Env, sent: PreparedSend, id: string): Promise
   // transfer shows up on both, but an RPC may index one before the other.
   const addresses = [sent.from]
   if (sent.mint) {
-    const accounts = await rpc(env.RPC_URL, 'getTokenAccountsByOwner', [sent.from, { mint: sent.mint }, { encoding: 'jsonParsed' }]).catch(() => null)
+    const accounts = await rpc('getTokenAccountsByOwner', [sent.from, { mint: sent.mint }, { encoding: 'jsonParsed' }]).catch(() => null)
     for (const account of accounts?.value ?? []) if (isAddress(account?.pubkey)) addresses.push(account.pubkey)
   }
   const lists = await Promise.all(
-    addresses.map((address) => rpc(env.RPC_URL, 'getSignaturesForAddress', [address, { limit: LANDED_LOOKBACK }]).catch(() => [])),
+    addresses.map((address) => rpc('getSignaturesForAddress', [address, { limit: LANDED_LOOKBACK }]).catch(() => [])),
   )
   const seen = new Set<string>()
   const recent = lists
@@ -1524,7 +1542,7 @@ async function findLandedSend(env: Env, sent: PreparedSend, id: string): Promise
     if (!SIGNATURE.test(signature)) continue
     const used = await env.CAPS.get(`sentsig:${signature}`)
     if (used && used !== id) continue
-    const tx = await rpc(env.RPC_URL, 'getTransaction', [
+    const tx = await rpc('getTransaction', [
       signature,
       { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
     ])
@@ -1563,11 +1581,10 @@ async function kbAdmin(route: string, request: Request, env: Env): Promise<Respo
   return json(200, { results })
 }
 
-function toolContext(env: Env, who: Who) {
+function toolContext(env: Env, who: Who, rpc: Rpc) {
   return {
     kb: kbOf(env),
-    rpcUrl: env.RPC_URL,
-    mainnetRpcUrl: env.MAINNET_RPC_URL,
+    rpc,
     jupiterKey: env.JUPITER_API_KEY,
     usdcMint: env.USDC_MINT,
     skrMint: env.SKR_MINT,
@@ -1579,13 +1596,13 @@ function toolContext(env: Env, who: Who) {
 }
 
 /** The payment carrying [reference] as an account: the Solana Pay way of finding one without its signature. */
-async function paymentByReference(env: Env, reference: string, quote: Quote): Promise<string | null> {
-  const found = await rpc(env.RPC_URL, 'getSignaturesForAddress', [reference, { limit: 5 }])
+async function paymentByReference(env: Env, rpc: Rpc, reference: string, quote: Quote): Promise<string | null> {
+  const found = await rpc('getSignaturesForAddress', [reference, { limit: 5 }])
   for (const entry of Array.isArray(found) ? found : []) {
     if (entry?.err) continue
     const signature = String(entry?.signature ?? '')
     if (!/^[1-9A-HJ-NP-Za-km-z]{64,90}$/.test(signature)) continue
-    const tx = await rpc(env.RPC_URL, 'getTransaction', [
+    const tx = await rpc('getTransaction', [
       signature,
       { encoding: 'jsonParsed', commitment: 'confirmed', maxSupportedTransactionVersion: 0 },
     ])
@@ -1721,6 +1738,7 @@ export function scrub(text: string, env: Env, extra: (string | null | undefined)
     env.SESSION_SECRET,
     env.JUDGE_CODE,
     env.RPC_URL,
+    env.RPCFAST_URL,
     env.JUPITER_API_KEY,
     env.MAINNET_RPC_URL,
     env.SENTRY_DSN,
@@ -1757,8 +1775,26 @@ function fail(status: number, reason: string, detail: string): Response {
   })
 }
 
+/** A request's chain calls for its log line: method, provider and milliseconds, never an address. */
+function rpcSummary(rpc: Rpc): { method: string; provider: string; ms: number }[] {
+  return rpc.calls.map((call) => ({ method: call.method, provider: call.provider, ms: call.ms }))
+}
+
 /** One line per request. Names and numbers only — never content. */
+/**
+ * The request being served, so its line can carry what its chain calls cost. Set for each
+ * request and cleared after it; a Worker handles one request per invocation.
+ */
+let current: { rpc: Rpc; logged: boolean } | null = null
+
 function log(fields: Record<string, unknown>): void {
-  const shown = { ...fields, device: String(fields.device ?? '').slice(0, 8) }
+  const shown: Record<string, unknown> = { ...fields, device: String(fields.device ?? '').slice(0, 8) }
+  // Every line about the request itself carries the chain calls it made. The per-call
+  // lines (route "rpc") are what those calls were, and never carry themselves.
+  if (fields.route !== 'rpc' && current && current.rpc.calls.length > 0) {
+    shown.rpc = rpcSummary(current.rpc)
+    shown.rpc_ms = current.rpc.totalMs
+    current.logged = true
+  }
   console.log(JSON.stringify(shown))
 }

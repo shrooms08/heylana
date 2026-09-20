@@ -4,6 +4,7 @@ import { findProgramAddress, isOnCurve, utf8 } from '../src/pda.ts'
 import { decodeBase58, encodeBase58 } from '../src/base58.ts'
 import { NAME_HOUSE_PROGRAM, ROOT_ANS, SNS_PROXY_URL, TLD_HOUSE_PROGRAM, deriveNameAccount, resolveName } from '../src/names.ts'
 import { runTool, type ToolContext } from '../src/tools.ts'
+import { makeRpc, type RpcEnv } from '../src/rpc.ts'
 
 const ATA_PROGRAM = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL'
 const TOKEN = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'
@@ -17,8 +18,11 @@ const NOW = Date.parse('2026-09-15T12:00:00Z')
 
 const bytes = (address: string) => decodeBase58(address)!
 
+/** The worker's own caller, over the two made-up providers. */
+const rpcFor = (env: Partial<RpcEnv> = {}) => makeRpc({ RPC_URL: DEVNET, MAINNET_RPC_URL: MAINNET, CLUSTER: 'devnet', ...env })
+
 const context = (over: Partial<ToolContext> = {}): ToolContext => ({
-  rpcUrl: DEVNET, mainnetRpcUrl: MAINNET, usdcMint: USDC, skrMint: 'replace-me', cluster: 'devnet', wallet: null, now: () => NOW, ...over,
+  rpc: rpcFor(), usdcMint: USDC, skrMint: 'replace-me', cluster: 'devnet', wallet: null, now: () => NOW, ...over,
 })
 
 /** A name-service record: owner at 40, expiry at 104, 200 bytes of header. */
@@ -98,14 +102,17 @@ test('a name nobody holds, or one that has expired, is not found', async () => {
 })
 
 test('on devnet with no mainnet connection, .skr says why instead of guessing', async () => {
-  const result: any = await resolveName('alice.skr', context({ mainnetRpcUrl: undefined }))
+  const result: any = await resolveName('alice.skr', context({ rpc: rpcFor({ MAINNET_RPC_URL: undefined }) }))
   assert.equal(result.error, 'names_unavailable')
   assert.deepEqual(rpcUrls, [])
 })
 
 test('on mainnet the cluster RPC is enough for .skr', async () => {
   accounts.set(await aliceAccount(), nameRecord(OWNER))
-  const result = await resolveName('alice.skr', context({ cluster: 'mainnet-beta', rpcUrl: MAINNET, mainnetRpcUrl: undefined }))
+  const result = await resolveName(
+    'alice.skr',
+    context({ cluster: 'mainnet-beta', rpc: rpcFor({ CLUSTER: 'mainnet-beta', RPCFAST_URL: MAINNET, MAINNET_RPC_URL: undefined }) }),
+  )
   assert.deepEqual(result, { name: 'alice.skr', address: OWNER })
 })
 

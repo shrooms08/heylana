@@ -1,6 +1,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { runTool, summarize, type ToolContext } from '../src/tools.ts'
+import { makeRpc } from '../src/rpc.ts'
 
 const RPC = 'https://rpc.test/secret-token-abc'
 const WALLET = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'
@@ -18,7 +19,7 @@ const NOW = Date.parse('2026-09-15T12:00:00Z')
 const DAY = 86400
 
 const context = (over: Partial<ToolContext> = {}): ToolContext => ({
-  rpcUrl: RPC, usdcMint: USDC, skrMint: SKR, cluster: 'mainnet-beta', wallet: WALLET, now: () => NOW, ...over,
+  rpc: makeRpc({ RPCFAST_URL: RPC, CLUSTER: 'mainnet-beta' }), usdcMint: USDC, skrMint: SKR, cluster: 'mainnet-beta', wallet: WALLET, now: () => NOW, ...over,
 })
 
 const tokenAccount = (owner: string, mint: string, amount: string, decimals = 6) => ({

@@ -11,6 +11,7 @@ import { decimalToUnits, mintInfo } from './pay.ts'
 import { resolveName } from './names.ts'
 import { LOOKUP_TOOLS } from './registry.ts'
 import { searchTool, type Kb, type KbResult } from './kb.ts'
+import type { Rpc } from './rpc.ts'
 import {
   BPF_UPGRADEABLE_LOADER,
   COMPUTE_BUDGET_PROGRAM,
@@ -24,16 +25,13 @@ import {
   abs,
   isoDay,
   jupiterPrices,
-  rpcCall,
   short,
   unitsToDecimal,
 } from './solana.ts'
 
 export interface ToolContext {
-  /** The cluster's RPC. A secret: it never appears in a result. */
-  rpcUrl: string
-  /** Names live on mainnet whatever CLUSTER says. */
-  mainnetRpcUrl?: string
+  /** Every chain call goes through this one caller ([makeRpc]); no address is ever held here. */
+  rpc: Rpc
   jupiterKey?: string
   usdcMint: string
   skrMint: string
@@ -115,9 +113,9 @@ interface Holding {
 
 async function tokenHoldings(owner: string, context: ToolContext, filter?: { mint: string }): Promise<Map<string, Holding>> {
   const queries = filter
-    ? [rpcCall(context.rpcUrl, 'getTokenAccountsByOwner', [owner, filter, { encoding: 'jsonParsed' }], context.signal)]
+    ? [context.rpc('getTokenAccountsByOwner', [owner, filter, { encoding: 'jsonParsed' }], { signal: context.signal })]
     : [TOKEN_PROGRAM, TOKEN_2022_PROGRAM].map((programId) =>
-        rpcCall(context.rpcUrl, 'getTokenAccountsByOwner', [owner, { programId }, { encoding: 'jsonParsed' }], context.signal),
+        context.rpc('getTokenAccountsByOwner', [owner, { programId }, { encoding: 'jsonParsed' }], { signal: context.signal }),
       )
   const holdings = new Map<string, Holding>()
   for (const result of await Promise.all(queries)) {
@@ -137,7 +135,7 @@ async function getBalances(given: unknown, context: ToolContext) {
   if (typeof wallet !== 'string') return wallet
 
   const [lamports, holdings] = await Promise.all([
-    rpcCall(context.rpcUrl, 'getBalance', [wallet], context.signal),
+    context.rpc('getBalance', [wallet], { signal: context.signal }),
     tokenHoldings(wallet, context),
   ])
   for (const [mint, holding] of holdings) if (holding.units === 0n) holdings.delete(mint)
@@ -247,7 +245,7 @@ function kindOf(account: any): string {
 /** A token's name from Helius DAS, when the RPC is Helius. Anything else: null. */
 async function dasName(mint: string, context: ToolContext): Promise<string | null> {
   try {
-    const asset = await rpcCall(context.rpcUrl, 'getAsset', { id: mint }, context.signal)
+    const asset = await context.rpc('getAsset', { id: mint }, { signal: context.signal })
     const name = asset?.content?.metadata?.name
     const symbol = asset?.content?.metadata?.symbol ?? asset?.token_info?.symbol
     return name ? (symbol ? `${name} (${symbol})` : String(name)) : null
@@ -264,8 +262,8 @@ async function explainAddress(given: unknown, context: ToolContext) {
 
   const known = KNOWN[address]
   const [info, signatures] = await Promise.all([
-    rpcCall(context.rpcUrl, 'getAccountInfo', [address, { encoding: 'jsonParsed' }], context.signal),
-    rpcCall(context.rpcUrl, 'getSignaturesForAddress', [address, { limit: SIGNATURE_PAGE }], context.signal),
+    context.rpc('getAccountInfo', [address, { encoding: 'jsonParsed' }], { signal: context.signal }),
+    context.rpc('getSignaturesForAddress', [address, { limit: SIGNATURE_PAGE }], { signal: context.signal }),
   ])
   const account = info?.value ?? null
   const kind = kindOf(account)
@@ -383,16 +381,17 @@ async function recentActivity(given: unknown, count: unknown, context: ToolConte
   if (typeof wallet !== 'string') return wallet
   const n = Math.max(1, Math.min(5, Math.floor(Number(count) || 5)))
 
-  const signatures = await rpcCall(context.rpcUrl, 'getSignaturesForAddress', [wallet, { limit: n }], context.signal)
+  const signatures = await context.rpc('getSignaturesForAddress', [wallet, { limit: n }], { signal: context.signal })
   const list: any[] = Array.isArray(signatures) ? signatures.slice(0, n) : []
   const transactions = await Promise.all(
     list.map((entry) =>
-      rpcCall(
-        context.rpcUrl,
-        'getTransaction',
-        [entry.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }],
-        context.signal,
-      ).catch(() => null),
+      context
+        .rpc(
+          'getTransaction',
+          [entry.signature, { encoding: 'jsonParsed', maxSupportedTransactionVersion: 0, commitment: 'confirmed' }],
+          { signal: context.signal },
+        )
+        .catch(() => null),
     ),
   )
   return {
@@ -430,7 +429,7 @@ const TOKEN_2022_ACCOUNT_SIZE = 170
 
 async function balanceOf(owner: string, mint: string | null, decimals: number, context: ToolContext): Promise<string> {
   if (!mint) {
-    const lamports = await rpcCall(context.rpcUrl, 'getBalance', [owner], context.signal)
+    const lamports = await context.rpc('getBalance', [owner], { signal: context.signal })
     return unitsToDecimal(BigInt(lamports?.value ?? 0), SOL_DECIMALS)
   }
   const holdings = await tokenHoldings(owner, context, { mint })
@@ -478,7 +477,7 @@ export async function prepareSend(input: any, context: ToolContext): Promise<Sen
     mint = context.skrMint
   }
   if (mint) {
-    const info = await mintInfo(context.rpcUrl, mint)
+    const info = await mintInfo(context.rpc, mint)
     decimals = info.decimals
     program = info.program
   }
@@ -496,10 +495,10 @@ export async function prepareSend(input: any, context: ToolContext): Promise<Sen
   }
 
   const [recipientAccounts, balance, rent] = await Promise.all([
-    mint ? rpcCall(context.rpcUrl, 'getTokenAccountsByOwner', [toAddress, { mint }, { encoding: 'jsonParsed' }], context.signal) : null,
+    mint ? context.rpc('getTokenAccountsByOwner', [toAddress, { mint }, { encoding: 'jsonParsed' }], { signal: context.signal }) : null,
     known ?? (context.wallet ? balanceOf(context.wallet, mint, decimals, context) : null),
     mint
-      ? rpcCall(context.rpcUrl, 'getMinimumBalanceForRentExemption', [program === TOKEN_2022_PROGRAM ? TOKEN_2022_ACCOUNT_SIZE : TOKEN_ACCOUNT_SIZE], context.signal)
+      ? context.rpc('getMinimumBalanceForRentExemption', [program === TOKEN_2022_PROGRAM ? TOKEN_2022_ACCOUNT_SIZE : TOKEN_ACCOUNT_SIZE], { signal: context.signal })
       : null,
   ])
   const willCreateAta = mint ? (recipientAccounts?.value ?? []).length === 0 : false

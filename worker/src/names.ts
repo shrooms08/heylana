@@ -12,8 +12,11 @@
  */
 import { decodeBase58, encodeBase58, isAddress } from './base58.ts'
 import { findProgramAddress, sha256, utf8 } from './pda.ts'
-import { rpcCall } from './solana.ts'
+import type { RpcOptions } from './rpc.ts'
 import type { ToolContext } from './tools.ts'
+
+/** Names live on mainnet whatever the worker's own cluster is. */
+const MAINNET: RpcOptions = { cluster: 'mainnet-beta' }
 
 export const ANS_PROGRAM = 'ALTNSZ46uaAUU7XUV6awvdorLGqAsPwa9shm7h4uP2FK'
 export const TLD_HOUSE_PROGRAM = 'TLDHkysf5pCnKsVA4gXpNvmy7psXLPEu4LAdDJthT9S'
@@ -50,34 +53,35 @@ export async function deriveNameAccount(name: string, parent?: string): Promise<
   return (await findProgramAddress([hashed, ZERO_32, parentBytes], ANS_PROGRAM)).address
 }
 
-async function accountBytes(url: string, address: string, context: ToolContext): Promise<Uint8Array | null> {
-  const info = await rpcCall(url, 'getAccountInfo', [address, { encoding: 'base64' }], context.signal)
+async function accountBytes(address: string, context: ToolContext): Promise<Uint8Array | null> {
+  const info = await context.rpc('getAccountInfo', [address, { encoding: 'base64' }], MAINNET)
   return bytesOf(info?.value?.data?.[0])
 }
 
 /** A name wrapped as an NFT: its owner is whoever holds that one token. */
-async function tokenizedOwner(url: string, record: string, context: ToolContext): Promise<string | null> {
-  const data = await accountBytes(url, record, context)
+async function tokenizedOwner(record: string, context: ToolContext): Promise<string | null> {
+  const data = await accountBytes(record, context)
   if (!data || data.length < NFT_MINT_OFFSET + 32 || data[8] !== ACTIVE_RECORD) return null
   const mint = encodeBase58(data.slice(NFT_MINT_OFFSET, NFT_MINT_OFFSET + 32))
-  const supply = await rpcCall(url, 'getTokenSupply', [mint], context.signal)
+  const supply = await context.rpc('getTokenSupply', [mint], MAINNET)
   if (supply?.value?.decimals !== 0 || supply?.value?.amount !== '1') return null
-  const largest = await rpcCall(url, 'getTokenLargestAccounts', [mint], context.signal)
+  const largest = await context.rpc('getTokenLargestAccounts', [mint], MAINNET)
   const holder = largest?.value?.[0]?.address
   if (!holder) return null
-  const account = await rpcCall(url, 'getAccountInfo', [holder, { encoding: 'jsonParsed' }], context.signal)
+  const account = await context.rpc('getAccountInfo', [holder, { encoding: 'jsonParsed' }], MAINNET)
   const owner = account?.value?.data?.parsed?.info?.owner
   return isAddress(owner) ? owner : null
 }
 
 async function resolveSkr(label: string, context: ToolContext): Promise<Resolved | Failure> {
   const name = `${label}.skr`
-  const url = context.mainnetRpcUrl || (context.cluster === 'mainnet-beta' ? context.rpcUrl : '')
-  if (!url) return { error: 'names_unavailable', detail: '.skr names live on mainnet, and no mainnet connection is set up.' }
+  if (!context.rpc.has('mainnet-beta')) {
+    return { error: 'names_unavailable', detail: '.skr names live on mainnet, and no mainnet connection is set up.' }
+  }
 
   const parent = await deriveNameAccount('.skr', ROOT_ANS)
   const account = await deriveNameAccount(label, parent)
-  const data = await accountBytes(url, account, context)
+  const data = await accountBytes(account, context)
   if (!data || data.length < HEADER_SIZE) return notFound(name)
 
   const expiresAt = new DataView(data.buffer, data.byteOffset, data.byteLength).getBigUint64(EXPIRES_AT_OFFSET, true)
@@ -91,7 +95,7 @@ async function resolveSkr(label: string, context: ToolContext): Promise<Resolved
     NAME_HOUSE_PROGRAM,
   )
   if (owner === record.address) {
-    const holder = await tokenizedOwner(url, record.address, context)
+    const holder = await tokenizedOwner(record.address, context)
     if (!holder) return notFound(name)
     owner = holder
   }

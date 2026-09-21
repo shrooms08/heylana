@@ -121,7 +121,7 @@ export const ANSWER_TOOL = {
 export const ANSWER_MAX_TOKENS = 700
 
 /** A filled-in [ANSWER_TOOL] as the reply body the rest of the worker already understands. */
-export function answerFromTool(input: any, usage: Record<string, unknown>): string {
+export function answerFromTool(input: any, usage: Record<string, unknown>, stopReason = 'end_turn'): string {
   const reply: Record<string, unknown> = { say: '', point_at: null, task: null }
   const steps = Array.isArray(input?.steps) ? input.steps : null
   if (steps && steps.length > 0) reply.say = steps
@@ -133,7 +133,8 @@ export function answerFromTool(input: any, usage: Record<string, unknown>): stri
   return JSON.stringify({
     type: 'message',
     role: 'assistant',
-    stop_reason: 'end_turn',
+    // A tool answer cut off by the limit says so, so the phone can tell a short reply from a cut one.
+    stop_reason: stopReason === 'max_tokens' ? 'max_tokens' : 'end_turn',
     content: [{ type: 'text', text: JSON.stringify(reply) }],
     usage,
   })
@@ -204,7 +205,7 @@ export async function answerWithTools(options: {
       const answered = uses.find((use: any) => use.name === ANSWER_TOOL.name)
       if (res.ok && answered) {
         const usage = { input_tokens: input, output_tokens: output, tool_ms: toolMs, tools: timings.join(',') }
-        const body = answerFromTool(answered.input, usage)
+        const body = answerFromTool(answered.input, usage, reply?.stop_reason)
         return { status: res.status, body, input, output, rounds, toolCalls, timedOut, toolMs, timings, decisions }
       }
       if (!res.ok || !reply || finalRound || reply.stop_reason !== 'tool_use' || uses.length === 0) {

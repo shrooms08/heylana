@@ -297,6 +297,55 @@ test('who is a user asking how, and which pages are for developers', () => {
   assert.ok(!isDeveloperPage({ title: 'How to swap on Jupiter', url: 'https://support.jup.ag/swap', source: 'Jupiter help' }))
 })
 
+test('a walk-through step asks for the answer shape: one forced round, the answer tool alone, 700 tokens', async () => {
+  rounds = [answersWith({ say: 'Tap the green Swap button at the bottom.', point_at: 29, task: { goal: 'swap', done: false } })]
+  const res = await worker.fetch(new Request('https://proxy.heylana.xyz/chat', {
+    method: 'POST', headers: { 'X-Heylana-Device': DEVICE },
+    body: JSON.stringify({ mode: 'task', system: 'S', max_tokens: 300, shape: 'answer', said: 'teach me to swap', messages: [{ role: 'user', content: 'Step 3' }] }),
+  }), env)
+  assert.equal(res.status, 200)
+  assert.equal(bodies.length, 1)
+  assert.deepEqual(bodies[0].tools.map((t: any) => t.name), ['answer'])
+  assert.deepEqual(bodies[0].tool_choice, { type: 'any' })
+  assert.equal(bodies[0].max_tokens, 700)
+  const out = await res.json()
+  assert.equal(out.usage.max_tokens, 700)
+  assert.equal(out.stop_reason, 'end_turn')
+  const reply = JSON.parse(out.content[0].text)
+  assert.equal(reply.say, 'Tap the green Swap button at the bottom.')
+  assert.equal(reply.point_at, 29)
+  const line = JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!)
+  assert.equal(line.stop_reason, 'end_turn')
+  assert.equal(line.max_tokens, 700)
+  assert.equal(line.shape, 'answer')
+})
+
+test('an answer tool cut off by the limit says max_tokens, so the phone can tell', async () => {
+  rounds = [{ ...answersWith({ say: 'Tap the green' }), stop_reason: 'max_tokens' }]
+  const res = await worker.fetch(new Request('https://proxy.heylana.xyz/chat', {
+    method: 'POST', headers: { 'X-Heylana-Device': DEVICE },
+    body: JSON.stringify({ mode: 'task', system: 'S', shape: 'answer', messages: [{ role: 'user', content: 'Step 3' }] }),
+  }), env)
+  const out = await res.json()
+  assert.equal(out.stop_reason, 'max_tokens')
+  assert.equal(JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!).stop_reason, 'max_tokens')
+})
+
+test('inside a consumer app skill no developer page is a chip, whatever the wording', async () => {
+  // "which button do I tap to review this swap" on Jupiter matches none of the word rules.
+  rounds = [answersWith({ say: 'Tap the green Swap button.', cite: ['https://solana.com/docs/core/pda'] })]
+  const res = await asksAbout('which button do I tap to review this swap', { app_skill: 'jupiter' })
+  const reply = JSON.parse((await res.json()).content[0].text)
+  assert.equal(reply.sources, undefined)
+  const line = JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!)
+  assert.equal(line.app_skill, true)
+  // Without the skill, the same words still get the page: the skill is the first line.
+  logs = []
+  rounds = [answersWith({ say: 'Tap the green Swap button.', cite: ['https://solana.com/docs/core/pda'] })]
+  const plain = await asksAbout('which button do I tap to review this swap')
+  assert.equal(JSON.parse((await plain.json()).content[0].text).sources.length, 1)
+})
+
 // ------------------------------------------------- the answer's shape, forced and repaired
 
 test('the last call after a lookup has to write the answer as a tool', async () => {

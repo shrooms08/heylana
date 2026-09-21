@@ -41,7 +41,7 @@ import {
   USAGE_PREFIX, USAGE_TTL_SECONDS, apply as applyUsage, daysBack, dayOf, emptyDay, isEmpty as usageIsEmpty,
   priceSheet, summarise, type DayUsage, type UsagePatch,
 } from './usage.ts'
-import { answerWithTools, forcedAnswer, proposeAction, proposeSend, toolsNamed } from './brain.ts'
+import { ANSWER_MAX_TOKENS, answerWithTools, forcedAnswer, proposeAction, proposeSend, toolsNamed } from './brain.ts'
 import { sentryFor, type WaitUntil } from './sentry.ts'
 import { SHORTEN_MAX_TOKENS, shortenRequest, shortenSystem } from './shorten.ts'
 import { checkLines, checkShortAddresses, recentCounterparties, withAddressChecks } from './shortaddr.ts'
@@ -490,6 +490,11 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
   let tokensIn: number
   let tokensOut: number
   let rounds = 1
+  // A walk-through's steps come back in the answer tool's shape: fields, never prose, with
+  // room to spare. On the Seeker two steps ran into the phone's 300 tokens with no say at all.
+  const forceAnswer = body.shape === 'answer'
+  const appSkill = typeof body.app_skill === 'string' && body.app_skill.length > 0
+  let limitUsed = base.max_tokens
   let toolCalls: string[] = []
   let toolTimeout = false
   let toolMs = 0
@@ -559,11 +564,13 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     // A user asking how to install, swap or earn is not asking the developer docs: the app's
     // skill has the steps, and the knowledge base is not read first for them.
     const kbQuery = typeof body.kb_query === 'string' && body.kb_query.trim() ? body.kb_query : null
-    userHowTo = !kbQuery && isUserHowTo(said)
+    // Inside a consumer app (a built-in app skill is carried) the developer docs are never a
+    // chip, however the question is worded; the word rule stays as the second line.
+    userHowTo = !kbQuery && (appSkill || isUserHowTo(said))
     if (knowledge && !userHowTo) {
       base.messages = withKbContext(base.messages, await lookUpFirst(kbOf(env), kbQuery ?? said, kbStats))
     }
-    if (offered.length === 0) {
+    if (offered.length === 0 && !forceAnswer) {
       // Nothing to look up (a signing screen with only shortened addresses, already
       // checked above): one round, no tool definitions to pay for.
       const upstream = await callModel(base)
@@ -577,8 +584,9 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
         callModel, base, context, now: clock.now, tools: offered, said,
         // The last call after a lookup has to write the answer as a tool, so it comes back
         // in the shape the phone reads rather than as markdown prose.
-        forceShape: knowledge,
+        forceShape: knowledge || forceAnswer,
       })
+      if (knowledge || forceAnswer) limitUsed = Math.max(base.max_tokens, ANSWER_MAX_TOKENS)
       status = result.status
       text = result.body
       tokensIn = result.input
@@ -590,6 +598,16 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
       toolTimings = result.timings
       decisions = result.decisions
     }
+  } else if (forceAnswer) {
+    // No lookups, only the answer's shape: one forced round with the answer tool alone.
+    const context = { ...toolContext(env, who, rpc), stats: kbStats }
+    const result = await answerWithTools({ callModel, base, context, now: clock.now, tools: [], said, forceShape: true })
+    status = result.status
+    text = result.body
+    tokensIn = result.input
+    tokensOut = result.output
+    rounds = result.rounds
+    limitUsed = Math.max(base.max_tokens, ANSWER_MAX_TOKENS)
   } else if (speakable(body, env)) {
     // One trip: the answer is streamed and each finished sentence goes straight to the
     // voice, so the first word is heard while the rest is still being written.
@@ -629,6 +647,10 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     sourcesFrom = cited.from
     sourcesDropped = cited.dropped ?? 0
   }
+
+  // The phone logs whether the answer fit: the limit it was given and why it stopped.
+  const stopped = stopOf(text)
+  if (status >= 200 && status < 300) text = withLimit(text, limitUsed)
 
   if (status >= 200 && status < 300) {
     if (!userKey) await recordTalk(env, who.key, account, spent, now)
@@ -695,6 +717,11 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     key: userKey ? 'user' : 'heylana',
     cache_read: cacheUse.read,
     cache_write: cacheUse.write,
+    stop_reason: stopped,
+    output_tokens: tokensOut,
+    max_tokens: limitUsed,
+    ...(forceAnswer ? { shape: 'answer' } : {}),
+    ...(appSkill ? { app_skill: true } : {}),
     ...(memoryRecords > 0 ? { memory_records: memoryRecords } : {}),
     ...(saySegments > 1 ? { say_segments: saySegments } : {}),
     status,
@@ -2299,6 +2326,28 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
     return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {}
   } catch {
     return {}
+  }
+}
+
+/** Why the model stopped, off a reply body: end_turn, tool_use, max_tokens… or none. */
+function stopOf(text: string): string {
+  try {
+    const reason = JSON.parse(text)?.stop_reason
+    return typeof reason === 'string' ? reason : 'none'
+  } catch {
+    return 'none'
+  }
+}
+
+/** The reply's usage carries the output limit it had, so the phone can say how close it came. */
+function withLimit(text: string, limit: number): string {
+  try {
+    const parsed = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || !parsed.usage || typeof parsed.usage !== 'object') return text
+    parsed.usage.max_tokens = limit
+    return JSON.stringify(parsed)
+  } catch {
+    return text
   }
 }
 

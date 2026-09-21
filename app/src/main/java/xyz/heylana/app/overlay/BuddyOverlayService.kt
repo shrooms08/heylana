@@ -66,6 +66,7 @@ import xyz.heylana.app.brain.FinishedTask
 import xyz.heylana.app.brain.ErrorTable
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.brain.HeylanaPrompt
+import xyz.heylana.app.brain.PlainError
 import xyz.heylana.app.brain.TaskState
 import xyz.heylana.app.brain.Teaching
 import xyz.heylana.app.net.Proxy
@@ -838,6 +839,21 @@ class BuddyOverlayService : Service() {
                         sayLine(SendText.NO_ACTION)
                         return@launch
                     }
+                    // Cut off twice with nothing to say: say so, read the screen again and ask
+                    // once more; the second time it happens to the same question, the plain line.
+                    if (reply.lookAgain) {
+                        if (lookedAgainFor == question) {
+                            lookedAgainFor = null
+                            sayLine(PlainError.OUR_SIDE)
+                        } else {
+                            lookedAgainFor = question
+                            HeylanaLog.state("ask: cut off with no speech, looking again")
+                            sayLine(reply.text)
+                            main.postDelayed({ ask(question) }, LOOK_AGAIN_MS)
+                        }
+                        return@launch
+                    }
+                    lookedAgainFor = null
                     // Debug builds: a forced one-step task the model answered as a one-off still
                     // becomes one pointed step waiting for the tap, as a walk-through's would.
                     val forcedTask = if (forceStep && (reply.task == null || reply.task.done) &&
@@ -1822,9 +1838,24 @@ class BuddyOverlayService : Service() {
             }
             when (reply) {
                 is BrainReply.Say -> {
-                    if (reply.task?.done == true) {
+                    if (reply.lookAgain) {
+                        // Cut off twice with nothing to say: say so, read the screen again and
+                        // ask once more. A second time ends the task plainly.
+                        if (current.lookedAgain) {
+                            HeylanaLog.state("step: cut off again after a second look, task ends")
+                            closeTask(PlainError.OUR_SIDE)
+                        } else {
+                            current.lookedAgain = true
+                            HeylanaLog.state("step: cut off with no speech, looking again")
+                            view.showAnswer(reply.text)
+                            speak(reply.text)
+                            main.postDelayed({ if (session === current) advance(userAsked = false) }, LOOK_AGAIN_MS)
+                        }
+                    } else if (reply.task?.done == true) {
+                        current.lookedAgain = false
                         closeTask(reply.text)
                     } else {
+                        current.lookedAgain = false
                         showStep(reply, snapshot)
                     }
                 }
@@ -1889,6 +1920,9 @@ class BuddyOverlayService : Service() {
     }
 
     // ------------------------------------------------------------ step advance
+
+    /** The question whose answer was cut off with no speech, already asked a second time. */
+    private var lookedAgainFor: String? = null
 
     /** A step's own look, every [STEP_POLL_MS], for apps that send no events. */
     private var stepPollFrom: String? = null
@@ -2902,6 +2936,9 @@ class BuddyOverlayService : Service() {
 
         /** How often a waiting step looks at the screen itself, for apps that send no events. */
         private const val STEP_POLL_MS = 1_000L
+
+        /** How long "let me look again" is given before the screen is read again. */
+        private const val LOOK_AGAIN_MS = 1_500L
 
         /** How long a clarifying question waits for its answer. */
         private const val CLARIFY_WINDOW_MS = 60_000L

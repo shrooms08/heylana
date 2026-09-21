@@ -59,7 +59,11 @@ sealed interface BrainReply {
          */
         val code: String? = null,
         /** The worker read the user's balances for this answer (get_balances ran). */
-        val balancesRead: Boolean = false
+        val balancesRead: Boolean = false,
+        /** The output limit cut the reply off; this is the speech that had arrived. */
+        val truncated: Boolean = false,
+        /** Cut off twice with no speech: say [ReplyParser.LOOK_AGAIN] and read the screen again. */
+        val lookAgain: Boolean = false
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -181,6 +185,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
         // The user's own words, apart from the screen: the worker's second check that a
         // send's recipient came from the user and never from anything on the screen.
         extra.put("said", question)
+        // A walk-through's first step comes back as fields, never prose, with room to spare.
+        if ((walkThrough || teaching) && !quickAction && route.why != Routing.Why.SEND_QUESTION) extra.put("shape", SHAPE_ANSWER)
+        // Inside a consumer app: its developer docs are never a chip.
+        carried?.let { extra.put("app_skill", it.id) }
         // A send is never left to prose: the worker asks the model for the send only.
         if (tools && route.why == Routing.Why.SEND_QUESTION) extra.put("intent", "send")
         // Nor is an alarm, a timer, an app, a page, a place or a number.
@@ -201,7 +209,7 @@ class ProxyClient(private val settings: HeylanaSettings) {
                     override fun notSpoken(reason: String) = inner.notSpoken(reason)
                 }
             }
-        val reply = send(
+        val sentReply = send(
             asked,
             route.mode,
             solana = route.solana != null,
@@ -212,6 +220,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
             quickRules = quickRules,
             voice = spoken
         )
+        // A walk-through's first step cut off by the limit is still the start of the task.
+        val reply = if (walkThrough && sentReply is BrainReply.Say && sentReply.truncated && sentReply.task == null) {
+            sentReply.copy(task = TaskState(question, false))
+        } else {
+            sentReply
+        }
         // A reply that starts a task is a spoken step: under 25 words.
         val startsTask = reply is BrainReply.Say && reply.task?.done == false
         // An answer already being said is never rewritten: the shorter wording would be
@@ -303,12 +317,19 @@ class ProxyClient(private val settings: HeylanaSettings) {
         skill: Skill? = null,
         teaching: Boolean = false
     ): BrainReply {
-        HeylanaLog.state("brain: mode=$MODE_TASK why=task_step teaching=$teaching ${skillLog(skill)}")
-        val reply = send(
+        HeylanaLog.state("brain: mode=$MODE_TASK why=task_step teaching=$teaching ${skillLog(skill)} shape=answer")
+        // Fields, never prose, and the room a structured step needs: two steps ran into 300
+        // tokens on the Seeker with no speech at all.
+        val extra = JSONObject().put("shape", SHAPE_ANSWER)
+        skill?.let { extra.put("app_skill", it.id) }
+        val sent = send(
             HeylanaPrompt.stepMessage(goal, historyText, screenText, stepNumber, needPointerHint, teaching),
             MODE_TASK,
+            extra = extra,
             skill = skill
         )
+        // A cut-off step is still a step of this task, not the end of it.
+        val reply = if (sent is BrainReply.Say && sent.truncated && sent.task == null) sent.copy(task = TaskState(goal, false)) else sent
         // A step is spoken; a finished task's confirmation keeps the general line.
         val done = reply is BrainReply.Say && reply.task?.done == true
         return limitLength(reply, if (done) AnswerLength.GENERAL_WORDS else AnswerLength.STEP_WORDS)
@@ -390,18 +411,19 @@ class ProxyClient(private val settings: HeylanaSettings) {
         when (val first = attempt(userMessage, mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system, voice)) {
             is Attempt.Done -> first.reply
             is Attempt.Unreadable -> {
-                HeylanaLog.state("reply: unreadable reason=${first.reason} retry=once")
+                HeylanaLog.state("reply: unreadable reason=${first.reason} cut=${first.cut} retry=once")
                 logRawReply(first.raw)
+                // Cut off with no speech: ask for one short sentence, which always fits.
                 val retry = attempt(
-                    userMessage + "\n\n" + ReplyParser.JSON_ONLY,
+                    userMessage + "\n\n" + if (first.cut) ReplyParser.ONE_SENTENCE else ReplyParser.JSON_ONLY,
                     mode, solana, tools, extra, skill, signing, quickRules, expectsAction, system, null
                 )
                 when (retry) {
                     is Attempt.Done -> retry.reply.also { HeylanaLog.state("reply: retry readable") }
                     is Attempt.Unreadable -> {
-                        HeylanaLog.state("reply: unreadable after retry reason=${retry.reason}")
+                        HeylanaLog.state("reply: unreadable after retry reason=${retry.reason} cut=${retry.cut}")
                         logRawReply(retry.raw)
-                        BrainReply.Say(ReplyParser.NOT_CAUGHT, null, null)
+                        unreadableLine(first.cut || retry.cut)
                     }
                 }
             }
@@ -411,7 +433,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
     /** One request and its reply: read, unreadable (with the raw text, for the debug log only), or failed. */
     internal sealed interface Attempt {
         data class Done(val reply: BrainReply) : Attempt
-        data class Unreadable(val reason: String, val raw: String) : Attempt
+        /** [cut] when the output limit stopped it: then the retry asks for one short sentence. */
+        data class Unreadable(val reason: String, val raw: String, val cut: Boolean = false) : Attempt
     }
 
     private fun attempt(
@@ -562,19 +585,43 @@ class ProxyClient(private val settings: HeylanaSettings) {
      * prompt, or an empty say where words were due — is unreadable, never raw text.
      */
     private fun extractReply(body: String, expectsAction: Boolean): Attempt {
-        val content = runCatching { JSONObject(body).optJSONArray("content") }.getOrNull()
-            ?: return Attempt.Unreadable("no_content", body)
+        val whole = runCatching { JSONObject(body) }.getOrNull()
+        val cut = whole?.optString("stop_reason") == STOP_LIMIT
+        val content = whole?.optJSONArray("content")
+        if (content == null) {
+            logFit(whole, say = false, point = false)
+            return Attempt.Unreadable("no_content", body, cut)
+        }
         val text = buildString {
             for (i in 0 until content.length()) {
                 val block = content.optJSONObject(i) ?: continue
                 if (block.optString("type") == "text") append(block.optString("text")).append('\n')
             }
         }.trim()
-        if (text.isEmpty()) return Attempt.Unreadable("empty", body)
+        if (text.isEmpty()) {
+            logFit(whole, say = false, point = false)
+            return Attempt.Unreadable("empty", body, cut)
+        }
 
         val parsed = ReplyParser.parse(text, expectsAction)
-        if (parsed is ReplyParser.Result.Unreadable) return Attempt.Unreadable(parsed.reason, text)
+        if (parsed is ReplyParser.Result.Unreadable) {
+            // Cut off by the limit: whatever speech and target had arrived are the answer.
+            val salvaged = if (cut) ReplyParser.salvage(text) else null
+            logFit(whole, say = salvaged != null, point = salvaged?.pointAt != null)
+            if (salvaged != null) {
+                HeylanaLog.state("reply: cut off, speech kept words=${AnswerLength.words(salvaged.say)} point=${salvaged.pointAt != null}")
+                val say = Sources.spoken(AddressText.shorten(salvaged.say))
+                return Attempt.Done(
+                    BrainReply.Say(
+                        say, salvaged.pointAt, null, segments = listOf(SaySegment(say, salvaged.pointAt)),
+                        truncated = true
+                    )
+                )
+            }
+            return Attempt.Unreadable(parsed.reason, text, cut)
+        }
         parsed as ReplyParser.Result.Reply
+        logFit(whole, say = parsed.say.isNotEmpty(), point = parsed.segments.any { it.pointAt != null } || parsed.fields["point_at"] is Number)
         val json = runCatching { JSONObject(parsed.objectText) }.getOrNull()
             ?: return Attempt.Unreadable("json", text)
 
@@ -604,10 +651,30 @@ class ProxyClient(private val settings: HeylanaSettings) {
                 code = json.optString("code").trim().takeIf { it.isNotEmpty() }?.take(CODE_CHARS),
                 balancesRead = BalanceNetwork.readBalances(
                     runCatching { JSONObject(body).optJSONObject("usage")?.optString("tools") }.getOrNull()
-                )
+                ),
+                truncated = cut
             )
         )
     }
+
+    /**
+     * Every /chat says whether its answer fit: why the model stopped, the output tokens against
+     * the limit it had, and whether speech and a target came back. Never a word of it.
+     */
+    private fun logFit(whole: JSONObject?, say: Boolean, point: Boolean) {
+        val usage = whole?.optJSONObject("usage")
+        val out = usage?.optInt("output_tokens", -1) ?: -1
+        val limit = usage?.optInt("max_tokens", MAX_TOKENS) ?: MAX_TOKENS
+        HeylanaLog.state(
+            "chat: stop=${whole?.optString("stop_reason")?.ifEmpty { "none" } ?: "none"} out=$out/$limit " +
+                "say=${if (say) "y" else "n"} point=${if (point) "y" else "n"}"
+        )
+    }
+
+    /** Unreadable twice: a cut-off one reads the screen again; anything else is the plain line. Never the ears' line. */
+    private fun unreadableLine(cut: Boolean): BrainReply.Say =
+        if (cut) BrainReply.Say(ReplyParser.LOOK_AGAIN, null, null, lookAgain = true)
+        else BrainReply.Say(ReplyParser.UNREADABLE, null, null)
 
     /** The worker's checked sources: each a page the knowledge base returned and the answer cited. */
     private fun readSources(json: JSONObject): List<Source> {
@@ -705,6 +772,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
         /** Where the user's own key rides, to the worker only. */
         const val OWN_KEY_HEADER = "X-Heylana-Key"
         private const val MAX_TOKENS = 300
+
+        /** The stop reason for an answer the output limit cut off. */
+        const val STOP_LIMIT = "max_tokens"
+
+        /** Asks the worker for the answer tool's shape: fields, never prose. */
+        const val SHAPE_ANSWER = "answer"
         private const val SHORTEN_MAX_TOKENS = 150
         /** The worker refuses a longer text to shorten; see worker/src/shorten.ts. */
         private const val SHORTEN_MAX_CHARS = 1_200

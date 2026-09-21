@@ -32,6 +32,9 @@ class GuidanceSession(val goal: String) {
 
     val startedAt: Long = System.currentTimeMillis()
 
+    /** A step came back cut off with no speech and the screen was read again once already. */
+    var lookedAgain: Boolean = false
+
     private val recorded = mutableListOf<GuidanceStep>()
     val steps: List<GuidanceStep> get() = recorded
 

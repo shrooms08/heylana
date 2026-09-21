@@ -27,11 +27,59 @@ object ReplyParser {
         data class Unreadable(val reason: String) : Result
     }
 
-    /** What is spoken when a reply could not be read, even after asking once more. */
-    const val NOT_CAUGHT = "I didn't catch that, say it again."
+    /**
+     * What is spoken when a reply could not be read, even after asking once more. Never the
+     * ears' line ([PlainError.EARS]): that means the ears failed, and here they heard fine.
+     */
+    const val UNREADABLE = PlainError.OUR_SIDE
+
+    /** A reply cut off by the output limit, twice: said, and the screen is read again. */
+    const val LOOK_AGAIN = "Give me a second, let me look again."
 
     /** Added to the question for the one retry after an unreadable reply. */
     const val JSON_ONLY = "Reply with only the JSON object, nothing before or after it."
+
+    /** Added for the one retry after a reply the limit cut off with no speech in it. */
+    const val ONE_SENTENCE = "Reply with only the JSON object, and say is one short sentence."
+
+    /** What a cut-off reply still holds: whole sentences of speech, and its target if it got that far. */
+    data class Salvaged(val say: String, val pointAt: Int?)
+
+    private val SAY_STRING = Regex("\"say\"\\s*:\\s*\"")
+    private val SAY_PIECE = Regex("\"say\"\\s*:\\s*\\[\\s*\\{[^}]*?\"text\"\\s*:\\s*\"")
+    private val POINT_AT = Regex("\"point_at\"\\s*:\\s*(\\d+)")
+
+    /**
+     * A reply the output limit cut off: the speech that arrived — the say string, or the first
+     * piece's text — cut back to its last whole sentence, and the first point_at seen. Null
+     * when no whole sentence of speech arrived.
+     */
+    fun salvage(text: String): Salvaged? {
+        val start = (SAY_STRING.find(text) ?: SAY_PIECE.find(text))?.range?.last?.plus(1) ?: return null
+        val said = StringBuilder()
+        var i = start
+        var closed = false
+        while (i < text.length) {
+            val c = text[i]
+            if (c == '\\' && i + 1 < text.length) {
+                val next = text[i + 1]
+                said.append(if (next == 'n') ' ' else next)
+                i += 2
+                continue
+            }
+            if (c == '"') {
+                closed = true
+                break
+            }
+            said.append(c)
+            i++
+        }
+        val words = said.toString().trim()
+        val whole = if (closed) words else words.substring(0, words.lastIndexOfAny(charArrayOf('.', '!', '?')) + 1).trim()
+        if (whole.isEmpty() || looksLikeInstructions(whole)) return null
+        val pointAt = POINT_AT.find(text)?.groupValues?.get(1)?.toIntOrNull()
+        return Salvaged(dedupe(whole), pointAt)
+    }
 
     /**
      * [expectsAction] is set for a send or a quick action, where the words are the app's

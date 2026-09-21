@@ -142,4 +142,45 @@ class ScamWatchTest {
         assertTrue(ScamWatch.KNOWN_PHISHING.contains("Check the address bar"))
         assertTrue(ScamWatch.lookAlikeWords("phantom.app").contains("Check the address bar"))
     }
+
+    // ------------------------------------------------------------ parent domains on the watchlist
+
+    private val listed = setOf("evil-jup.com", "bad.vercel.app", "drainer.co.uk")
+
+    @Test
+    fun `a subdomain of a listed domain is on the list, however deep`() {
+        assertEquals("evil-jup.com", ScamWatch.blockedBy("claim.evil-jup.com", listed))
+        assertEquals("evil-jup.com", ScamWatch.blockedBy("a.b.claim.evil-jup.com", listed))
+        assertEquals("evil-jup.com", ScamWatch.blockedBy("www.evil-jup.com", listed))
+        assertEquals("drainer.co.uk", ScamWatch.blockedBy("app.drainer.co.uk", listed))
+        // The warning names it.
+        val warning = ScamWatch.of("", "https://claim.evil-jup.com/connect", "com.android.chrome", listed)!!
+        assertEquals(ScamWatch.Warning.Why.BLOCKLIST, warning.why)
+    }
+
+    @Test
+    fun `a shared host is never matched from a listed site on it`() {
+        assertEquals("bad.vercel.app", ScamWatch.blockedBy("bad.vercel.app", listed))
+        assertEquals("bad.vercel.app", ScamWatch.blockedBy("x.bad.vercel.app", listed))
+        assertNull(ScamWatch.blockedBy("good.vercel.app", listed))
+        assertNull(ScamWatch.blockedBy("vercel.app", listed))
+        // Even a list that names the shared host or a bare suffix matches nothing under it.
+        assertNull(ScamWatch.blockedBy("anyone.vercel.app", setOf("vercel.app")))
+        assertNull(ScamWatch.blockedBy("shop.example.com", setOf("com")))
+        assertNull(ScamWatch.blockedBy("news.bbc.co.uk", setOf("co.uk")))
+    }
+
+    @Test
+    fun `a name that only contains a listed one is not under it`() {
+        assertNull(ScamWatch.blockedBy("evil-jup.com.example.org", listed))
+        assertNull(ScamWatch.blockedBy("notevil-jup.com", listed))
+    }
+
+    @Test
+    fun `a real Solana domain is never reported as listed`() {
+        val bad = setOf("jup.ag", "phantom.app")
+        assertNull(ScamWatch.blockedBy("jup.ag", bad))
+        assertNull(ScamWatch.blockedBy("station.jup.ag", bad))
+        assertNull(ScamWatch.blockedBy("phantom.app", bad))
+    }
 }

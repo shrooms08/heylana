@@ -195,8 +195,8 @@ object ScamWatch {
             return Warning(SEED_PHRASE, about = pageAddress?.let(::hostOf) ?: (packageName ?: "screen"), why = Warning.Why.SECRET)
         }
         val host = pageAddress?.let(::hostOf) ?: return null
-        if (blocked.isNotEmpty() && host in blocked) {
-            return Warning(KNOWN_PHISHING, about = host, why = Warning.Why.BLOCKLIST)
+        blockedBy(host, blocked)?.let { listed ->
+            return Warning(KNOWN_PHISHING, about = listed, why = Warning.Why.BLOCKLIST)
         }
         lookAlike(host)?.let { real ->
             return Warning(lookAlikeWords(real), about = host, why = Warning.Why.LOOK_ALIKE)
@@ -205,5 +205,50 @@ object ScamWatch {
     }
 
     /** A domain as the blocklist holds it: lower case, no www., nothing else. */
-    fun keyOf(host: String): String = host.trim().lowercase().removePrefix("www.")
+    fun keyOf(host: String): String = host.trim().lowercase().removePrefix("www.").removeSuffix(".")
+
+    // ---------------------------------------------------------------- a listed domain, or under one
+
+    /**
+     * Hosts where anyone can put up a site of their own, one subdomain each. A listed
+     * bad.vercel.app is a scam; vercel.app is everybody's, and is never matched.
+     */
+    val SHARED_PARENTS: Set<String> = setOf(
+        "vercel.app", "netlify.app", "pages.dev", "github.io", "web.app", "firebaseapp.com",
+        "herokuapp.com", "onrender.com", "workers.dev", "gitbook.io", "notion.site", "webflow.io",
+        "framer.website", "wixsite.com", "blogspot.com",
+    )
+
+    /**
+     * Endings under which names are registered, two labels deep. Every single label (com,
+     * io, xyz, app…) is one too. A match stops at the registrable domain and never reaches
+     * one of these.
+     */
+    val PUBLIC_SUFFIXES: Set<String> = setOf(
+        "co.uk", "org.uk", "ac.uk", "gov.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk",
+        "com.au", "net.au", "org.au", "co.nz", "org.nz", "co.jp", "ne.jp", "or.jp",
+        "com.br", "com.cn", "com.mx", "co.in", "co.za", "com.tr", "com.sg", "com.hk",
+        "co.kr", "com.ar", "com.ng", "com.co", "com.tw", "com.my", "com.ph", "com.vn",
+        "co.id", "com.pk", "com.eg", "com.sa", "com.ua", "co.il", "com.pl", "co.th",
+    )
+
+    /**
+     * The listed domain [host] is, or sits under, or null. The host itself and each parent
+     * are looked up in turn, down to the registrable domain: x.bad.example.com is caught by
+     * a listed bad.example.com or example.com. A public suffix or a shared hosting parent is
+     * never a match, whatever the list says, and a real Solana domain (or one of its
+     * subdomains) is never reported as listed.
+     */
+    fun blockedBy(host: String, blocked: Set<String>): String? {
+        if (blocked.isEmpty()) return null
+        val key = keyOf(host)
+        if (REAL_DOMAINS.any { key == it || key.endsWith(".$it") }) return null
+        var candidate = key
+        while (true) {
+            if (candidate in blocked) return candidate
+            val parent = candidate.substringAfter('.', "")
+            if (!parent.contains('.') || parent in SHARED_PARENTS || parent in PUBLIC_SUFFIXES) return null
+            candidate = parent
+        }
+    }
 }

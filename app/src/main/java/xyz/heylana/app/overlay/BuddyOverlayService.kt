@@ -966,6 +966,13 @@ class BuddyOverlayService : Service() {
                 if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
                 if (intent.getBooleanExtra("thinking", false)) view.showThinking()
                 if (intent.getBooleanExtra("teach", false)) debugTeach()
+                // A made-up domain on this phone's copy of the watchlist, to check the heads-up
+                // without visiting a real scam site:
+                //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es test_scam heylana-test-scam.example
+                intent.getStringExtra("test_scam")?.let { domain ->
+                    debugScamDomains = if (domain.isBlank()) emptySet() else setOf(xyz.heylana.app.screen.ScamWatch.keyOf(domain))
+                    HeylanaLog.state("debug: test scam domain ${if (debugScamDomains.isEmpty()) "cleared" else "added chars=${domain.length}"}")
+                }
                 // The next question comes back as a task even if it takes one tap:
                 //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --ez one_step true
                 if (intent.getBooleanExtra("one_step", false)) {
@@ -986,6 +993,9 @@ class BuddyOverlayService : Service() {
     }
 
     private var debugPanel: android.content.BroadcastReceiver? = null
+
+    /** Debug builds: a made-up domain added to the watchlist on this phone only. */
+    private var debugScamDomains: Set<String> = emptySet()
 
     /** Debug builds: the next question is asked as a task even if it is one tap. */
     private var debugOneStep = false
@@ -2327,7 +2337,8 @@ class BuddyOverlayService : Service() {
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         val decideStarted = SystemClock.uptimeMillis()
         val glance = Lookout.glanceAt(
-            snapshot, blocklist.domains, settings.walletSession?.pubkey,
+            snapshot, if (debugScamDomains.isEmpty()) blocklist.domains else blocklist.domains + debugScamDomains,
+            settings.walletSession?.pubkey,
             anySigns = BuildConfig.DEBUG && settings.glanceAnyScreen,
         )
         val decided = SystemClock.uptimeMillis()

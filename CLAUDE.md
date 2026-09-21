@@ -489,6 +489,25 @@ nearest-rank, for comparing RPC Fast and Helius from Lagos. Checked live on Sept
 balance question logged three `devnet` calls (86–462ms) and a .skr lookup one `rpcfast` call
 (67ms). `test/usage.test.ts`.
 
+**Counters are batched, and never fail a request (`worker/src/tally.ts`).** On Sunday 20
+September the worker answered 500 all afternoon: Cloudflare's free KV allows 1,000 writes a
+day, every request wrote its counters straight away (250 writes per 100 requests), and the
+cap write sat before the error handling. Now every counter read and write goes through
+`safely` — a failure is logged as `{"route":"accounting","what":…}` and the request goes on;
+a cap that cannot be read is not reached — and the caps (one record per device a day,
+`cap:<date>:<device>` → `{route: count}`), the month's talks, the day's usage and the week's
+card are added to the isolate's tally and written at most once a minute
+(`tallyLimits.everyMs`), one write per key touched, on `waitUntil` after the answer. A cap
+or a talk count is what KV holds plus what is pending here, so limits stay exact inside an
+isolate; a count whose write fails is kept, so while KV refuses writes the caps still hold
+from memory. The account is written only when a talk changes it (a welcome talk spent), and
+the first-time sets stay immediate (a send landing) but wrapped. Memory off drops the
+week pending for it (`tally.forget`). The cost: at most the last minute of a cold isolate's
+counts, and increments two isolates flush together — near enough for a budget and an
+estimate. `test/kvwrites.bench.ts` replays the phone's four requests per question (two ear
+passes, the question, the voice) and counts writes: 250 per 100 requests before, 29 with a
+question every 20 seconds and 77 with one every few minutes after. `test/tally.test.ts`.
+
 ## Plans, wallets and payment
 
 **Plans key on the wallet.** Connecting a wallet (Seed Vault over Mobile Wallet

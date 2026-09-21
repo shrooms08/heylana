@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
 import { encodeBase58 } from '../src/base58.ts'
 import { EMPTY_COUNTS, SEEN_CAP, applyWeek, breakdown, cardLine, emptyWeek, nothingCaught, weekStart } from '../src/week.ts'
+import { resetTally, tallyLimits } from '../src/tally.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages'
@@ -36,6 +37,9 @@ function env(): Env {
 }
 
 beforeEach(() => {
+  // Every request writes its counters, as before batching: these tests read them back from KV.
+  resetTally()
+  tallyLimits.everyMs = 0
   kv = store()
   logs = []
   script = [{ stop_reason: 'end_turn', content: [{ type: 'text', text: '{"say":"ok","point_at":null,"task":null}' }], usage: { input_tokens: 5, output_tokens: 2 } }]

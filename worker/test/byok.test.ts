@@ -1,6 +1,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
+import { resetTally, tallyLimits } from '../src/tally.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
 const ANTHROPIC = 'https://api.anthropic.com/v1/messages'
@@ -17,6 +18,9 @@ let rounds: any[] = []
 let upstreamStatus = 200
 
 beforeEach(() => {
+  // Every request writes its counters, as before batching: these tests read them back from KV.
+  resetTally()
+  tallyLimits.everyMs = 0
   clock.now = () => Date.parse('2026-09-19T12:00:00Z')
   values = new Map()
   modelCalls = []

@@ -150,7 +150,8 @@ export async function recentCounterparties(wallet: string, context: ToolContext,
   }
   const list = [...found]
   try {
-    if (store) await store.put(key, JSON.stringify(list), { expirationTtl: COUNTERPARTY_TTL_SECONDS })
+    // A cache: a refused write costs the next lookup a chain call, never this answer.
+    if (store) await store.put(key, JSON.stringify(list), { expirationTtl: COUNTERPARTY_TTL_SECONDS }).catch(() => {})
   } catch {
     // Not cached this time; nothing else changes.
   }

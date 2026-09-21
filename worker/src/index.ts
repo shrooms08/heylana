@@ -51,6 +51,7 @@ import { buildAndSimulate, labelFor, needsAccount, tokenAccountRent, type Built 
 import { ASSOCIATED_TOKEN_PROGRAM, type TransferPlan } from './tx.ts'
 import { short, unitsToDecimal } from './solana.ts'
 import { checkedBody, wrappedProse } from './say.ts'
+import { flushIfDue, safely, tally } from './tally.ts'
 import {
   FRAME_AUDIO, FRAME_REPLY, FRAME_VOICE_FAILED, SAY_STREAM_TYPE, SayReader, frame, readModelStream, replyBody, textFrame,
 } from './saystream.ts'
@@ -390,14 +391,16 @@ export default {
       const week = scope.week
       // Only clear the global if this request still owns it: another may have started.
       if (current === scope) current = null
-      const writes: Promise<unknown>[] = []
-      if (!usageIsEmpty(patch)) writes.push(recordUsage(env, patch))
-      // The week's counts are the user's own, and follow memory: nothing without a wallet.
-      if (who.wallet && !nothingCaught(week)) writes.push(recordWeek(env, who.wallet, week))
-      for (const write of writes) {
-        if (context?.waitUntil) context.waitUntil(write)
-        else await write
-      }
+      // Added to this isolate's tally, and written at most once a minute: never in the
+      // answer's way, and never able to fail it (tally.ts).
+      const accounted = (async () => {
+        if (!usageIsEmpty(patch)) await safely('usage', log, () => recordUsage(env, patch), undefined)
+        // The week's counts are the user's own, and follow memory: nothing without a wallet.
+        if (who.wallet && !nothingCaught(week)) await safely('week', log, () => recordWeek(env, who.wallet!, week), undefined)
+        await flushIfDue(env.CAPS, clock.now(), log)
+      })().catch(() => {})
+      if (context?.waitUntil) context.waitUntil(accounted)
+      else await accounted
     }
   },
 }
@@ -588,6 +591,7 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     return await spokenAnswer({
       env, who, started, model, base, userKey, spent, now, context,
       voice: body.voice === 'archie' ? 'archie' : 'skylar',
+      account,
       caughtKind: typeof body.caught === 'string' ? body.caught : '',
     })
   } else {
@@ -621,8 +625,7 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
   }
 
   if (status >= 200 && status < 300) {
-    if (!userKey) await saveAccount(env, who.key, spent.account)
-    if (!userKey) await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
+    if (!userKey) await recordTalk(env, who.key, account, spent, now)
   }
   // For the day's counters: which model answered, and what it read and wrote.
   if (status >= 200 && status < 300) count({ chatModel: model, tokensIn: tokensIn, tokensOut: tokensOut })
@@ -722,7 +725,8 @@ async function lookout(request: Request, env: Env, started: number, context?: Wa
     const rebuilt = await buildLookout(env, list, today)
     if (rebuilt) {
       list = rebuilt
-      const write = env.CAPS.put(LOOKOUT_KEY, JSON.stringify(rebuilt), { expirationTtl: LOOKOUT_KEEP_SECONDS })
+      // Yesterday's list keeps answering if today's cannot be kept.
+      const write = env.CAPS.put(LOOKOUT_KEY, JSON.stringify(rebuilt), { expirationTtl: LOOKOUT_KEEP_SECONDS }).catch(() => {})
       if (context?.waitUntil) context.waitUntil(write)
       else await write
     }
@@ -809,6 +813,8 @@ async function spokenAnswer(options: {
   base: { model: string; max_tokens: number; system?: string; messages: unknown[] }
   userKey: string | null
   spent: { allowed: boolean; account: Account; used: number }
+  /** The account as it was before this talk, to tell whether spending it changed anything. */
+  account: Account
   now: Date
   context?: WaitUntil
   voice: 'skylar' | 'archie'
@@ -933,8 +939,7 @@ async function speakWhileWriting(options: {
 
   const ok = !streamError && reader.body.length > 0
   if (ok && !userKey) {
-    await saveAccount(env, who.key, spent.account)
-    await env.CAPS.put(talksKey(who.key, now), String(spent.used), { expirationTtl: TALKS_TTL_SECONDS })
+    await recordTalk(env, who.key, options.account, spent, now)
   }
   log({
     route: 'chat',
@@ -966,7 +971,7 @@ async function speakWhileWriting(options: {
     tokensOut: usage.output,
     ...(spokenChars > 0 ? { tts: { provider: providerOf(env.VOICE_PROVIDER), chars: spokenChars } } : {}),
   }
-  await recordUsage(env, patch).catch(() => {})
+  await safely('usage', log, () => recordUsage(env, patch), undefined)
   if (who.wallet) {
     const kind = options.caughtKind
     await recordWeek(env, who.wallet, {
@@ -976,6 +981,8 @@ async function speakWhileWriting(options: {
       lessons: kind === 'lesson' ? 1 : 0,
     }).catch(() => {})
   }
+  // A spoken answer finishes after its request's own flush has run, so it offers one of its own.
+  await flushIfDue(env.CAPS, clock.now(), log)
 }
 
 /** Nothing was spoken at all, so the phone speaks the answer itself, the old way. */
@@ -1415,7 +1422,10 @@ async function memory(route: string, request: Request, env: Env, who: Who): Prom
     // Turning it off keeps nothing — the week's counts and what it has seen before are memory's too.
     await save({ on, records: on ? current.records : [] })
     if (!on) {
-      await env.CAPS.delete(weekKey(who.wallet, weekStart(clock.now())))
+      const thisWeek = weekKey(who.wallet, weekStart(clock.now()))
+      // Nothing pending may write it back after it is gone.
+      tally.forget(thisWeek)
+      await env.CAPS.delete(thisWeek)
       await env.CAPS.delete(firstsKey(who.wallet))
     }
     log({ route, device: who.device, wallet, on })
@@ -1756,7 +1766,8 @@ async function loadFirsts(env: Env, wallet: string): Promise<Firsts> {
 }
 
 async function saveFirsts(env: Env, wallet: string, firsts: Firsts): Promise<void> {
-  await env.CAPS.put(firstsKey(wallet), JSON.stringify(firsts), { expirationTtl: FIRSTS_TTL_SECONDS })
+  // Written when a send lands, so kept immediate — but a refused write never fails the confirm.
+  await safely('firsts', log, () => env.CAPS.put(firstsKey(wallet), JSON.stringify(firsts), { expirationTtl: FIRSTS_TTL_SECONDS }), undefined)
 }
 
 /**
@@ -2208,7 +2219,18 @@ export function talksKey(key: string, now: Date): string {
 }
 
 async function talksUsed(env: Env, key: string, now: Date): Promise<number> {
-  return Number((await env.CAPS.get(talksKey(key, now))) ?? '0')
+  const at = talksKey(key, now)
+  const stored = await safely('talks_read', log, async () => Number((await env.CAPS.get(at)) ?? '0'), 0)
+  return stored + tally.pending(at, '')
+}
+
+/**
+ * A talk spent. The account is written only when spending it changed the account (a welcome
+ * talk used up), which is at most twenty times a wallet; the month's count joins the tally.
+ */
+async function recordTalk(env: Env, key: string, before: Account, spent: { account: Account }, now: Date): Promise<void> {
+  if (spent.account !== before) await safely('account', log, () => saveAccount(env, key, spent.account), undefined)
+  tally.add(talksKey(key, now), '', 1, TALKS_TTL_SECONDS)
 }
 
 /** Compares without leaking how much matched through timing. */
@@ -2233,12 +2255,27 @@ export function deviceOf(request: Request): string | null {
   return /^[0-9a-fA-F-]{16,64}$/.test(raw) ? raw : null
 }
 
-/** Counts one request against today's allowance. True when it is over. */
+/** One record per device a day, `{route: count}`: one write per device per flush, not one per route. */
+export function capKey(device: string): string {
+  return `cap:${today()}:${device}`
+}
+
+/**
+ * Counts one request against today's allowance. True when it is over.
+ *
+ * The count is what KV holds plus what this isolate has not written yet, and the request is
+ * added to the pending tally rather than written: see tally.ts. A cap that cannot be read is
+ * treated as not reached — budget protection must never be the thing that takes Heylana down.
+ */
 export async function chargeOne(env: Env, device: string, route: string, cap: number = DAILY_CAPS[route]): Promise<boolean> {
-  const key = `cap:${today()}:${device}:${route}`
-  const used = Number((await env.CAPS.get(key)) ?? '0')
-  if (used >= cap) return true
-  await env.CAPS.put(key, String(used + 1), { expirationTtl: CAP_KEY_TTL_SECONDS })
+  const key = capKey(device)
+  const stored = await safely('cap_read', log, async () => {
+    const raw = await env.CAPS.get(key)
+    const record = raw ? JSON.parse(raw) : {}
+    return Number(record?.[route] ?? 0)
+  }, 0)
+  if (stored + tally.pending(key, route) >= cap) return true
+  tally.add(key, route, 1, CAP_KEY_TTL_SECONDS)
   return false
 }
 
@@ -2332,13 +2369,15 @@ const weekKey = (wallet: string, start: string) => `${WEEK_PREFIX}${wallet}:${st
  * the card is part of memory, and follows its switch.
  */
 async function recordWeek(env: Env, wallet: string, patch: WeekPatch): Promise<void> {
-  const kept = await loadMemory(env, wallet)
-  if (!kept.on) return
   const start = weekStart(clock.now())
-  const key = weekKey(wallet, start)
-  const stored = await env.CAPS.get(key)
-  const week: Week = stored ? { ...emptyWeek(start), ...JSON.parse(stored) } : emptyWeek(start)
-  await env.CAPS.put(key, JSON.stringify(applyWeek(week, patch)), { expirationTtl: WEEK_TTL_SECONDS })
+  tally.update(
+    weekKey(wallet, start),
+    WEEK_TTL_SECONDS,
+    (raw) => (raw ? { ...emptyWeek(start), ...JSON.parse(raw) } : emptyWeek(start)),
+    (week: Week) => applyWeek(week, patch),
+    // Asked at the flush, so memory switched off in the meantime keeps nothing.
+    async () => (await loadMemory(env, wallet)).on,
+  )
 }
 
 /** An address as a salted hash: enough to tell a first look from a second, never enough to name it. */
@@ -2379,12 +2418,14 @@ async function week(env: Env, who: Who): Promise<Response> {
  */
 async function recordUsage(env: Env, patch: UsagePatch): Promise<void> {
   const date = dayOf(clock.now())
-  const key = USAGE_PREFIX + date
-  const stored = await env.CAPS.get(key)
-  const day: DayUsage = stored ? { ...emptyDay(date), ...JSON.parse(stored) } : emptyDay(date)
   const hashed = patch.wallet ? await hashWallet(patch.wallet, env.SESSION_SECRET) : null
-  const next = applyUsage(day, patch, hashed, Math.floor(clock.now() / 60_000))
-  await env.CAPS.put(key, JSON.stringify(next), { expirationTtl: USAGE_TTL_SECONDS })
+  const minute = Math.floor(clock.now() / 60_000)
+  tally.update(
+    USAGE_PREFIX + date,
+    USAGE_TTL_SECONDS,
+    (raw) => (raw ? { ...emptyDay(date), ...JSON.parse(raw) } : emptyDay(date)),
+    (day: DayUsage) => applyUsage(day, patch, hashed, minute),
+  )
 }
 
 /** A wallet as a short salted hash: enough to count how many were active, never enough to name one. */

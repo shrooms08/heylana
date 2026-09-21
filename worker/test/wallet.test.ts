@@ -2,6 +2,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
 import { encodeBase58 } from '../src/base58.ts'
+import { resetTally, tallyLimits } from '../src/tally.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
 const SEPT = Date.parse('2026-09-15T12:00:00Z')
@@ -33,6 +34,9 @@ function env(kv = store()): Env {
 
 let calls: string[] = []
 beforeEach(() => {
+  // Every request writes its counters, as before batching: these tests read them back from KV.
+  resetTally()
+  tallyLimits.everyMs = 0
   calls = []
   clock.now = () => SEPT
   // A successful answer from Anthropic, so a talk is counted. Nothing real is called.
@@ -185,12 +189,12 @@ test('Pro is past the Free daily cap, up to the 2000 abuse ceiling', async () =>
   const pro = JSON.stringify({ bonus_left: 0, bonus_granted: false, pro_until: '2026-10-15T00:00:00Z' })
   const past = store({
     'acct:d:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': pro,
-    'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55:chat': '150',
+    'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': JSON.stringify({ chat: 150 }),
   })
   assert.equal((await worker.fetch(req('POST', '/chat', ask), env(past))).status, 200)
   const ceiling = store({
     'acct:d:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': pro,
-    'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55:chat': '2000',
+    'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': JSON.stringify({ chat: 2000 }),
   })
   const res = await worker.fetch(req('POST', '/chat', ask), env(ceiling))
   assert.equal(res.status, 429)
@@ -198,7 +202,7 @@ test('Pro is past the Free daily cap, up to the 2000 abuse ceiling', async () =>
 })
 
 test('the daily chat cap still holds on Free', async () => {
-  const kv = store({ 'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55:chat': '150' })
+  const kv = store({ 'cap:2026-09-15:3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55': JSON.stringify({ chat: 150 }) })
   const res = await worker.fetch(req('POST', '/chat', ask), env(kv))
   assert.equal(res.status, 429)
 })

@@ -1,6 +1,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { deviceOf, scrub, type Env } from '../src/index.ts'
+import { resetTally, tallyLimits } from '../src/tally.ts'
 
 /** A device id the app would have generated at install. */
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
@@ -44,6 +45,9 @@ let calls: Call[] = []
 let reply: (url: string) => Response
 
 beforeEach(() => {
+  // Every request writes its counters, as before batching: these tests read them back from KV.
+  resetTally()
+  tallyLimits.everyMs = 0
   calls = []
   reply = () => new Response(JSON.stringify({ ok: true }), { status: 200 })
   // Nothing in these tests ever reaches a real service.
@@ -323,13 +327,15 @@ test('the day is counted per device and per route', async () => {
   const today = new Date().toISOString().slice(0, 10)
   await worker.fetch(post('/chat', { mode: 'quick', messages: [1] }), env(caps))
   await worker.fetch(post('/chat', { mode: 'quick', messages: [1] }), env(caps))
-  assert.equal(caps.values.get(`cap:${today}:${DEVICE}:chat`), '2')
-  assert.equal(caps.values.get(`cap:${today}:${DEVICE}:tts`), undefined)
+  // One record per device a day, a count per route in it.
+  const record = JSON.parse(caps.values.get(`cap:${today}:${DEVICE}`)!)
+  assert.equal(record.chat, 2)
+  assert.equal(record.tts, undefined)
 })
 
 test('the 151st question of the day is refused', async () => {
   const today = new Date().toISOString().slice(0, 10)
-  const caps = capStore({ [`cap:${today}:${DEVICE}:chat`]: '150' })
+  const caps = capStore({ [`cap:${today}:${DEVICE}`]: JSON.stringify({ 'chat': 150 }) })
   const response = await worker.fetch(post('/chat', { mode: 'quick', messages: [1] }), env(caps))
   assert.equal(response.status, 429)
   assert.equal((await response.json()).reason, 'daily_cap')
@@ -338,7 +344,7 @@ test('the 151st question of the day is refused', async () => {
 
 test('speaking has its own allowance', async () => {
   const today = new Date().toISOString().slice(0, 10)
-  const caps = capStore({ [`cap:${today}:${DEVICE}:tts`]: '150' })
+  const caps = capStore({ [`cap:${today}:${DEVICE}`]: JSON.stringify({ 'tts': 150 }) })
   const capped = await worker.fetch(post('/tts', { text: 'hello' }), env(caps))
   assert.equal(capped.status, 429)
 
@@ -348,7 +354,7 @@ test('speaking has its own allowance', async () => {
 
 test('ears are allowed twice as often as questions', async () => {
   const today = new Date().toISOString().slice(0, 10)
-  const caps = capStore({ [`cap:${today}:${DEVICE}:stt-token`]: '299' })
+  const caps = capStore({ [`cap:${today}:${DEVICE}`]: JSON.stringify({ 'stt-token': 299 }) })
   reply = () => new Response(JSON.stringify({ key: 'k' }), { status: 200 })
   assert.equal((await worker.fetch(post('/stt-token', {}), env(caps))).status, 200)
   assert.equal((await worker.fetch(post('/stt-token', {}), env(caps))).status, 429)
@@ -357,7 +363,7 @@ test('ears are allowed twice as often as questions', async () => {
 test('one device running out does not affect another', async () => {
   const today = new Date().toISOString().slice(0, 10)
   const other = '11111111-2222-3333-4444-555555555555'
-  const caps = capStore({ [`cap:${today}:${DEVICE}:chat`]: '150' })
+  const caps = capStore({ [`cap:${today}:${DEVICE}`]: JSON.stringify({ 'chat': 150 }) })
   const response = await worker.fetch(
     post('/chat', { mode: 'quick', messages: [1] }, { 'X-Heylana-Device': other }),
     env(caps),

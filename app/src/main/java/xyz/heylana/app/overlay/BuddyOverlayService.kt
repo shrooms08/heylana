@@ -2325,18 +2325,37 @@ class BuddyOverlayService : Service() {
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         val readDone = SystemClock.uptimeMillis()
         val app = InAppConfirm.appOf(snapshot.packageName)
-        if (app == null) {
-            HeylanaLog.state("glance: system prompt over an app with no confirm entry")
+        val sheet = app?.let { InAppConfirm.read(it, confirmItems(snapshot)) }
+        if (sheet != null) {
+            speakConfirm(sheet, at, readStarted, readDone)
             return
         }
-        val sheet = InAppConfirm.read(app, confirmItems(snapshot))
-        if (sheet == null) {
-            // An unlock, or a form it cannot read: nothing to say rather than a guess.
-            HeylanaLog.state("glance: system prompt over ${app.name}, no confirm form under it")
+        // Under the prompt Android may list only the prompt's own window. If an app's swap form
+        // was on screen a moment ago, say what is being confirmed without an old amount.
+        val seen = formSeen
+        if (seen != null && SystemClock.uptimeMillis() - seen.second < InAppConfirm.FORM_SEEN_MS) {
+            val about = "${seen.first.packageName}|confirm|unread|$at"
+            if (about == spokenGlanceAbout) return
+            spokenGlanceAbout = about
+            glanceAt = at
+            glanceSpoke = false
+            val line = InAppConfirm.unreadLine(seen.first)
+            val spoke = speakWarning(line)
+            HeylanaLog.state(
+                "glance: in-app confirm app=${seen.first.name} form=unread window_event_ms=0 " +
+                    "spoke_asked_ms=${SystemClock.uptimeMillis() - at} spoken=$spoke"
+            )
+            val glance = Lookout.Glance(line, line, Lookout.Why.SIGNING, about)
+            lastGlance = glance
+            showGlance(glance)
             return
         }
-        speakConfirm(sheet, at, readStarted, readDone)
+        // An unlock, or an app with no confirm entry: nothing to say rather than a guess.
+        HeylanaLog.state("glance: system prompt with no confirm form seen app=${app?.name ?: "none"}")
     }
+
+    /** The in-app confirm app whose swap form a look last read, and when. Never its amounts. */
+    private var formSeen: Pair<InAppConfirm.App, Long>? = null
 
     /** What the confirm form shows, spoken and shown; once per form. */
     private fun speakConfirm(sheet: InAppConfirm.Sheet, at: Long, readStarted: Long, readDone: Long) {
@@ -2403,6 +2422,10 @@ class BuddyOverlayService : Service() {
         val readStarted = SystemClock.uptimeMillis()
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         val decideStarted = SystemClock.uptimeMillis()
+        // An app with its own confirm: note that its form is up, for a prompt that may come.
+        InAppConfirm.appOf(snapshot.packageName)?.let { app ->
+            if (InAppConfirm.read(app, confirmItems(snapshot)) != null) formSeen = app to SystemClock.uptimeMillis()
+        }
         // An app that draws its own confirm sheet: its button words and an amount row.
         InAppConfirm.appOf(snapshot.packageName)?.takeIf { it.prompt == InAppConfirm.Prompt.OWN_SHEET }?.let { app ->
             val items = confirmItems(snapshot)

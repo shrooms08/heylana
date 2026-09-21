@@ -59,11 +59,25 @@ object InAppConfirm {
     private val UNLOCK = Regex("(unlock|authenticate to open|log ?in)", RegexOption.IGNORE_CASE)
 
     /**
-     * Whether this new window is Android's fingerprint prompt asking to confirm something —
-     * decided from the window's own class and title, never by reading System UI.
+     * System UI's other surfaces, which are never a confirm: the shade, the status bar, the
+     * volume and power dialogs, recents, toasts, the screenshot and the keyguard.
      */
-    fun biometricPrompt(packageName: String?, describedAs: String): Boolean =
-        packageName == SYSTEM_UI && BIOMETRIC.containsMatchIn(describedAs) && !UNLOCK.containsMatchIn(describedAs)
+    private val OTHER_SYSTEM = Regex(
+        "(shade|statusbar|status_bar|notification|volume|globalactions|power|recents|toast|screenshot|keyguard|navigationbar|pip)",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * Whether this new window can be Android's fingerprint prompt asking to confirm something —
+     * decided from the window's own class and title, never by reading System UI. On the Seeker
+     * the prompt's class and title carry no fingerprint words at all, so any System UI window
+     * that is not one of its [OTHER_SYSTEM] surfaces counts; what makes it a confirm is the
+     * form under it ([read]), and an unlock has no form under it.
+     */
+    fun biometricPrompt(packageName: String?, describedAs: String): Boolean {
+        if (packageName != SYSTEM_UI || UNLOCK.containsMatchIn(describedAs)) return false
+        return BIOMETRIC.containsMatchIn(describedAs) || !OTHER_SYSTEM.containsMatchIn(describedAs)
+    }
 
     // ---------------------------------------------------------------- reading the form
 
@@ -163,6 +177,16 @@ object InAppConfirm {
 
     /** The whole line as said and shown: the opening, then what the form says. */
     fun spoken(sheet: Sheet): String = "${opening(sheet.app)} ${detail(sheet)}"
+
+    /**
+     * Said when the prompt came up over a form that could not be read at that moment (Android
+     * may list only the prompt's window), but the app's swap form was seen just before: the
+     * fixed opening and where to look, never an amount from an older read.
+     */
+    fun unreadLine(app: App): String = "${app.name} wants you to confirm a swap. Check the amounts before you touch the sensor."
+
+    /** How recently the form must have been seen for [unreadLine] to be said. */
+    const val FORM_SEEN_MS = 60_000L
 
     /** The strip's line: the same, and where to look before the sensor is touched. */
     fun line(sheet: Sheet): String = "${spoken(sheet)} Check it before you touch the sensor."

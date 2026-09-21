@@ -54,8 +54,19 @@ class InAppConfirmTest {
         assertTrue(InAppConfirm.biometricPrompt("com.android.systemui", "com.android.systemui.biometrics.AuthContainerView"))
         assertTrue(InAppConfirm.biometricPrompt("com.android.systemui", "android.widget.FrameLayout Touch the fingerprint sensor"))
         assertFalse(InAppConfirm.biometricPrompt("com.android.systemui", "com.android.systemui.shade.NotificationShadeWindowView"))
+        assertFalse(InAppConfirm.biometricPrompt("com.android.systemui", "com.android.systemui.volume.VolumeDialogImpl"))
+        // The Seeker's prompt says nothing about fingerprints; the form under it decides.
+        assertTrue(InAppConfirm.biometricPrompt("com.android.systemui", "android.widget.FrameLayout Swap"))
         assertFalse(InAppConfirm.biometricPrompt("com.android.systemui", "BiometricPrompt Unlock Jupiter"))
         assertFalse(InAppConfirm.biometricPrompt("ag.jup.jupiter.android", "fingerprint"))
+    }
+
+    @Test
+    fun `a prompt over a form it cannot read names the app and says where to look, never an amount`() {
+        val line = InAppConfirm.unreadLine(jupiter)
+        assertEquals("Jupiter wants you to confirm a swap. Check the amounts before you touch the sensor.", line)
+        assertFalse(line.any { it.isDigit() })
+        assertFalse(line.contains("safe", ignoreCase = true))
     }
 
     @Test

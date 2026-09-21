@@ -33,4 +33,30 @@ class ClickTargetTest {
         )
         assertNull(ClickTarget.containing(label, boxes, listOf(true, false)))
     }
+
+    // Jupiter's Trade screen on the Seeker, 2026-09-21, pixels: the whole page, the Swap tab,
+    // the green Swap bar (a tappable box with no words) and the tappable word "Swap" inside it.
+    private val jupiterBoxes = listOf(
+        intArrayOf(0, 0, 1200, 2670),
+        intArrayOf(44, 248, 166, 370),
+        intArrayOf(52, 1672, 1148, 1792),
+        intArrayOf(547, 1709, 654, 1759)
+    )
+    private val jupiterClickable = listOf(false, true, true, true)
+    private val jupiterNamed = listOf(false, true, false, true)
+
+    @Test
+    fun `the green Swap bar is ringed whole, not its word`() {
+        assertEquals(2, ClickTarget.target(3, jupiterBoxes, jupiterClickable, jupiterNamed))
+        // The bar itself stays the bar; the tab, with no box around it, stays the tab.
+        assertEquals(2, ClickTarget.target(2, jupiterBoxes, jupiterClickable, jupiterNamed))
+        assertEquals(1, ClickTarget.target(1, jupiterBoxes, jupiterClickable, jupiterNamed))
+    }
+
+    @Test
+    fun `a tappable label inside a named row stays the label`() {
+        // The Wallet's Start inside its Earn row, where the row carries its own words.
+        val boxes = listOf(intArrayOf(40, 1700, 1160, 1800), intArrayOf(990, 1713, 1159, 1795))
+        assertEquals(1, ClickTarget.target(1, boxes, listOf(true, true), listOf(true, true)))
+    }
 }

@@ -10,6 +10,22 @@ object ClickTarget {
     const val MAX_SHARE_OF_SCREEN = 0.5
 
     /**
+     * What the element at [index] rings and takes the tap as: a label that takes no tap, the
+     * smallest button-sized tappable box around it; a tappable label inside an unnamed
+     * button-sized tappable box, that box (Jupiter's green Swap bar is a box with no words and
+     * a tappable "Swap" inside it, and ringing the word missed the bar); else itself. A named
+     * box around a tappable label (a row with its own words) is left alone.
+     */
+    fun target(index: Int, boxes: List<IntArray>, clickable: List<Boolean>, named: List<Boolean>): Int {
+        val eligible = if (clickable[index]) {
+            clickable.indices.map { it != index && clickable[it] && !named[it] }
+        } else {
+            clickable
+        }
+        return containing(boxes[index], boxes, eligible) ?: index
+    }
+
+    /**
      * The index of the smallest clickable box (left, top, right, bottom) that contains
      * [inner] and is still the size of a button — or null if none is.
      */

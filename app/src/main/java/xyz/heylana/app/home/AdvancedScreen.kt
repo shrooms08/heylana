@@ -167,8 +167,9 @@ object PrivacyCopy {
         "signature or a page asking for your recovery phrase. That read never leaves the phone and is never " +
         "sent anywhere — it is used for the one line it shows you, and dropped. Switch it off and nothing is " +
         "read unless you ask."
-    const val BLOCKLIST = "The list of known phishing sites is downloaded to your phone once a day and checked " +
-        "here. No web address you visit is ever sent to Heylana or to anyone else."
+    const val BLOCKLIST = "A scam watchlist built from ScamSniffer's feed and Phantom's blocklist (Phantom's part is a " +
+        "snapshot, no longer updated) is downloaded to your phone once a day and checked here. No web address you " +
+        "visit is ever sent to Heylana or to anyone else."
     const val SIGN = "Heylana prepares, you sign. Heylana never signs or sends anything itself."
 
     /** The honest caveat: a wallet told to trust Heylana signs without asking. */
@@ -252,7 +253,7 @@ fun PrivacyScreen(provider: String, onBack: () -> Unit, assemblyai: Boolean = fa
                 Spacer(Modifier.height(10.dp))
                 FlatRow("No pixels, ever", subtitle = PrivacyCopy.PIXELS, glyph = Glyph.EYE, selected = true)
                 FlatRow("Watching signing screens", subtitle = PrivacyCopy.WATCHING, glyph = Glyph.SHIELD)
-                FlatRow("The phishing list", subtitle = PrivacyCopy.BLOCKLIST, glyph = Glyph.DOC)
+                FlatRow("The scam watchlist", subtitle = PrivacyCopy.BLOCKLIST, glyph = Glyph.DOC)
                 Spacer(Modifier.height(6.dp))
                 SectionHead("What leaves the phone")
                 PrivacyCopy.items(provider, assemblyai).forEachIndexed { i, item ->

@@ -2241,6 +2241,19 @@ class BuddyOverlayService : Service() {
         if (lookoutBusy()) return
         if (from == packageName) return
 
+        // Android's fingerprint prompt over a Solana app's own form: the app is signing with
+        // its own wallet (Jupiter), where Seed Vault never appears. The prompt is never read;
+        // the form under it is, and said at once.
+        // System UI's windows: only whether one reads as a fingerprint prompt, never its words.
+        if (from == InAppConfirm.SYSTEM_UI) {
+            HeylanaLog.state("glance: system window biometric=${InAppConfirm.biometricPrompt(from, event.describedAs)} class_chars=${event.className?.length ?: 0}")
+        }
+        if (InAppConfirm.biometricPrompt(from, event.describedAs)) {
+            HeylanaLog.state("glance: system prompt kind=biometric")
+            confirmOnSight(event.at)
+            return
+        }
+
         // A signature is being asked for: say so **now**, before the screen is read. A
         // wallet's tree takes long enough to read that the warning used to arrive after the
         // user had approved. Nothing is waited for here — not the read, not the worker —
@@ -2302,6 +2315,60 @@ class BuddyOverlayService : Service() {
         if (!spoke) HeylanaLog.state("glance: opening line not spoken (muted or no voice); the strip still comes")
     }
 
+    /**
+     * A Solana app's own confirm, seen: the app's window is read (System UI's never is), the
+     * fixed opening is played from the phone ("Jupiter wants you to confirm:"), then what the
+     * form shows and any warning. Timed from the window event, as a signing window is.
+     */
+    private fun confirmOnSight(at: Long) {
+        val readStarted = SystemClock.uptimeMillis()
+        val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
+        val readDone = SystemClock.uptimeMillis()
+        val app = InAppConfirm.appOf(snapshot.packageName)
+        if (app == null) {
+            HeylanaLog.state("glance: system prompt over an app with no confirm entry")
+            return
+        }
+        val sheet = InAppConfirm.read(app, confirmItems(snapshot))
+        if (sheet == null) {
+            // An unlock, or a form it cannot read: nothing to say rather than a guess.
+            HeylanaLog.state("glance: system prompt over ${app.name}, no confirm form under it")
+            return
+        }
+        speakConfirm(sheet, at, readStarted, readDone)
+    }
+
+    /** What the confirm form shows, spoken and shown; once per form. */
+    private fun speakConfirm(sheet: InAppConfirm.Sheet, at: Long, readStarted: Long, readDone: Long) {
+        val about = InAppConfirm.about(sheet)
+        if (about == spokenGlanceAbout) {
+            HeylanaLog.state("glance: skipped why=same_confirm")
+            return
+        }
+        glanceAt = at
+        glanceSpoke = false
+        spokenGlanceAbout = about
+        // The opening is one of the fixed lines, played from the phone; the amounts follow it
+        // in the same queue while its audio is still playing.
+        val opened = speakWarning(InAppConfirm.opening(sheet.app))
+        val spokeAsked = SystemClock.uptimeMillis() - at
+        speakWarning(InAppConfirm.detail(sheet))
+        val warnings = InAppConfirm.warnings(sheet).size
+        HeylanaLog.state(
+            "glance: in-app confirm app=${sheet.app.name} window_event_ms=0 to_read_ms=${readStarted - at} " +
+                "read_ms=${readDone - readStarted} spoke_asked_ms=$spokeAsked spoken=$opened warnings=$warnings"
+        )
+        val glance = Lookout.Glance(InAppConfirm.line(sheet), InAppConfirm.spoken(sheet), Lookout.Why.SIGNING, about)
+        lastGlance = glance
+        showGlance(glance)
+    }
+
+    /** The elements as [InAppConfirm] reads them: words and positions, used here and dropped. */
+    private fun confirmItems(snapshot: ScreenSnapshot): List<InAppConfirm.Item> = snapshot.nodes.mapNotNull { node ->
+        val words = (node.text ?: node.contentDescription)?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        InAppConfirm.Item(words, node.bounds.left, node.bounds.top, node.bounds.right, node.bounds.bottom)
+    }
+
     /** The window a held look is for, and the look itself. */
     private var heldWindow = 0L
     private val heldLook = Runnable { look(heldWindow, second = false) }
@@ -2336,6 +2403,17 @@ class BuddyOverlayService : Service() {
         val readStarted = SystemClock.uptimeMillis()
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         val decideStarted = SystemClock.uptimeMillis()
+        // An app that draws its own confirm sheet: its button words and an amount row.
+        InAppConfirm.appOf(snapshot.packageName)?.takeIf { it.prompt == InAppConfirm.Prompt.OWN_SHEET }?.let { app ->
+            val items = confirmItems(snapshot)
+            if (items.any { app.confirmWords.matches(it.text) }) {
+                InAppConfirm.read(app, items)?.let { sheet ->
+                    main.removeCallbacks(secondLook)
+                    speakConfirm(sheet, at, readStarted, decideStarted)
+                    return
+                }
+            }
+        }
         val glance = Lookout.glanceAt(
             snapshot, if (debugScamDomains.isEmpty()) blocklist.domains else blocklist.domains + debugScamDomains,
             settings.walletSession?.pubkey,
@@ -2419,8 +2497,10 @@ class BuddyOverlayService : Service() {
     private fun warmForGlance(packageName: String?) {
         if (packageName == null) return
         val kind = xyz.heylana.app.brain.SolanaApps.of(packageName)?.kind
+        val confirmApp = InAppConfirm.appOf(packageName)
         val worthIt = kind == xyz.heylana.app.brain.SolanaApps.Kind.WALLET ||
             kind == xyz.heylana.app.brain.SolanaApps.Kind.SIGNING ||
+            confirmApp != null ||
             packageName in xyz.heylana.app.lessons.LessonWords.BROWSERS
         if (!worthIt) return
         scope.launch {
@@ -2429,6 +2509,8 @@ class BuddyOverlayService : Service() {
             // either. One line per screen change at most; a line already kept costs nothing.
             val voice = mouth ?: return@launch
             if (settings.voiceMuted) return@launch
+            // An app with its own confirm: its opening line, before its confirm comes up.
+            if (confirmApp != null && voice.prefetch(InAppConfirm.opening(confirmApp))) return@launch
             for (line in Lookout.SPOKEN_LINES) {
                 if (voice.prefetch(line)) break
             }

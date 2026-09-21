@@ -222,7 +222,7 @@ object Lookout {
     /** What Heylana says out loud about a page: the warning itself, cut to one sentence. */
     fun spokenWarning(why: Why): String = when (why) {
         Why.SECRET -> "No real Solana app asks for your recovery phrase."
-        Why.BLOCKLIST -> "Careful: this site is on a known phishing list."
+        Why.BLOCKLIST -> "Careful: this site is on a scam watchlist built from ScamSniffer and Phantom's lists."
         Why.LOOK_ALIKE -> "Careful: this looks like a copy of a real site."
         Why.SIGNING -> "Something here wants your signature."
     }

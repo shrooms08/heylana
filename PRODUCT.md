@@ -203,8 +203,9 @@ question. Switch it off in Settings and nothing is read unless you ask. It also 
 your tap only while it is pointing at something (or during a task you started). There are
 no screenshots: the screen is turned into a short text list of the labels on it.
 
-The phishing list is **downloaded to your phone** once a day and checked there, so no web
-address you visit is ever sent to Heylana or to anyone else.
+The scam watchlist — **a scam watchlist built from ScamSniffer's feed and Phantom's blocklist**
+— is **downloaded to your phone** once a day and checked there, so no web address you visit is
+ever sent to Heylana or to anyone else.
 
 Exactly what leaves the phone, and where it goes:
 
@@ -312,8 +313,14 @@ the honest boundary of it.
   wallet nor the counterparties of its recent transactions. It is not a claim about your
   whole history, and it is only ever asked while memory is on.
 - **A screen asking for your recovery phrase**, in any app, and **a domain that is a copy of
-  a real one** (phanton.app, jup1.ag, rnagiceden.io), or one on a public list of known
-  crypto phishing sites.
+  a real one** (phanton.app, jup1.ag, rnagiceden.io), or one on a scam watchlist built from
+  ScamSniffer's feed and Phantom's blocklist — the listed site itself or any page under it
+  (claim.bad-site.com when bad-site.com is listed), never a shared host like vercel.app.
+- **A Solana app's own confirm.** Jupiter signs with its own wallet, behind Android's
+  fingerprint prompt, not Seed Vault. When that prompt comes up over Jupiter's swap form,
+  Heylana says what the form shows — "Jupiter wants you to confirm: 0.0009 SOL for about
+  0.1071 USDC." — and whether a token name copies a real one or most of the wallet's balance
+  is leaving. It cannot read the transaction itself there; it reads the screen.
 
 **What it cannot.**
 
@@ -325,20 +332,21 @@ the honest boundary of it.
   exactly that.
 - **It cannot tell you a program is honest.** It can say you have never used it before, and
   what the instruction would do. It cannot audit what the program does once it runs.
-- **It cannot promise a site is safe.** The blocklist is a public one and always behind the
-  newest scams (Scam Sniffer's open feed runs a week behind their own); the look-alike check
+- **It cannot promise a site is safe.** The watchlist is built from public lists and always
+  behind the newest scams (Scam Sniffer's open feed runs a week behind their own); the look-alike check
   only knows the forty real domains it carries. A site nobody has reported yet, under a name
   nothing like a real one, passes both.
 - **It never says "safe".** Not about a transaction, not about a site, not about an address.
   Every line says what was found and leaves the deciding to you.
 
-**Where the lists come from.** The blocklist is built from two public sources, both checked
+**Where the lists come from.** The scam watchlist is built from two public sources, both checked
 on Sept 20 2026: [scamsniffer/scam-database](https://github.com/scamsniffer/scam-database)
 (GPL-3.0), appended to daily and the feed Phantom's own product uses, read a day at a time
 from its archive files; and [phantom/blocklist](https://github.com/phantom/blocklist), about
 2,300 hand-picked Solana phishing domains, frozen since January 2025 and used as a seed
-rather than a live source. Heylana keeps the Solana-relevant slice of them — about 1,200
-domains, a 26 KB download — because a parcel-delivery scam is someone else's job.
+rather than a live source: **Phantom's part is a snapshot**. Every domain either source lists
+is kept, since each is a known scam — 2,335 domains on Sept 21 (it kept only a Solana-words
+slice of 1,261 before), capped at 8,000 with Phantom's snapshot the first to go past it.
 
 ## What Heylana may do: the tool registry
 

@@ -25,7 +25,8 @@ object ScamWatch {
     const val SEED_PHRASE = "No real Solana app asks for your recovery phrase. If you type it in, whoever is asking can take everything."
 
     /** Said unprompted when a domain is on the blocklist the worker keeps. */
-    const val KNOWN_PHISHING = "This site is on a public list of known crypto phishing sites. Check the address bar."
+    const val KNOWN_PHISHING = "This site is on a scam watchlist built from ScamSniffer's feed and Phantom's blocklist. " +
+        "Check the address bar."
 
     /** Said unprompted when a domain is one letter away from a real one. */
     fun lookAlikeWords(real: String): String = "This looks like a copy of $real. Check the address bar."

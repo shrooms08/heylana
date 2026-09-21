@@ -205,7 +205,8 @@ class LookoutTest {
         for (why in Lookout.Why.entries) {
             val line = Lookout.spokenWarning(why)
             assertFalse(line, line.contains("safe", ignoreCase = true))
-            assertFalse(line, line.contains("scam", ignoreCase = true))
+            // "On a scam watchlist" names the list; calling the site a scam would be a verdict.
+            assertFalse(line, line.replace("scam watchlist", "", ignoreCase = true).replace("ScamSniffer", "").contains("scam", ignoreCase = true))
         }
     }
 

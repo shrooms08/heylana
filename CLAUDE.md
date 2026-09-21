@@ -946,6 +946,15 @@ Nothing is ever retried by itself. `TxMachine` decides which label follows which
 never moves an ended send; nothing is "Sent" that the wallet was never asked to sign); the chip
 stays out of the way while a card is up, and says "waiting for your wallet" in the same words.
 The trace says `tx: <label> -> <label> cluster=…`. `TxStateTest`, `SendFlowTest`.
+**After Confirm the card is passive** (`BuddyOverlayView.showTxCard`: the HUD shape a glance
+uses, never the full-screen box): on the Seeker the box stayed over Seed Vault and the tap
+meant for "Testing wallet" closed Heylana's box instead, so the wallet ended "cancelled
+before connected" (`send: card is passive, touches reach the wallet`). **And the lookout keeps
+quiet for Heylana's own send** until it ends (`lookoutBusy`: Waiting or Confirming): it had
+greeted Seed Vault's window with "Careful…" and its glance then took the "Done" card away.
+Checked on the Seeker on Sept 21, devnet, 0.01 USDC to the treasury: approved — Prepared,
+Waiting, Signed, confirming, Sent with the Explorer chip; rejected in Seed Vault — Not sent,
+"Cancelled. Nothing left your wallet."; Home's header showed Devnet in amber.
 
 **The network is on Home's header.** A small badge beside the name: "Devnet" in amber
 (`warnSoft` fill) or "Mainnet" in quiet grey, from the worker's CLUSTER on `/me`, asked on

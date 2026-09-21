@@ -2085,7 +2085,7 @@ class BuddyOverlayService : Service() {
         if (!settings.watchSigning) return
         // Busy: an exchange, a task or a send has the buddy already, and a glance would
         // land on top of whatever the user asked for.
-        if (exchange.inProgress || session != null || awaitingConfirm != null || teaching != null) return
+        if (lookoutBusy()) return
         if (from == packageName) return
 
         // A signature is being asked for: say so **now**, before the screen is read. A
@@ -2159,9 +2159,21 @@ class BuddyOverlayService : Service() {
      */
     private val secondLook = Runnable { look(heldWindow, second = true) }
 
+    /**
+     * Whether the buddy is already busy with something the user asked for. A send counts
+     * until it ends, not only while its strip waits for Confirm: Seed Vault's window for
+     * Heylana's own send is the signature the user just asked for, and on the Seeker the
+     * lookout greeted it with "Careful…" and a warning over the "Waiting for your wallet"
+     * card — then took the "Done" card away with its glance.
+     */
+    private fun lookoutBusy(): Boolean =
+        exchange.inProgress || session != null || awaitingConfirm != null || teaching != null ||
+            // After Confirm and until the send ends — which it always does, with a result.
+            tx is TxState.Waiting || tx is TxState.Confirming
+
     private fun look(at: Long, second: Boolean) {
         if (!settings.watchSigning) return
-        if (exchange.inProgress || session != null || awaitingConfirm != null || teaching != null) return
+        if (lookoutBusy()) return
         lastLookAt = SystemClock.uptimeMillis()
         // The clock for everything after it starts at the window, not at the look.
         if (glanceAt != at) {

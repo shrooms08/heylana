@@ -539,10 +539,23 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         applyPosition()
     }
 
-    /** A send's card after Confirm: waiting for the wallet, confirming, sent or not sent. */
+    /**
+     * A send's card after Confirm: waiting for the wallet, confirming, sent or not sent.
+     *
+     * Always the passive shape a glance uses, never the full-screen box. Seed Vault opens
+     * underneath Heylana, and the box would take the user's first tap on the wallet as a tap
+     * outside it — found on the Seeker, where the tap meant for "Testing wallet" closed
+     * Heylana's box instead and the wallet ended "cancelled before connected". Beside the disc,
+     * every touch outside the card reaches the wallet.
+     */
     fun showTxCard(text: String, badge: xyz.heylana.app.wallet.ClusterBadge) {
-        ensurePanelOpen()
         panel.showTxCard(text, badge)
+        if (mode != Mode.HUD) enterMode(Mode.HUD)
+        if (panel.shape != ChatPanelView.Shape.STRIP) {
+            panel.releaseInput()
+            panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
+        }
+        HeylanaLog.state("send: card is passive, touches reach the wallet")
         applyPosition()
     }
 

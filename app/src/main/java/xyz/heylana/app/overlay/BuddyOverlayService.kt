@@ -746,7 +746,11 @@ class BuddyOverlayService : Service() {
             val teaching = Teaching.wantsTeaching(question)
             // A walk-through is only for a question the model answers in words: never a
             // send, a quick action or chat, which have their own shapes.
-            val walkThrough = Teaching.wantsSession(question) &&
+            // Debug builds: the next question must come back as a task even if it is one tap.
+            val forceStep = BuildConfig.DEBUG && debugOneStep
+            debugOneStep = false
+            if (forceStep) HeylanaLog.state("debug: one-step task forced")
+            val walkThrough = (Teaching.wantsSession(question) || forceStep) &&
                 route.why != Routing.Why.SEND_QUESTION && route.why != Routing.Why.QUICK_ACTION && !route.skipsScreen
             // Solana docs or Playground in the browser: "explain this" explains the passage in
             // view, and "why" straight after goes one level deeper on it.
@@ -765,7 +769,11 @@ class BuddyOverlayService : Service() {
             val longPage = chat == null && !walkThrough && snapshot.moreBelow &&
                 route.why != Routing.Why.SEND_QUESTION && route.why != Routing.Why.QUICK_ACTION &&
                 xyz.heylana.app.screen.PageExtent.aboutThePage(question, snapshot.packageName)
-            val lenses = listOfNotNull(lens, if (longPage) HeylanaPrompt.MORE_BELOW_LINE else null)
+            val lenses = listOfNotNull(
+                lens,
+                if (longPage) HeylanaPrompt.MORE_BELOW_LINE else null,
+                if (forceStep) HeylanaPrompt.DEBUG_ONE_STEP_LINE else null
+            )
             mode(BuddyMode.THINKING)
             val asked = brain.ask(
                 question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough,
@@ -931,6 +939,12 @@ class BuddyOverlayService : Service() {
                 if (intent.getBooleanExtra("toggle", false)) view.debugToggle()
                 if (intent.getBooleanExtra("thinking", false)) view.showThinking()
                 if (intent.getBooleanExtra("teach", false)) debugTeach()
+                // The next question comes back as a task even if it takes one tap:
+                //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --ez one_step true
+                if (intent.getBooleanExtra("one_step", false)) {
+                    debugOneStep = true
+                    HeylanaLog.state("debug: next question is a one-step task")
+                }
                 // A typed question, exactly as the ask pill sends it: a real /chat call.
                 //   adb shell am broadcast -a xyz.heylana.app.debug.PANEL --es ask "tell me a joke"
                 intent.getStringExtra("ask")?.takeIf { it.isNotBlank() }?.let { question ->
@@ -945,6 +959,9 @@ class BuddyOverlayService : Service() {
     }
 
     private var debugPanel: android.content.BroadcastReceiver? = null
+
+    /** Debug builds: the next question is asked as a task even if it is one tap. */
+    private var debugOneStep = false
 
     /**
      * Debug builds only: a teaching flight on the real overlay, across three made-up

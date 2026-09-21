@@ -217,6 +217,11 @@ object HeylanaPrompt {
             "(goal set, done false): say is the first step only, starting with one short reason, under 25 " +
             "words, and point_at is its element. If it needs no taps, answer in say pieces."
 
+    /** Debug builds only (`--ez one_step true`): a task even for one tap, to check the wait for it. */
+    const val DEBUG_ONE_STEP_LINE: String =
+        "Reply with a task (goal set, done false) even if it takes a single tap: say is that one step as one sentence, " +
+            "point_at is its element."
+
     /** Goes with the first question of a teaching task and with every one of its steps. */
     const val TEACH_LINE: String =
         "Teach as you go: say starts with one short reason, then the step, under 25 words in all. " +

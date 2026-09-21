@@ -4,7 +4,7 @@ For Minos. The lookout now catches a page under a listed scam domain, keeps ever
 sources list, and speaks when Jupiter asks you to confirm a swap with its own fingerprint prompt.
 Install the app, run `./scripts/a11y.sh`, wait five seconds, then Menu → hold **Start buddy**.
 
-**Live calls this test spends: 0 chat. A few spoken lines. Mainnet apps: never approve or
+**Live calls this test spends: 1 chat (the send in section 3). A few spoken lines. Mainnet apps: never approve or
 confirm anything; never touch the fingerprint sensor at a swap prompt.**
 
 ---
@@ -29,7 +29,15 @@ confirm anything; never touch the fingerprint sensor at a swap prompt.**
 4. Cancel the prompt.
 5. Unlocking Jupiter (its own fingerprint prompt on opening) says nothing.
 
-## 3. Seed Vault, as before (0 chat)
+## 3. Heylana's own send, rejected (1 chat)
+
+1. In any app, hold the disc and say **send 0.01 USDC to** the treasury address (devnet).
+2. When the card shows ✓ Simulation passed, tap **Confirm**. Seed Vault opens.
+3. Tap **Reject** in Seed Vault.
+4. The card says **Not sent** and she says **"Cancelled. Nothing left your wallet."** Nothing else
+   from the lookout pops up over the card (Logcat: `lookout: skipped why=busy_own_send`).
+
+## 3b. Seed Vault for someone else's request (0 chat)
 
 1. In the Wallet app start a small Send and go through to Seed Vault's approval.
 2. She says "Careful: something is asking for your signature." at once. **Reject** in Seed Vault.

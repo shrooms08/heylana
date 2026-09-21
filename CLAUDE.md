@@ -870,7 +870,17 @@ Check the amounts before you touch the sensor." — never an older amount. An un
 under it and stays silent (seen on the Seeker). Apps that draw their own sheet (Phantom,
 Solflare, Backpack) are an `InAppConfirm.App` entry with `Prompt.OWN_SHEET`, their pay/get labels
 and button words, added once walked. `glance: in-app confirm app=… window_event_ms=0 read_ms=…
-spoke_asked_ms=…`. **Not yet proved on the Seeker**: the test account had too little SOL for
+spoke_asked_ms=…`. **It never touches Heylana's own send, and never fires on System UI alone
+(`overlay/LookoutGate`)**: the lookout keeps quiet from a send's Prepared card until its ending
+line has been said (`ENDING_QUIET_MS` 8s after Sent / Not sent; a card left alone stops counting
+after `OWN_SEND_MAX_MS`, 5 minutes), and the in-app rule fires only when the app in front — the
+last window of an app that is not System UI or Heylana — has an entry, on a read of that app.
+Every trigger logs its rule: `lookout: skipped why=busy_own_send pkg=…`, `lookout:
+rule=in_app_confirm fired=… why=prompt_over_jupiter|no_app_in_front|app_in_front_has_no_entry|
+read_other_app`, `lookout: rule=signing_window fired=true`. `LookoutGateTest` runs a devnet send
+and System UI windows together through to "Cancelled. Nothing left your wallet." Checked on the
+Seeker on Sept 21: a devnet send rejected in Seed Vault — Not sent and the line, every window
+during it `busy_own_send`. **Not yet proved on the Seeker**: the test account had too little SOL for
 Jupiter to put up its swap prompt. `InAppConfirmTest`.
 
 **The phishing list goes to the phone, not the other way.** `/lookout` hands over the whole

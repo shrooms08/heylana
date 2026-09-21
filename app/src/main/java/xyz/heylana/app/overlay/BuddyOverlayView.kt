@@ -713,6 +713,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         HeylanaLog.state("mode: $mode -> $next")
         val previous = mode
         mode = next
+        // Every mode sets its own flags below; a step's touch-through goes with the old ones.
+        passingTouches = false
         // Every close lands here: the box is emptied for the next time it opens.
         // Docked again: a teaching flight's remembered home is spent.
         if (next == Mode.DOCKED) teachHome = null
@@ -1347,15 +1349,18 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         // goes clear of the element, so a tap on it can never land on Heylana.
         reorderBeside()
         measureContainer()
-        TeachingFlight.placeWindow(
+        val clear = TeachingFlight.placeWindow(
             target.left - usableLeft, target.top - usableTop,
             target.right - usableLeft, target.bottom - usableTop,
             measuredContainerWidth, measuredContainerHeight,
-            dp(HeylanaTokens.SPACE_4_DP),
+            dp(HeylanaTokens.TARGET_CLEAR_DP),
             usableWidth,
             usableHeight,
             standAt
         )
+        // No side had room: the window cannot help covering part of the element, so it takes
+        // no touches at all until the step moves on — the element's tap always reaches the app.
+        touchThrough(!clear)
         if (panelOnLeft != (standAt[2] == 1)) {
             panelOnLeft = standAt[2] == 1
             reorderBeside()
@@ -1366,9 +1371,25 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         val spriteY = standAt[1] + (measuredContainerHeight - discSize) / 2
         HeylanaLog.state(
             "teach: window at ${standAt[0] + usableLeft},${standAt[1] + usableTop} " +
-                "size=${measuredContainerWidth}x$measuredContainerHeight clear_of=${target.left},${target.top},${target.right},${target.bottom}"
+                "size=${measuredContainerWidth}x$measuredContainerHeight clear_of=${target.left},${target.top},${target.right},${target.bottom} " +
+                "gap_dp=${HeylanaTokens.TARGET_CLEAR_DP.toInt()} clear=$clear"
         )
         flyArc(spriteX, spriteY, onArrived)
+    }
+
+    /**
+     * While a step's element sits under Heylana's window (a screen with no room anywhere
+     * else), the window lets every touch through. Cleared by the next hop and by leaving HUD.
+     */
+    private var passingTouches = false
+
+    private fun touchThrough(on: Boolean) {
+        if (passingTouches == on) return
+        passingTouches = on
+        params.flags = if (on) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        updateLayout()
+        HeylanaLog.state("teach: window ${if (on) "lets touches through, no room clear of the element" else "takes touches again"}")
     }
 
     /** The disc's flight home at the end of a teaching answer: the same arc, then the strip melts. */

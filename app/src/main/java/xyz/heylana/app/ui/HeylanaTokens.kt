@@ -214,6 +214,9 @@ object HeylanaTokens {
     const val SPACE_4_DP = 16f
     const val SPACE_5_DP = 24f
     const val SPACE_6_DP = 32f
+
+    /** How far Heylana's window keeps from the element a step points at, on every side. */
+    const val TARGET_CLEAR_DP = 24f
     const val SPACE_7_DP = 48f
 
     /** The buddy disc, docked at the screen edge. */

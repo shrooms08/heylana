@@ -1,6 +1,7 @@
 package xyz.heylana.app.overlay
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -125,5 +126,72 @@ class PlaceWindowTest {
         TeachingFlight.placeWindow(1300, 1000, 1400, 1100, 700, 300, 20, 2000, 2400, out)
         assertEquals(580, out[0])
         assertEquals(1, out[2])
+    }
+
+    // The Seeker's usable screen, a 24dp gap (63px at its density), the window as measured
+    // for a step: disc and strip.
+    private val w = 1200
+    private val h = 2531
+    private val gap = 63
+    private val winW = 910
+    private val winH = 400
+
+    private fun placed(l: Int, t: Int, r: Int, b: Int): IntArray {
+        val out = IntArray(3)
+        val clear = TeachingFlight.placeWindow(l, t, r, b, winW, winH, gap, w, h, out)
+        assertTrue("no room found for $l,$t,$r,$b", clear)
+        val (x, y) = out[0] to out[1]
+        assertTrue("off screen at $x,$y", x >= 0 && y >= 0 && x + winW <= w && y + winH <= h)
+        assertTrue(
+            "window at $x,$y is within ${gap}px of $l,$t,$r,$b",
+            TeachingFlight.isClear(x, y, winW, winH, l, t, r, b, gap)
+        )
+        return out
+    }
+
+    @Test
+    fun `a target at each edge - the window keeps 24dp off it, on the roomiest side`() {
+        // Top edge (a tab bar at the top): most room below.
+        val top = placed(300, 0, 900, 120)
+        assertTrue(top[1] >= 120 + gap)
+        // Bottom edge (the bottom bar's middle button): most room above.
+        val bottom = placed(500, 2400, 700, 2531)
+        assertTrue(bottom[1] + winH <= 2400 - gap)
+        // Left edge, mid screen: more room above than to the right for a 910 window.
+        placed(0, 1200, 200, 1300)
+        // Right edge, mid screen.
+        placed(1000, 1200, 1200, 1300)
+        // The four corners.
+        placed(0, 0, 150, 150)
+        placed(1050, 0, 1200, 150)
+        placed(0, 2380, 150, 2531)
+        placed(1050, 2380, 1200, 2531)
+    }
+
+    @Test
+    fun `a target right where the disc stands still gets a clear window`() {
+        // The disc docked on the right edge, about a third down; the step's element is
+        // exactly there. Where the disc was does not matter: the window moves off it.
+        placed(1000, 800, 1200, 1000)
+        // Docked left, the element under the disc.
+        placed(0, 1500, 200, 1700)
+    }
+
+    @Test
+    fun `beside is taken when that side has the most room and fits`() {
+        val out = IntArray(3)
+        // A tall, thin element on the left (a side rail): the right has the most room.
+        assertTrue(TeachingFlight.placeWindow(20, 700, 120, 1900, 500, 300, gap, w, h, out))
+        assertEquals(120 + gap, out[0])
+        assertEquals(0, out[2])
+    }
+
+    @Test
+    fun `no side has room - it says so, so the window lets touches through`() {
+        val out = IntArray(3)
+        // An element taking most of the screen.
+        val clear = TeachingFlight.placeWindow(100, 200, 1100, 2300, winW, winH, gap, w, h, out)
+        assertFalse(clear)
+        assertTrue(out[0] >= 0 && out[1] >= 0 && out[0] + winW <= w && out[1] + winH <= h)
     }
 }

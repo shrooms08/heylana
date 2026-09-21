@@ -112,12 +112,14 @@ object TeachingFlight {
     /**
      * Where Heylana's whole window — the disc and its strip, [windowWidth] by
      * [windowHeight] — goes while it talks about the element at [left], [top], [right],
-     * [bottom]: beside it (the side with more room first), else under it, else over it,
-     * always on screen, and never over the element. Placing only the disc was not enough:
-     * the window around it is touchable, and where the disc sits inside it depends on the
-     * layout, so on the Seeker the disc landed on the Swap button and caught the very tap
+     * [bottom]: on the side of the element with the most free space (right, left, below or
+     * above), at least [gap] from its bounds, always on screen; the next roomiest side if it
+     * does not fit there. Placing only the disc was not enough: the window around it is
+     * touchable, so on the Seeker the disc landed on the Swap button and caught the very tap
      * the step asked for. [out] gets the window's left and top, and 1 when the strip is on
      * the disc's left (the disc at the window's right end, nearer the element), else 0.
+     * Returns false when no side has room: the window is then as clear as the screen allows,
+     * and the caller must let touches through it, so the element's tap still reaches the app.
      */
     fun placeWindow(
         left: Int,
@@ -130,27 +132,32 @@ object TeachingFlight {
         screenWidth: Int,
         screenHeight: Int,
         out: IntArray
-    ) {
+    ): Boolean {
         fun fits(x: Int, y: Int) = x >= 0 && y >= 0 && x + windowWidth <= screenWidth && y + windowHeight <= screenHeight
-        fun clear(x: Int, y: Int) = x + windowWidth <= left || x >= right || y + windowHeight <= top || y >= bottom
         fun clampY(y: Int) = y.coerceIn(0, (screenHeight - windowHeight).coerceAtLeast(0))
         fun clampX(x: Int) = x.coerceIn(0, (screenWidth - windowWidth).coerceAtLeast(0))
         val middleY = clampY((top + bottom) / 2 - windowHeight / 2)
         val centreX = clampX((left + right) / 2 - windowWidth / 2)
-        val rightFirst = screenWidth - right >= left
-        // x, y, strip on the left
-        val candidates = mutableListOf<Triple<Int, Int, Boolean>>()
-        val besideRight = Triple(right + gap, middleY, false)
-        val besideLeft = Triple(left - gap - windowWidth, middleY, true)
-        if (rightFirst) candidates += listOf(besideRight, besideLeft) else candidates += listOf(besideLeft, besideRight)
-        val stripOnLeft = (left + right) / 2 > screenWidth / 2
-        candidates += Triple(centreX, bottom + gap, stripOnLeft)
-        candidates += Triple(centreX, top - gap - windowHeight, stripOnLeft)
-        val chosen = candidates.firstOrNull { (x, y, _) -> fits(x, y) && clear(x, y) }
-            // Nowhere fully clear: under it, pushed on screen — still never on top if it can help it.
-            ?: Triple(centreX, clampY(bottom + gap), stripOnLeft)
-        out[0] = chosen.first
-        out[1] = chosen.second
-        if (out.size > 2) out[2] = if (chosen.third) 1 else 0
+        val stripOnLeftAcross = (left + right) / 2 > screenWidth / 2
+        // x, y, strip on the left, the free space on that side. The sort is stable, so on a
+        // tie beside comes before under and over.
+        val sides = listOf(
+            Place(right + gap, middleY, false, screenWidth - right),
+            Place(left - gap - windowWidth, middleY, true, left),
+            Place(centreX, bottom + gap, stripOnLeftAcross, screenHeight - bottom),
+            Place(centreX, top - gap - windowHeight, stripOnLeftAcross, top)
+        ).sortedByDescending { it.room }
+        val chosen = sides.firstOrNull { fits(it.x, it.y) && isClear(it.x, it.y, windowWidth, windowHeight, left, top, right, bottom, gap) }
+        val place = chosen ?: sides.first().let { Place(clampX(it.x), clampY(it.y), it.stripOnLeft, it.room) }
+        out[0] = place.x
+        out[1] = place.y
+        if (out.size > 2) out[2] = if (place.stripOnLeft) 1 else 0
+        return chosen != null
     }
+
+    private data class Place(val x: Int, val y: Int, val stripOnLeft: Boolean, val room: Int)
+
+    /** Whether a window at [x], [y] keeps at least [gap] from the element on some side. */
+    fun isClear(x: Int, y: Int, width: Int, height: Int, left: Int, top: Int, right: Int, bottom: Int, gap: Int): Boolean =
+        x + width + gap <= left || x >= right + gap || y + height + gap <= top || y >= bottom + gap
 }

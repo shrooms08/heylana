@@ -59,7 +59,7 @@ object MarketText {
 
     fun glyph(id: String): Glyph = when (id) {
         "seed-vault-wallet" -> Glyph.WALLET
-        "kamino" -> Glyph.BALANCE
+        "wallet-earn" -> Glyph.BALANCE
         "seed-vault-signing" -> Glyph.LOCK
         "dapp-store" -> Glyph.BAG
         "jupiter" -> Glyph.SWAP

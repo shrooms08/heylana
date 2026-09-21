@@ -2,35 +2,29 @@
 id: jupiter
 name: Jupiter
 package: ag.jup.jupiter.android
-version: 2
+version: 3
 author: Heylana
-summary: Jupiter Mobile - swaps, limit and recurring orders, and Jupiter Lend.
+summary: Jupiter Mobile - swap, limit and recurring orders, markets and the account.
 privacy: Reference text only. It reads nothing and sends nothing.
 ---
-From Jupiter's public docs. On this Seeker (2026-09-19) the app opens behind its own lock, a screen titled "Authenticate" asking to touch the fingerprint sensor or "Use PIN"; the screens behind it were not walked (unverified).
-If the user asks about that screen: it is Jupiter's own app lock, unlocked with their fingerprint or PIN.
+Labels read off this Seeker's screens on 2026-09-21. It may open behind its own lock ("Authenticate", "Use PIN").
 
 Screens
-Home tab: total balance and 1-day change, Deposit, Trade, Earn and More.
-Portfolio tab: holdings, History (All, Swaps, Transfers, Limit, Recurring), Manage Tokens and Clean Account.
-Trade tab: swaps. The globe icon at the top right opens the dApp browser.
-Deposit: buy with a card, or receive to the wallet address.
-Earn: puts SOL or stablecoins into Jupiter Lend.
+Bottom bar: Home, Markets, Trade, Account, Spend.
+Trade: tabs Swap, Perps, Predictions; under Swap: Market, Limit, Recurring and a clock icon (history). A Sell card with a token chip ("SOL"), the balance and the amount; a Buy card ("USDC"); a two-arrow button between them flips them; a green "Enter Amount" button; a keypad with MAX, 75%, 50%, CLEAR.
+Limit adds "Sell SOL when above" (Price or MCap), "Expires after", "Platform Fee". Recurring adds "Every", "Over" (orders), "Price Range (Optional)".
+Markets: Tokens, Stocks, Commodities; Trending, Top Traded, Alphascan.
+Account: the balance, Deposit, History; Tokens, DeFi, NFTs.
+The avatar (top left) opens Switch, Manage, Notifications, Settings, FAQ, Support. The globe (top right) is the dApp browser.
 
-Common tasks
-Swapping:
-1. Open Trade.
-2. Pick the token to pay with and the token to get, then the amount.
-3. Check the rate and fee, then confirm.
-Limit order: on Trade choose Limit, set the price and amount. The minimum is 5 dollars.
-Recurring (DCA): on Trade choose Recurring, set the amount and how often.
-Recovering rent: Portfolio, then Clean Account, closes empty token accounts and returns their SOL.
+Swapping
+1. Tap Trade, then Swap, then Market.
+2. Tap the Sell chip for what to pay with, the Buy chip for what to get (the picker's search is unverified).
+3. Type the amount, or MAX, 75%, 50%. "Enter Amount" stays greyed until there is one.
+4. Tap it to review: rate, fee and slippage (unverified: not walked).
+Heylana stops at that review screen and tells the user what they are about to sign. It never taps confirm and never approves; the signing glance takes over.
 
-Fees (from the docs)
-Stablecoin to stablecoin: none. SOL or bluechips to stablecoins: 0.1%. Other pairs: 0.2%. Tokens under a day old: 0.5%. Limit and recurring: 0.1%.
+Fees (docs): 0.1% to 0.2% on most pairs; limit and recurring 0.1%. Prices are live estimates.
 
 Warnings
-Swaps and limit orders always pay out to the user's own wallet.
-Unknown tokens can be built to drain a wallet. Do not trade tokens you cannot identify.
-A Quick Account (social login) is lost if the login is lost.
-"No routes found" means too little liquidity, not an error to retry many times.
+Unknown tokens can drain a wallet: check the name and the verified tick. "No routes found" is thin liquidity, not something to retry.

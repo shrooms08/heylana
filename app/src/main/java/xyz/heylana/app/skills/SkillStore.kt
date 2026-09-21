@@ -117,7 +117,7 @@ class SkillStore(context: Context, private val settings: HeylanaSettings) {
 
         /** How the built-ins are listed. */
         val BUILT_IN_ORDER = listOf(
-            "seed-vault-wallet", "kamino", "seed-vault-signing", "dapp-store", "jupiter", "x402", "youtube", "spotify"
+            "seed-vault-wallet", "wallet-earn", "seed-vault-signing", "dapp-store", "jupiter", "x402", "youtube", "spotify"
         )
 
         @Volatile

@@ -37,3 +37,5 @@ scripts/kb/.admin_secret
 
 # The secret /admin/usage asks for, so the operator can read it without it being in git.
 worker/.admin_secret
+# Screenshots pulled from the phone for writing skills: the owner's device, never in git.
+design/refs/skills/

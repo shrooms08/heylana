@@ -2,26 +2,29 @@
 id: dapp-store
 name: Solana dApp Store
 package: com.solanamobile.dappstore
-version: 1
+version: 2
 author: Heylana
-summary: The Seeker's app store for Solana apps - browse, install and update.
+summary: The Seeker's app store for Solana apps - find, install, open, update and remove.
 privacy: Reference text only. It reads nothing and sends nothing.
 ---
-Screens
-Discover (bottom bar): FEATURED banners at the top, then lists such as Top Picks. Each app shows its icon, name, a one-line description and an Install button. See all opens the whole list.
-Search (bottom bar): find an app by name.
-Settings (bottom bar): the store's settings and account (unverified: contents).
-An app's page: its description and screenshots, with Install, or Open once installed (unverified).
+Labels read off this Seeker's screens on 2026-09-21 (store v1.58.0).
 
-Common tasks
-Installing an app:
-1. Find it on Discover, or tap Search and type its name.
-2. Tap Install next to it, or open its page and tap Install.
-3. Wait for the download to finish. The button changes to Open (unverified).
-Updating apps: the store lists available updates (unverified: where). Updates install the same way.
-Removing an app: long-press its icon on the home screen and choose Uninstall. The store does not need to be open.
+Screens
+Home: "Solana dApp Store", a gear at the top right (Settings), FEATURED cards each with "Install", "dApp Spotlight", lists such as "Games" with "Install", then "Categories" (Top Picks, Games, Trading & Markets, Earn & DeFi, DePIN and more).
+The bottom bar is two icons, no words: a house (Home) and a magnifier (Search).
+Search: a field, an X to clear it, results with "Install", or "Open" if the app is already on the phone.
+An app's page: back arrow, icon, name, rating, "Install" (or "Open"), the description with "Show more", "Preview".
+Settings: "My dApps" (how many installed), "dApp Updates" (how many waiting), "Auto Update", "Update over cellular data", "Check for an update".
+My dApps: each installed app with a bin icon to remove it.
+
+Installing an app
+1. Tap the magnifier and type the name, or find it on Home or in Categories.
+2. Tap "Install" beside it, or open its page and tap "Install" there.
+3. Once done the button reads "Open" (seen on Search; the change itself was not watched).
+Installing is free and moves no funds. If the new app then asks for a payment or signature, Heylana stops at that screen and tells the user what they are about to sign. It never approves; the signing glance takes over.
+
+Confusions
+"Install": not on the phone yet. "Open": it is. Updates are in Settings under "dApp Updates". Removing: Settings, "My dApps", the bin.
 
 Warnings
-Apps are reviewed before listing, but that is not an endorsement. Check who publishes an app before connecting a wallet.
-Installing is free and moves no funds. An app that asks for a payment or a signature right after install should be read carefully in Seed Vault.
-No app ever needs the seed phrase.
+Listed apps are reviewed, not endorsed: check the publisher before connecting a wallet. No app ever needs the seed phrase.

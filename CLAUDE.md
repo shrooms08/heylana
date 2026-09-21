@@ -1547,7 +1547,7 @@ any list marker, quote or emphasis) with "you must", "ignore", "disregard", "sen
 Built-ins are written so nothing is stripped, and a test holds them to it.
 
 **One skill per request, and only for the app in front.** The foreground package
-picks among the *active* skills; two for one app (Kamino's notes live in the
+picks among the *active* skills; two for one app (Wallet Earn's notes live in the
 Wallet) are decided by the `triggers` words in the question, else the app's main
 skill. A send question carries none. The brain line says `skill=<id> tokens=<n>`
 or `skill=none`; task steps pick against the goal.
@@ -1566,21 +1566,26 @@ skill. Built in: `x402` (what a 402 payment request is; check amount, token, net
 recipient; scam patterns), `youtube` (tabs and search checked on the Seeker, watch page
 unverified) and `spotify` (not installed on the test Seeker: all unverified). They come
 after the five Solana skills in `BUILT_IN_ORDER`, so on Free the first three places stay
-the Wallet, Kamino and Seed Vault signing.
+the Wallet, Wallet Earn and Seed Vault signing.
 
 **Built-ins are the files in `skills/`.** The build adds that folder to the APK's
 assets (`androidComponents` in `app/build.gradle.kts`), so the repo and the app
 cannot disagree. They can be switched off, never removed. Package names were
 checked against `pm list packages` on the Seeker; Kamino has no app of its own and
 lives in the Wallet, picked by its trigger words. Anything not walked on the phone
-is marked "(unverified)" for the operator to fix. **Walked on Sept 19:** the Wallet's Kamino Earn
-flow, read only, on mainnet (Start, both intro pages, the Deposit screen; nothing deposited),
-and `kamino.md` now quotes its labels, with only the after-a-deposit screens left unverified.
-Jupiter opens behind its own fingerprint-or-PIN lock ("Authenticate", "Use PIN"), so its
-screens could not be walked without the owner; `jupiter.md` says so and stays unverified
-behind it. Screen labels were read from screenshots (deleted afterwards): `uiautomator dump`
-never gets an idle moment on the Wallet, and Heylana's own reads are never written down.
-The sanitiser strips any line with "system prompt" in it, so a skill says "screen" instead.
+is marked "(unverified)" for the operator to fix. **Rewritten from the Seeker's own screens on
+Sept 21 (polish-10):** `jupiter.md`, `wallet-earn.md` (was `kamino.md`: the USDC Earn vault on
+the Wallet's home, "Powered by kamino" on screen) and `dapp-store.md` quote the labels the screens
+show — Jupiter's bottom bar is Home, Markets, Trade, Account, Spend and its Trade screen Swap /
+Perps / Predictions, Market / Limit / Recurring, the Sell and Buy chips and "Enter Amount" (the
+old docs-based skill had a Portfolio tab); the dApp Store's Settings is the gear at the top right
+and its bottom bar two unlabelled icons (the old skill put Settings in the bottom bar), with
+"Install" / "Open", "My dApps" and its bin, "dApp Updates". Each says Heylana stops at the review
+screen, tells the user what they are about to sign and never approves; Earn's rate is an estimate
+with the day it was read. Still unverified and marked so: Jupiter's token picker and review, the
+Earn review after Deposit and withdrawing. The screenshots stay on the Mac in the git-ignored
+`design/refs/skills/` (the owner's device). `BuiltInSkillsTest` loads each for its app with the
+question it is asked. The sanitiser strips any line with "system prompt" in it, so a skill says "screen" instead.
 
 **More skills come from a public index — on the roadmap, switched off
 (`Features.SKILL_MARKET`).** `skills-index/index.json` lists id,

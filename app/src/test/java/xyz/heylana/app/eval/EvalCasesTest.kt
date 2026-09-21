@@ -27,7 +27,7 @@ class EvalCasesTest {
 
     private val walletSkill = SkillFile.parse(File(repo, "skills/seed-vault-wallet.md").readText(), builtIn = true)
         .let { (it as SkillFile.Parsed.Ok).skill }
-    private val kaminoSkill = SkillFile.parse(File(repo, "skills/kamino.md").readText(), builtIn = true)
+    private val kaminoSkill = SkillFile.parse(File(repo, "skills/wallet-earn.md").readText(), builtIn = true)
         .let { (it as SkillFile.Parsed.Ok).skill }
     private val pdas = (LessonNote.parse(File(repo, "skills/lessons/pdas.md").readText()) as LessonNote.Companion.Parsed.Ok).note
 

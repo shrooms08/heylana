@@ -74,6 +74,7 @@ import xyz.heylana.app.screen.ScreenNode
 import xyz.heylana.app.screen.ScreenSignal
 import xyz.heylana.app.screen.ScreenSnapshot
 import xyz.heylana.app.screen.StepAdvance
+import xyz.heylana.app.screen.StepTarget
 import xyz.heylana.app.screen.TapWatch
 import xyz.heylana.app.screen.Verdict
 import xyz.heylana.app.settings.HeylanaSettings
@@ -1436,7 +1437,12 @@ class BuddyOverlayService : Service() {
             index++
             val view = overlayView ?: return finish()
             val segment = segments.getOrNull(index) ?: return finish()
-            val node = segment.pointAt?.let { snapshot.node(it) }
+            // A sentence that tells the user to do something points at what it names.
+            val pointed = segment.pointAt?.let { id ->
+                StepTarget.choose(segment.text, id, snapshot.nodes.map { StepTarget.Candidate(it.id, it.text ?: it.contentDescription, it.editable, it.clickable) })
+            }
+            if (pointed != segment.pointAt) HeylanaLog.state("teach: pointer moved to the instruction's element from=${segment.pointAt} to=$pointed")
+            val node = pointed?.let { snapshot.node(it) }
             HeylanaLog.state("teach: segment ${index + 1}/${segments.size} element=${if (node != null) "yes" else "none"}")
             // The chips go up with the last sentence, before the window is measured and placed.
             view.showSources(if (index == segments.lastIndex) sources else emptyList())
@@ -1658,8 +1664,15 @@ class BuddyOverlayService : Service() {
 
         // A step given as pieces points where its first pointing piece does, and at what takes
         // the tap: a label's clickable card rather than the label.
-        val node = snapshot.node(reply.pointAt ?: reply.segments.firstNotNullOfOrNull { it.pointAt })
-            ?.let { snapshot.clickTarget(it) }
+        // …and at what the words tell the user to act on next, if the model pointed elsewhere.
+        val modelPointed = reply.pointAt ?: reply.segments.firstNotNullOfOrNull { it.pointAt }
+        val pointed = StepTarget.choose(
+            reply.text,
+            modelPointed,
+            snapshot.nodes.map { StepTarget.Candidate(it.id, it.text ?: it.contentDescription, it.editable, it.clickable) }
+        )
+        if (pointed != modelPointed) HeylanaLog.state("step: pointer moved to the instruction's element from=$modelPointed to=$pointed")
+        val node = snapshot.node(pointed)?.let { snapshot.clickTarget(it) }
         val repeated = current.record(
             say = reply.text,
             elementKey = node?.key,

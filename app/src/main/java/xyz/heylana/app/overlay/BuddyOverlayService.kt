@@ -1375,6 +1375,8 @@ class BuddyOverlayService : Service() {
         val after = TxMachine.next(before, event) ?: return
         if (after == before) return
         tx = after
+        // The lookout keeps quiet from here until the ending line has been said.
+        txChangedAt = SystemClock.uptimeMillis()
         HeylanaLog.state("tx: ${before?.label ?: "none"} -> ${after.label} cluster=${txQuote?.cluster?.id}")
     }
 
@@ -2235,11 +2237,15 @@ class BuddyOverlayService : Service() {
         // Debug builds: that a window came, from which app, and how long its title is — never
         // the title or the class, which carry what is on screen.
         HeylanaLog.state("glance: window pkg=$from title_chars=${event.title.length}")
+        if (from != null && from != InAppConfirm.SYSTEM_UI && from != packageName) lastForeground = from
         if (!settings.watchSigning) return
-        // Busy: an exchange, a task or a send has the buddy already, and a glance would
-        // land on top of whatever the user asked for.
-        if (lookoutBusy()) return
         if (from == packageName) return
+        // Busy: an exchange, a task or a send has the buddy already, and a glance would
+        // land on top of whatever the user asked for — Heylana's own send above all.
+        lookoutBusyWhy()?.let { why ->
+            HeylanaLog.state("lookout: skipped why=busy_$why pkg=$from")
+            return
+        }
 
         // Android's fingerprint prompt over a Solana app's own form: the app is signing with
         // its own wallet (Jupiter), where Seed Vault never appears. The prompt is never read;
@@ -2249,8 +2255,10 @@ class BuddyOverlayService : Service() {
             HeylanaLog.state("glance: system window biometric=${InAppConfirm.biometricPrompt(from, event.describedAs)} class_chars=${event.className?.length ?: 0}")
         }
         if (InAppConfirm.biometricPrompt(from, event.describedAs)) {
-            HeylanaLog.state("glance: system prompt kind=biometric")
-            confirmOnSight(event.at)
+            // Never on a System UI window by itself: only over an app in front with an entry.
+            val verdict = LookoutGate.inAppConfirm(lastForeground, ownSend = false)
+            HeylanaLog.state("lookout: rule=in_app_confirm fired=${verdict.fires} why=${verdict.why} front=${lastForeground ?: "none"}")
+            if (verdict.fires) confirmOnSight(event.at, lastForeground!!)
             return
         }
 
@@ -2259,7 +2267,10 @@ class BuddyOverlayService : Service() {
         // user had approved. Nothing is waited for here — not the read, not the worker —
         // because the sentence is one of the fixed few and its audio is already on the phone.
         val announce = Lookout.signingWindow(event) || (BuildConfig.DEBUG && settings.glanceAnyScreen)
-        if (announce) speakOnSight(event)
+        if (announce) {
+            HeylanaLog.state("lookout: rule=signing_window fired=true why=${if (Lookout.signingWindow(event)) "signing_app" else "debug_any"} pkg=$from")
+            speakOnSight(event)
+        }
         // A wallet's window is read the instant it appears — no gap, nothing waited for.
         // Seed Vault's has already been spoken for; a wallet's says too little about itself
         // to tell a confirm sheet from a settings dialog without reading it.
@@ -2320,11 +2331,16 @@ class BuddyOverlayService : Service() {
      * fixed opening is played from the phone ("Jupiter wants you to confirm:"), then what the
      * form shows and any warning. Timed from the window event, as a signing window is.
      */
-    private fun confirmOnSight(at: Long) {
+    private fun confirmOnSight(at: Long, front: String) {
         val readStarted = SystemClock.uptimeMillis()
         val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
         val readDone = SystemClock.uptimeMillis()
-        val app = InAppConfirm.appOf(snapshot.packageName)
+        // What was read must be the app in front, or nothing at all (the prompt alone listed).
+        if (snapshot.packageName != null && snapshot.packageName != front && !snapshot.isEmpty) {
+            HeylanaLog.state("lookout: rule=in_app_confirm fired=false why=read_other_app")
+            return
+        }
+        val app = InAppConfirm.appOf(front)
         val sheet = app?.let { InAppConfirm.read(it, confirmItems(snapshot)) }
         if (sheet != null) {
             speakConfirm(sheet, at, readStarted, readDone)
@@ -2332,7 +2348,7 @@ class BuddyOverlayService : Service() {
         }
         // Under the prompt Android may list only the prompt's own window. If an app's swap form
         // was on screen a moment ago, say what is being confirmed without an old amount.
-        val seen = formSeen
+        val seen = formSeen?.takeIf { it.first.packageName == front }
         if (seen != null && SystemClock.uptimeMillis() - seen.second < InAppConfirm.FORM_SEEN_MS) {
             val about = "${seen.first.packageName}|confirm|unread|$at"
             if (about == spokenGlanceAbout) return
@@ -2405,10 +2421,24 @@ class BuddyOverlayService : Service() {
      * lookout greeted it with "Careful…" and a warning over the "Waiting for your wallet"
      * card — then took the "Done" card away with its glance.
      */
-    private fun lookoutBusy(): Boolean =
-        exchange.inProgress || session != null || awaitingConfirm != null || teaching != null ||
-            // After Confirm and until the send ends — which it always does, with a result.
-            tx is TxState.Waiting || tx is TxState.Confirming
+    private fun lookoutBusy(): Boolean = lookoutBusyWhy() != null
+
+    /** Why the lookout keeps quiet now, for the log; null when it may speak. */
+    private fun lookoutBusyWhy(): String? = when {
+        exchange.inProgress -> "exchange"
+        session != null -> "task"
+        awaitingConfirm != null -> "send_confirm"
+        teaching != null -> "teaching"
+        // Heylana's own send, prepared to its ending line: the card is hers (see LookoutGate).
+        LookoutGate.ownSendActive(tx, txChangedAt, SystemClock.uptimeMillis()) -> "own_send"
+        else -> null
+    }
+
+    /** When the send last moved, for [LookoutGate.ownSendActive]. */
+    private var txChangedAt = 0L
+
+    /** The last app, not System UI and not Heylana, to put up a window: the app in front. */
+    private var lastForeground: String? = null
 
     private fun look(at: Long, second: Boolean) {
         if (!settings.watchSigning) return

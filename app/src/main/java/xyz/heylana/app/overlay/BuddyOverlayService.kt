@@ -1397,7 +1397,8 @@ class BuddyOverlayService : Service() {
     private fun openSource(source: Source) {
         val uri = android.net.Uri.parse(source.url)
         if (uri.scheme != "https") return
-        HeylanaLog.state("source: opened host=${uri.host}")
+        // A page chip is the address the user was reading: its length only.
+        HeylanaLog.state("source: opened host_chars=${uri.host?.length ?: 0}")
         mouth?.stop()
         runCatching {
             startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -2089,8 +2090,9 @@ class BuddyOverlayService : Service() {
     private fun onNewWindow(event: xyz.heylana.app.screen.WindowEvent) {
         val from = event.packageName
         val at = event.at
-        // Debug builds: what a window says about itself, before anything is read.
-        HeylanaLog.state("glance: window pkg=$from class=${event.className} title=${event.title.take(50)}")
+        // Debug builds: that a window came, from which app, and how long its title is — never
+        // the title or the class, which carry what is on screen.
+        HeylanaLog.state("glance: window pkg=$from title_chars=${event.title.length}")
         if (!settings.watchSigning) return
         // Busy: an exchange, a task or a send has the buddy already, and a glance would
         // land on top of whatever the user asked for.
@@ -2152,7 +2154,7 @@ class BuddyOverlayService : Service() {
         // window_event_ms is the zero of everything that follows; spoke_asked_ms says the
         // voice was asked for before the screen was read, which is the whole point.
         HeylanaLog.state(
-            "glance: signing window pkg=${event.packageName} class=${event.className} " +
+            "glance: signing window pkg=${event.packageName} " +
                 "window_event_ms=0 spoke_asked_ms=${SystemClock.uptimeMillis() - event.at} spoken=$spoke"
         )
         if (!spoke) HeylanaLog.state("glance: opening line not spoken (muted or no voice); the strip still comes")

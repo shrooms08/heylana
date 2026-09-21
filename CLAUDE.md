@@ -1641,10 +1641,12 @@ sentence said twice kept once. No object, no `say`, an empty `say` where words w
 more with `ReplyParser.JSON_ONLY` added, and if that is unreadable too Heylana says "I
 didn't catch that, say it again." Before this, a reply that did not parse was spoken
 whole — prose, JSON and all. The trace says `reply: unreadable reason=… retry=once`,
-`reply: text outside the json chars=N dropped`, `reply: repeated sentence dropped`. The
-one exception to "no answer in the log": in debug builds only, an unreadable reply's raw
-text (addresses shortened, 600 characters at most) is logged as `reply: raw`, so the
-operator can see what the model did; `HeylanaLog` is compiled out of release builds. A
+`reply: text outside the json chars=N dropped`, `reply: repeated sentence dropped`. An
+unreadable reply's shape is logged in debug builds as `reply: raw chars=N braces=… say_key=…`
+— never its words, which quote the screen; `HeylanaLog` is compiled out of release builds.
+**No trace carries on-screen text** (polish-10): a window is `glance: window pkg=…
+title_chars=…`, a signing window has no class, an opened chip is `host_chars=…`, an opened
+app is its package. A
 retry is a second /chat and counts as a talk. The shorter wording from a shorten call is
 de-duplicated too, and dropped if it echoes the prompt. Every route has the same caps
 (`AnswerLength.capFor`): 60 words, 40 for a signing explanation, 25 for a reply that

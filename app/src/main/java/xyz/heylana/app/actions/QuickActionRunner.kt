@@ -36,7 +36,7 @@ class QuickActionRunner(private val context: Context) {
                 is AppMatcher.Match.Found -> {
                     label = match.app.label
                     launchPackage = match.app.packageName
-                    HeylanaLog.state("action: open_app match=\"${match.app.label}\" package=${match.app.packageName} score=${match.score}")
+                    HeylanaLog.state("action: open_app match package=${match.app.packageName} score=${match.score}")
                 }
                 is AppMatcher.Match.Ambiguous -> {
                     HeylanaLog.state("action: open_app ambiguous first=${match.first.packageName} second=${match.second.packageName}")

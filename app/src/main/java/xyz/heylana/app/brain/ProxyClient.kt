@@ -448,12 +448,12 @@ class ProxyClient(private val settings: HeylanaSettings) {
     }
 
     /**
-     * Debug builds only: the raw reply that could not be read, so the operator can see
-     * what the model did. Addresses shortened; never in a release build, never spoken.
+     * Debug builds only: the shape of a reply that could not be read — its length, whether it
+     * held an object and a say — never its words, which quote what is on screen.
      */
     private fun logRawReply(raw: String) {
         if (!BuildConfig.DEBUG) return
-        HeylanaLog.state("reply: raw chars=${raw.length} text=" + AddressText.shorten(raw).replace('\n', ' ').take(RAW_LOG_CHARS))
+        HeylanaLog.state("reply: raw chars=${raw.length} braces=${raw.contains('{')} say_key=${raw.contains("\"say\"")}")
     }
 
     /** What the app sends: the kind of work, not the model. */
@@ -684,8 +684,6 @@ class ProxyClient(private val settings: HeylanaSettings) {
         private const val RECENT_ACTIVITY = "recent_activity"
         /** Heylana's Solana knowledge base: docs, Stack Exchange answers, release notes. */
         const val SEARCH_KB = "search_solana_kb"
-        /** The most of an unreadable raw reply the debug log carries. */
-        private const val RAW_LOG_CHARS = 600
 
         /** What the app is allowed to say about the work. The proxy picks the model. */
         const val MODE_QUICK = "quick"

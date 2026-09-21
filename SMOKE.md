@@ -5,7 +5,7 @@ you to do, puts no developer pages under everyday questions, and notices your ta
 used to hide it from her (the Wallet, the dApp Store, Jupiter's keypad). Install the app, run
 `./scripts/a11y.sh` once, **wait five seconds**, then Menu → hold **Start buddy**.
 
-**Live calls this test spends: about 7 chat, 7 spoken lines. Mainnet apps: never approve
+**Live calls this test spends: about 9 chat, 9 spoken lines. Mainnet apps: never approve
 anything. In Jupiter, the green Swap button goes straight to a confirm request — cancel it.**
 
 ---
@@ -49,8 +49,8 @@ Ask again once.
 3. Step 1: the ring is on **Trade** in the bottom bar. Tap it. She moves on by herself.
 4. Step 2: the ring is on the **Sell amount**, not on Market. Tap it and type **0.0009** on
    Jupiter's keypad. About two and a half seconds after your last key she moves on.
-5. Step 3: she tells you to tap the green **Swap** button. **Known:** the ring may sit on the
-   "Swap" tab at the top instead; that is written down as left for later.
+5. Step 3: she tells you to tap the green **Swap** button, and the ring is on the **green
+   button** (on its word "Swap"), never on the "Swap" tab at the top.
 6. **Stop here.** Tapping green Swap goes straight to a confirm request. If you tap it, cancel.
 
 ## 5. Nothing on screen goes into the log
@@ -58,3 +58,10 @@ Ask again once.
 In Android Studio's Logcat, filter on `HeylanaState` while you do any of the above. Lines
 about a new window say `glance: window pkg=… title_chars=…`: an app name and a number, never
 the window's title. Nothing you can read on the phone's screen appears in the log.
+
+## 6. Balances say their network (1 chat)
+
+1. Open the **Wallet**, home screen.
+2. Hold the disc and say **what's my USDC balance**.
+3. Her answer says the amount **on devnet** and that the Wallet's own numbers are mainnet — once,
+   not twice. No link chip under it.

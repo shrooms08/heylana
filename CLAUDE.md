@@ -998,6 +998,15 @@ Waiting, Signed, confirming, Sent with the Explorer chip; rejected in Seed Vault
 Home start and kept (`HeylanaSettings.clusterId`); with nothing heard yet, no badge rather than
 a guess (`ClusterBadge.of`, `app: cluster badge=…`).
 
+**Balances say their network (`wallet/BalanceNetwork`).** Off mainnet, `get_balances` carries
+`say_network` for the model, and the phone makes sure of it after the length cap: an answer for
+which the worker read balances (`usage.tools` has get_balances) names the network on its first
+amount ("17.65 USDC on devnet", else "On devnet: …"), and over a wallet or swap app, unless the
+answer already mentions mainnet, adds "That's your devnet balance; the Wallet shows mainnet."
+(`balance: network named cluster=devnet app_line=…`). On mainnet nothing changes.
+`BalanceNetworkTest`. A question about the user's own balance ("what's my USDC balance") gets
+no developer chip either.
+
 **Facts and estimates.** `SolanaCore.RULES` says prices, fees and yields are estimates
 ("about"), with their age when over a minute old (`get_price` returns `as_of`), and that a
 balance `get_balances` just read is a fact.
@@ -1722,9 +1731,14 @@ is, the pointer moves (`step: pointer moved to the instruction's element from=�
 only). Two elements named alike, one inside the other, are one target (Jupiter's Trade tab and
 its label); a heading never takes the pointer from something that takes a tap ("tap the Sell
 chip" means the token chip); anything the words do not settle stays the model's.
-`StepTargetTest` holds it to Jupiter's swap screen as read on the Seeker. Known and left: when
-two separate elements share the name ("Swap" the tab and "Swap" the green button) the model's
-choice stands, and on Sept 21 that was the tab.
+`StepTargetTest` holds it to Jupiter's swap screen as read on the Seeker. **Same-named things
+are told apart by the words**: equally named matches are grouped (one inside the other is one
+thing), a label inside a button-sized tappable box counts as that box (Jupiter's green Swap is
+an unnamed box with the word inside it), and between groups a position word decides (bottom,
+top), then "tab" (the smaller), then "button", a colour or nothing at all (the primary action:
+larger, then lower). `WALK_THROUGH_LINE` asks the model to name such an element unambiguously.
+Checked on the Seeker on Sept 21: the model pointed at the Swap tab, the ring went to the green
+Swap button (`from=46 to=29`). Known: the ring then hugs the button's word, not the whole bar.
 
 **Compose apps send no events, so reads clear the cache and steps look for themselves.** The
 Wallet and the dApp Store send this service no accessibility events at all, and Android's copy of

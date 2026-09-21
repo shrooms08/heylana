@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
-import { EMBEDDING_MODEL, MIN_SCORE, embeddingText, ingest, searchKb, withSources, type Ai, type KbResult, type VectorIndex } from '../src/kb.ts'
+import { EMBEDDING_MODEL, MIN_SCORE, embeddingText, ingest, isDeveloperPage, isUserHowTo, searchKb, withSources, type Ai, type KbResult, type VectorIndex } from '../src/kb.ts'
 import { LOOKUP_TOOLS } from '../src/registry.ts'
 import { ANSWER_MAX_TOKENS } from '../src/brain.ts'
 
@@ -248,6 +248,50 @@ test('an answer that used a chunk but cited nothing still carries the page it ca
   const reply = JSON.parse((await res.json()).content[0].text)
   assert.equal(reply.sources.length, 1)
   assert.equal(JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!).sources_from, 'top')
+})
+
+test('the dApp Store install question gets no developer page, looked up or cited', async () => {
+  // What the Seeker got: "Solana Mobile: Submit a New App" under "how do I install an app".
+  const submit = { id: 'c9', score: 0.78, metadata: { title: 'Submit a New App', url: 'https://docs.solanamobile.com/dapp-publishing/submit-new-app', source: 'Solana Mobile docs', licence: 'none stated', text: 'To submit a new app to the dApp Store, open the publisher portal.' } }
+  const fake = fakeIndex([submit])
+  env = { ...env, KB: fake.index }
+  rounds = [answersWith({ say: 'Tap the magnifier, find the app and tap Install.', cite: ['https://docs.solanamobile.com/dapp-publishing/submit-new-app'] })]
+  const res = await asksAbout('how do I install an app')
+  // Not read first: the question goes as the user asked it.
+  assert.equal(bodies[0].messages.at(-1).content, 'User asks: how do I install an app')
+  const reply = JSON.parse((await res.json()).content[0].text)
+  assert.equal(reply.sources, undefined)
+  const line = JSON.parse(logs.find((l) => l.includes('"route":"chat"'))!)
+  assert.equal(line.user_how_to, true)
+  assert.equal(line.sources, 0)
+})
+
+test('withSources: a user how-to drops developer pages, cited or top; a developer question keeps them', () => {
+  const submit: KbResult = { title: 'Submit a New App', url: 'https://docs.solanamobile.com/dapp-publishing/submit-new-app', source: 'Solana Mobile docs', licence: 'l', excerpt: '', score: 0.9 }
+  const found = new Map([[submit.url, submit]])
+  const body = (reply: object) => JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(reply) }] })
+  const cited = withSources(body({ say: 'x', cite: [submit.url] }), found, 'how do I install an app')
+  assert.equal(cited.sources, 0)
+  assert.equal(cited.dropped, 1)
+  const top = withSources(body({ say: 'x' }), found, 'How can I install Jupiter?')
+  assert.equal(top.sources, 0)
+  // Publishing is a developer's question, and the same page is the right chip.
+  assert.equal(withSources(body({ say: 'x', cite: [submit.url] }), found, 'how do I publish my app on the dApp Store').sources, 1)
+  // No question given (a lesson turn): as before.
+  assert.equal(withSources(body({ say: 'x', cite: [submit.url] }), found).sources, 1)
+})
+
+test('who is a user asking how, and which pages are for developers', () => {
+  for (const q of ['how do I install an app', 'How do I swap SOL to USDC?', 'how can I earn on my USDC', 'teach me to swap', 'how do I send 1 SOL to my friend', 'where do I stake SOL', 'help me deposit into Earn']) {
+    assert.ok(isUserHowTo(q), q)
+  }
+  for (const q of ['how do I publish my app', 'how do I send a transaction with web3.js', 'How do I derive a PDA in Anchor?', 'how do I deploy a program', 'what is an epoch', 'install the Solana CLI', 'how do I install the Anchor CLI', 'why did my swap fail with error 0x1']) {
+    assert.ok(!isUserHowTo(q), q)
+  }
+  assert.ok(isDeveloperPage({ title: 'Submit a New App', url: 'https://docs.solanamobile.com/dapp-publishing/submit-new-app', source: 'Solana Mobile docs' }))
+  assert.ok(isDeveloperPage({ title: 'Transfer SOL', url: 'https://solana.com/developers/cookbook/transactions/send-sol', source: 'Solana Cookbook' }))
+  assert.ok(isDeveloperPage({ title: 'How to swap', url: 'https://example.test/x', source: 'Solana Stack Exchange' }))
+  assert.ok(!isDeveloperPage({ title: 'How to swap on Jupiter', url: 'https://support.jup.ag/swap', source: 'Jupiter help' }))
 })
 
 // ------------------------------------------------- the answer's shape, forced and repaired

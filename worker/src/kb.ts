@@ -104,12 +104,54 @@ export const MAX_SOURCES = 2
 export const TOP_SOURCE_SCORE = 0.7
 
 /**
+ * A question from someone using an app rather than building one: how to install, swap,
+ * earn, stake or send. The knowledge base is developer material from end to end — docs,
+ * Stack Exchange, changelogs — so for these it is never looked up first, and none of its
+ * pages ever becomes a chip: on the Seeker, "how do I install an app" on the dApp Store
+ * came back with "Solana Mobile: Submit a New App" under it. No chip beats a wrong chip.
+ */
+export function isUserHowTo(question: string | null | undefined): boolean {
+  if (!question) return false
+  const q = question.toLowerCase()
+  if (DEVELOPER_WORDS.test(q)) return false
+  return USER_TASK_WORDS.test(q) && USER_ASKS.test(q)
+}
+
+const USER_TASK_WORDS =
+  /\b(install|uninstall|update|download|swap|trade|buy|sell|earn|stake|unstake|deposit|withdraw|send|receive|transfer|bridge|lend|claim|connect|back ?up|top ?up|cash ?out|convert)\b/
+const USER_ASKS = /\b(how (do|can|should|would) (i|we|you)|how to|where (do|can) i|teach me|show me|help me|walk me|can i|what do i (tap|press|do))\b/
+const DEVELOPER_WORDS =
+  /\b(program|programs|sdk|api|apis|anchor|rust|typescript|javascript|kotlin|react native|code|snippet|deploy|publish|publishing|submit|submission|developer|devs?|cli|rpc|instruction|cpi|pda|idl|compile|crate|npm|library|integrate|my (app|dapp|program|token mint)|web3\.?js|mwa|mobile wallet adapter|validator|error)\b/
+
+/** Every source the knowledge base holds today is for developers; a new kind is judged by its title and address. */
+const DEVELOPER_SOURCES = /^(solana stack exchange|solana\.com docs|solana docs|solana cookbook|anchor|agave|anza|solana mobile docs)/i
+const DEVELOPER_PAGE = /(publish|submit|developer|\bsdk\b|\bapi\b|program|anchor|\brust\b|\bcli\b|\brpc\b|deploy|integrat|react.native|kotlin|changelog|release|\/docs\/)/i
+
+export function isDeveloperPage(result: Pick<KbResult, 'title' | 'url' | 'source'>): boolean {
+  return DEVELOPER_SOURCES.test(result.source) || DEVELOPER_PAGE.test(result.title) || DEVELOPER_PAGE.test(result.url)
+}
+
+/**
  * The reply with the model's "cite" swapped for "sources": each cited url that the knowledge
  * base really returned for this question, with its title and source, at most [MAX_SOURCES].
  * A url the model made up, or one it was never handed, is dropped. A body that isn't one of
  * our replies is left as it is.
  */
-export function withSources(body: string, found: Map<string, KbResult>): { body: string; sources: number; from: 'cite' | 'top' | 'none' } {
+export function withSources(
+  body: string,
+  found: Map<string, KbResult>,
+  question: string | null = null
+): { body: string; sources: number; from: 'cite' | 'top' | 'none'; dropped?: number } {
+  // A user's how-to never gets a developer's page, cited or not.
+  const userHowTo = isUserHowTo(question)
+  const droppedUrls = new Set<string>()
+  const fits = (r: KbResult) => {
+    if (userHowTo && isDeveloperPage(r)) {
+      droppedUrls.add(r.url)
+      return false
+    }
+    return true
+  }
   let parsed: any
   try {
     parsed = JSON.parse(body)
@@ -126,12 +168,12 @@ export function withSources(body: string, found: Map<string, KbResult>): { body:
     const reply = located.reply
     if (!('cite' in reply) && found.size === 0) return { body, sources: 0, from: 'none' as const }
     const cited = (Array.isArray(reply.cite) ? reply.cite : [reply.cite]).filter((u: unknown) => typeof u === 'string')
-    let picked = [...new Set<string>(cited)].map((url) => found.get(url)).filter((r): r is KbResult => !!r)
+    let picked = [...new Set<string>(cited)].map((url) => found.get(url)).filter((r): r is KbResult => !!r).filter(fits)
     let from: 'cite' | 'top' | 'none' = picked.length > 0 ? 'cite' : 'none'
     // It searched and answered but cited nothing: the closest strong match is where it came from.
     if (picked.length === 0) {
       const top = [...found.values()].sort((a, b) => b.score - a.score)[0]
-      if (top && top.score >= TOP_SOURCE_SCORE) {
+      if (top && top.score >= TOP_SOURCE_SCORE && fits(top)) {
         picked = [top]
         from = 'top'
       }
@@ -140,7 +182,7 @@ export function withSources(body: string, found: Map<string, KbResult>): { body:
     delete reply.cite
     if (sources.length > 0) reply.sources = sources
     block.text = block.text.slice(0, located.start) + JSON.stringify(reply) + block.text.slice(located.end)
-    return { body: JSON.stringify(parsed), sources: sources.length, from }
+    return { body: JSON.stringify(parsed), sources: sources.length, from, ...(droppedUrls.size > 0 ? { dropped: droppedUrls.size } : {}) }
   }
   return { body, sources: 0, from: 'none' as const }
 }

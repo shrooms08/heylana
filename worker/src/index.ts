@@ -56,7 +56,7 @@ import {
   FRAME_AUDIO, FRAME_REPLY, FRAME_VOICE_FAILED, SAY_STREAM_TYPE, SayReader, frame, readModelStream, replyBody, textFrame,
 } from './saystream.ts'
 import { addCacheUse, noCacheUse, withCache, withCacheTotals } from './cache.ts'
-import { ingest, lookUpFirst, searchKb, withKbContext, withSources, type Ai, type Kb, type KbResult, type VectorIndex } from './kb.ts'
+import { ingest, isUserHowTo, lookUpFirst, searchKb, withKbContext, withSources, type Ai, type Kb, type KbResult, type VectorIndex } from './kb.ts'
 import {
   GEMINI_API_REVISION, GEMINI_TTS_MODEL, GEMINI_TTS_URL, deepgramSpeakUrl, deepgramVoiceFor, geminiPcmStream, geminiRequest,
   geminiVoiceFor, providerOf, rawPcmStream, voiceInfo,
@@ -503,6 +503,8 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
   let actionsRemoved = 0
   let sourcesSent = 0
   let sourcesFrom = 'none'
+  let sourcesDropped = 0
+  let userHowTo = false
   let proseWrapped = false
   if (actionIntent) {
     // Never left to prose either: the action written down, and the app says the words.
@@ -554,9 +556,12 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     // answered two out of three from memory and cited nothing. The tool stays offered for
     // a follow-up query once it has read them.
     const knowledge = offered.some((tool) => tool.name === 'search_solana_kb')
-    if (knowledge) {
-      const query = typeof body.kb_query === 'string' && body.kb_query.trim() ? body.kb_query : said
-      base.messages = withKbContext(base.messages, await lookUpFirst(kbOf(env), query, kbStats))
+    // A user asking how to install, swap or earn is not asking the developer docs: the app's
+    // skill has the steps, and the knowledge base is not read first for them.
+    const kbQuery = typeof body.kb_query === 'string' && body.kb_query.trim() ? body.kb_query : null
+    userHowTo = !kbQuery && isUserHowTo(said)
+    if (knowledge && !userHowTo) {
+      base.messages = withKbContext(base.messages, await lookUpFirst(kbOf(env), kbQuery ?? said, kbStats))
     }
     if (offered.length === 0) {
       // Nothing to look up (a signing screen with only shortened addresses, already
@@ -618,10 +623,11 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     text = stripped.body
     actionsRemoved = stripped.removed
     // The pages the answer cited, checked against what the knowledge base returned.
-    const cited = withSources(text, kbStats.found)
+    const cited = withSources(text, kbStats.found, body.kb_query ? null : said)
     text = cited.body
     sourcesSent = cited.sources
     sourcesFrom = cited.from
+    sourcesDropped = cited.dropped ?? 0
   }
 
   if (status >= 200 && status < 300) {
@@ -683,6 +689,8 @@ async function chat(request: Request, env: Env, who: Who, started: number, rpc: 
     prose_wrapped: proseWrapped || undefined,
     sources: sourcesSent,
     sources_from: sourcesFrom,
+    ...(userHowTo ? { user_how_to: true } : {}),
+    ...(sourcesDropped > 0 ? { sources_dropped_developer: sourcesDropped } : {}),
     // Whose key paid for the model: never the key itself.
     key: userKey ? 'user' : 'heylana',
     cache_read: cacheUse.read,

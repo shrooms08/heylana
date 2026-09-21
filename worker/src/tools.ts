@@ -196,6 +196,15 @@ async function getBalances(given: unknown, context: ToolContext) {
     total_usd: priced ? Math.round(all.reduce((sum, item) => sum + (item.usd ?? 0), 0) * 100) / 100 : null,
     prices: priced ? 'Jupiter Price API' : 'none: devnet tokens have no market value',
     ...(priceNote ? { note: priceNote } : {}),
+    // A balance off mainnet is said with its network, and never as the wallet app's own
+    // number: on the Seeker "You've got 17.65 USDC" over the Wallet read as mainnet.
+    ...(context.cluster !== 'mainnet-beta'
+      ? {
+          say_network:
+            `These are ${context.cluster} balances. Say "${context.cluster}" with them ("17.65 USDC on ${context.cluster}"). ` +
+            `A wallet app on screen shows mainnet: say they differ, never that they match.`,
+        }
+      : {}),
   }
 }
 

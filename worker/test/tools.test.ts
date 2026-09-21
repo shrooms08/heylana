@@ -120,6 +120,14 @@ test('balances on devnet are exact amounts with no dollar value, and no price is
   assert.equal(result.total_usd, null)
   assert.equal(result.skr, null)
   assert.equal(seen.includes('price'), false)
+  // Said with its network, and never as the wallet app's mainnet number.
+  assert.match(result.say_network, /17\.65 USDC on devnet/)
+  assert.match(result.say_network, /never that they match/)
+})
+
+test('balances on mainnet carry no network line', async () => {
+  const result: any = await runTool('get_balances', {}, context())
+  assert.equal(result.say_network, undefined)
 })
 
 test('balances with no wallet connected and none given say how to fix it', async () => {

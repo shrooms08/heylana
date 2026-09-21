@@ -7,6 +7,8 @@ import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import xyz.heylana.app.wallet.Cluster
+import xyz.heylana.app.wallet.BalanceNetwork
 import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.actions.QuickAction
 import xyz.heylana.app.HeylanaLog
@@ -55,7 +57,9 @@ sealed interface BrainReply {
          * A developer's answer starts with the code. It is **shown and never spoken** — a
          * snippet read aloud is noise — and it is what the words underneath are about.
          */
-        val code: String? = null
+        val code: String? = null,
+        /** The worker read the user's balances for this answer (get_balances ran). */
+        val balancesRead: Boolean = false
     ) : BrainReply {
         /** True when the answer walks the screen: more than one piece, or one that points. */
         val teaches: Boolean get() = segments.size > 1 || segments.any { it.pointAt != null }
@@ -109,7 +113,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         /** One more line for this question: "explain this" over Solana docs, or "why" after it. */
         lens: String? = null,
         /** Where the answer is to be spoken from as it is written, if it may be. */
-        voice: SpokenAnswer? = null
+        voice: SpokenAnswer? = null,
+        /** The wallet or swap app in front, as a balance line names it ("the Wallet"), if any. */
+        appInFront: String? = null
     ): BrainReply {
         val tools = route.toolsWanted
         val quickAction = route.why == Routing.Why.QUICK_ACTION
@@ -216,7 +222,22 @@ class ProxyClient(private val settings: HeylanaSettings) {
             if (words > cap) HeylanaLog.state("answer: over cap words=$words cap=$cap spoken=already")
             return reply
         }
-        return limitLength(reply, AnswerLength.capFor(route.explainsSigning, startsTask))
+        return withNetwork(limitLength(reply, AnswerLength.capFor(route.explainsSigning, startsTask)), appInFront)
+    }
+
+    /**
+     * A balance the worker read names its network when that is not mainnet, and says so when
+     * the wallet in front shows another one (`BalanceNetwork`). After the length cap, so the
+     * network is never what a shorter wording drops.
+     */
+    private fun withNetwork(reply: BrainReply, appInFront: String?): BrainReply {
+        if (reply !is BrainReply.Say || !reply.balancesRead) return reply
+        val devnet = Cluster.fromWorker(settings.clusterId) == Cluster.DEVNET
+        val text = BalanceNetwork.said(reply.text, devnet, true, appInFront)
+        if (text == reply.text) return reply
+        val pieces = BalanceNetwork.saidPieces(reply.segments.map { it.text }, devnet, true, appInFront)
+        HeylanaLog.state("balance: network named cluster=devnet app_line=${appInFront != null}")
+        return reply.copy(text = text, segments = reply.segments.mapIndexed { i, s -> s.copy(text = pieces[i]) })
     }
 
     /**
@@ -576,7 +597,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
             BrainReply.Say(
                 Sources.spoken(AddressText.shorten(parsed.say)), pointAt, task, action, quick, segments, clarify, quickId,
                 readLesson(json), sources, unseen = json.optBoolean("unseen", false),
-                code = json.optString("code").trim().takeIf { it.isNotEmpty() }?.take(CODE_CHARS)
+                code = json.optString("code").trim().takeIf { it.isNotEmpty() }?.take(CODE_CHARS),
+                balancesRead = BalanceNetwork.readBalances(
+                    runCatching { JSONObject(body).optJSONObject("usage")?.optString("tools") }.getOrNull()
+                )
             )
         )
     }

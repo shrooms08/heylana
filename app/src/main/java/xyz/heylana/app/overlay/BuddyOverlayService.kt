@@ -784,7 +784,8 @@ class BuddyOverlayService : Service() {
                 question, screenText, memory, greetingLine, route, typedAddresses.all(), skill, teaching, walkThrough,
                 lenses.joinToString("\n\n").ifEmpty { null },
                 // A teaching walk-through is spoken step by step as the disc flies, never ahead of it.
-                voice = if (teaching || walkThrough) null else spokenSink()
+                voice = if (teaching || walkThrough) null else spokenSink(),
+                appInFront = xyz.heylana.app.wallet.BalanceNetwork.appName(snapshot.packageName)
             )
             answerClock?.answered(SystemClock.uptimeMillis())
             // A one-trip answer is already being said by now, so this is what completes the line.

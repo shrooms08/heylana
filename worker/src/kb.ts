@@ -114,8 +114,13 @@ export function isUserHowTo(question: string | null | undefined): boolean {
   if (!question) return false
   const q = question.toLowerCase()
   if (DEVELOPER_WORDS.test(q)) return false
+  // Their own money: "how much SOL is in this account" got "Solana docs: Account Types".
+  if (USER_OWN.test(q)) return true
   return USER_TASK_WORDS.test(q) && USER_ASKS.test(q)
 }
+
+const USER_OWN =
+  /\b(how much|how many)\b.*\b(do i have|have i got|i have|is in (this|my)|in my|my)\b|\bmy (balance|wallet|account|portfolio|holdings)\b|\b(this|my) (jupiter|wallet|phantom|solflare|seed vault)? ?account\b/
 
 const USER_TASK_WORDS =
   /\b(install|uninstall|update|download|swap|trade|buy|sell|earn|stake|unstake|deposit|withdraw|send|receive|transfer|bridge|lend|claim|connect|back ?up|top ?up|cash ?out|convert)\b/

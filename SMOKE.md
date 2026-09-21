@@ -1,44 +1,60 @@
-# Smoke test — polish-10-skills (Jupiter, Wallet Earn and the dApp Store, from real screens)
+# Smoke test — polish-10-skills, second pass (placement, pointer, chips, logs)
 
-For Minos. Three of Heylana's app notes were rewritten from screenshots of this Seeker, so
-when you ask "show me what to tap" she points at buttons that really exist. Install the app,
-run `./scripts/a11y.sh` once, then Menu → hold **Start buddy**.
+For Minos. Heylana now stands clear of whatever she points at, points at what her words tell
+you to do, puts no developer pages under everyday questions, and notices your tap in apps that
+used to hide it from her (the Wallet, the dApp Store, Jupiter's keypad). Install the app, run
+`./scripts/a11y.sh` once, **wait five seconds**, then Menu → hold **Start buddy**.
 
-**Live calls this test spends: about 6 chat, 6 spoken lines. Mainnet apps: never approve
-anything. Stop at every review screen.**
+**Live calls this test spends: about 7 chat, 7 spoken lines. Mainnet apps: never approve
+anything. In Jupiter, the green Swap button goes straight to a confirm request — cancel it.**
 
 ---
 
-## 1. Jupiter (2–4 chat)
+## 1. dApp Store: a one-tap step waits for you (1–2 chat)
 
-1. Open **Jupiter** (unlock it if it asks).
-2. Hold the disc and say **teach me to swap**.
-3. She points at **Trade** in the bottom bar. Tap it.
-4. She says you are on **Swap** with **Market** and tells you to type an amount. Type a
-   small one you actually have (0.001). Too much and the green button says **Insufficient
-   SOL balance** — that is expected.
-5. Tap the green button. **Stop at the review screen.** She tells you what you would be
-   signing; she never approves. Do not approve.
+1. Open the **dApp Store** on its Home tab (the house icon at the bottom).
+2. Hold the disc and say **where are the dApp Store settings**.
+3. A blue ring goes round the **gear** at the top right. Heylana's card sits under it, never on
+   it. The card says **step 1**.
+4. Wait until she stops speaking. Nothing moves on by itself.
+5. Tap the **gear**. Settings opens (your tap went to the dApp Store), and within about two
+   seconds Heylana finishes and flies home.
 
-## 2. Wallet Earn (1–2 chat)
+If she answers without "step 1" and flies home at once, that is the model answering in one go.
+Ask again once.
 
-1. Open the **Wallet**, home screen.
-2. Hold the disc and say **how do I earn on my USDC**.
-3. She points at **Start** on the row "Earn …% on your USDC — Powered by kamino", and says the
-   rate as "about". If she walks you on, tap **Start**. With no USDC you get the Receive page;
-   with USDC the Kamino pages, then Deposit. **Stop at the review.**
+## 2. dApp Store: installing, and no developer chip (1 chat)
 
-## 3. dApp Store (1 chat)
-
-1. Open the **dApp Store**.
+1. Back on the dApp Store's Home tab (the arrow at the top left, then the house icon).
 2. Hold the disc and say **how do I install an app**.
-3. On Home she points at an **Install** button; on Search, at the **search field**, and says
-   Install beside the app. Nothing needs installing for the test.
+3. The ring lands on a real **Install** button (the featured app's). Her card is clear of it.
+4. **Under her answer there is no chip**, and in particular nothing like "Submit a New App".
+5. Don't tap Install unless you want the app.
 
----
+## 3. Wallet: Earn (1 chat)
 
-## What I would want to hear about
+1. Open the **Wallet**, home screen. If a "Receive crypto" sheet is half open at the bottom,
+   press Back once to close it.
+2. Hold the disc and say **how do I earn on my USDC**.
+3. The ring goes round **Start** on the "Earn …% on your USDC" row. The rate she says matches
+   the screen. Her card is above Start, not on it.
+4. Tap **Start**. The Wallet opens its next page (Receive, if the Wallet has no USDC).
+   **Stop there.**
 
-- A button she names that is not on the screen, or a pointer on the wrong thing.
-- A walk-through that stops by itself before you have tapped.
-- Anything that sounds like she approved, signed or confirmed.
+## 4. Jupiter: the walk (3–4 chat)
+
+1. Open **Jupiter**, unlock it, tap **Home** at the bottom. If the Trade screen still has an
+   amount in it, go to Trade, tap **CLEAR**, then back to Home.
+2. Hold the disc and say **teach me to swap 0.0009 SOL to USDC**.
+3. Step 1: the ring is on **Trade** in the bottom bar. Tap it. She moves on by herself.
+4. Step 2: the ring is on the **Sell amount**, not on Market. Tap it and type **0.0009** on
+   Jupiter's keypad. About two and a half seconds after your last key she moves on.
+5. Step 3: she tells you to tap the green **Swap** button. **Known:** the ring may sit on the
+   "Swap" tab at the top instead; that is written down as left for later.
+6. **Stop here.** Tapping green Swap goes straight to a confirm request. If you tap it, cancel.
+
+## 5. Nothing on screen goes into the log
+
+In Android Studio's Logcat, filter on `HeylanaState` while you do any of the above. Lines
+about a new window say `glance: window pkg=… title_chars=…`: an app name and a number, never
+the window's title. Nothing you can read on the phone's screen appears in the log.

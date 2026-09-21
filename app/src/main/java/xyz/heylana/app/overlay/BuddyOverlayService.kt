@@ -1881,7 +1881,7 @@ class BuddyOverlayService : Service() {
                 main.postDelayed(stepTick, wait.coerceAtLeast(0) + STEP_TICK_SLACK_MS)
             }
         }
-        if (step.lastDifference > StepAdvance.CHANGE_THRESHOLD && decision is StepAdvance.Decision.Ignore) {
+        if (!polled && step.lastDifference > StepAdvance.CHANGE_THRESHOLD && decision is StepAdvance.Decision.Ignore) {
             HeylanaLog.state("step: change without a tap ignored diff=${"%.2f".format(step.lastDifference)}")
         }
         decideStep(decision)

@@ -715,11 +715,16 @@ mode=quick why=explain_error`). `ErrorTableTest`.
 lesson or the web page in front gets up to two chips under it — the source's name, at most 40
 characters ("Solana Cookbook: How to Add…", "Anchor docs: account constraints", "Page:
 solana.stackexchange.com/…") — and a tap opens the page in the browser (`source: opened
-host=…`). The model is told to name a source in a few words in `say` and put the urls it used
+host_chars=…`). The model is told to name a source in a few words in `say` and put the urls it used
 in `cite`; the worker turns `cite` into `sources` (`withSources`, `worker/src/kb.ts`), keeping
 only urls the knowledge base really returned for this question, at most two, and — when it
 searched but cited nothing — the closest result scoring at least 0.7 (`sources`,
-`sources_from: cite|top|none`, `kb_error` in the chat log). The error table's line names the
+`sources_from: cite|top|none`, `kb_error` in the chat log). **No chip beats a wrong chip
+(polish-10):** the knowledge base is developer material end to end, so a user's question —
+how to install, swap, earn, stake or send, or about their own balance (`isUserHowTo`, no
+developer words) — is not looked up first and gets no developer page as a chip, cited or top
+(`user_how_to`, `sources_dropped_developer` in the chat log). The dApp Store's "how do I install
+an app" had carried "Solana Mobile: Submit a New App". The error table's line names the
 docs ("The Anchor docs have more.") and its link is the chip; every lesson note has `link` and
 `link_title` in its front matter (checked on Sept 19) and that chip rides under every turn; a
 browser's address bar (`ScreenSnapshot.pageAddress`) gives the page's chip on a one-shot
@@ -1704,6 +1709,34 @@ points at what takes the tap: a label inside a clickable card becomes the card
 (`ScreenSnapshot.clickTarget`), but only a button-sized one — no more than 40 times the
 label's area and under half the screen; the Wallet's only clickable container around "Swap"
 was the whole page, so there the label stays, and the step moves on when the screen changes.
+**24dp, on the roomiest side (polish-10).** `placeWindow` now tries the element's four sides in
+order of free space (right, left, below, above; beside wins a tie) and keeps the whole window
+`TARGET_CLEAR_DP` (24dp) off its bounds (`gap_dp=24 clear=true`); when no side has room it says
+so and the window takes no touches until the step moves on (`FLAG_NOT_TOUCHABLE`, `teach: window
+lets touches through`), so a tap on the element always reaches the app. `PlaceWindowTest` puts
+elements at every edge, every corner and under the disc's own dock.
+**The pointer goes where the words say (`screen/StepTarget`).** The model picks an id; the step's
+first instruction (a clause opening with tap, type, enter, choose, pick…, what it names cut at
+"you", "to", "of"…) is read, and if the model's element is not named there and exactly one other
+is, the pointer moves (`step: pointer moved to the instruction's element from=… to=…`, ids
+only). Two elements named alike, one inside the other, are one target (Jupiter's Trade tab and
+its label); a heading never takes the pointer from something that takes a tap ("tap the Sell
+chip" means the token chip); anything the words do not settle stays the model's.
+`StepTargetTest` holds it to Jupiter's swap screen as read on the Seeker. Known and left: when
+two separate elements share the name ("Swap" the tab and "Swap" the green button) the model's
+choice stands, and on Sept 21 that was the tab.
+
+**Compose apps send no events, so reads clear the cache and steps look for themselves.** The
+Wallet and the dApp Store send this service no accessibility events at all, and Android's copy of
+the nodes a service has read is refreshed only by events: on Sept 21 the dApp Store's Settings
+was open and every read still returned Home's 30 elements. `snapshot()` clears the cache first
+(`clearCache`, API 34+), and while a step waits it reads again every second (`STEP_POLL_MS`,
+only while a step is armed; a poll that finds nothing says nothing). A step whose words say to
+type ("type in 0.0009") finishes once the pointed field's value, digits and all, has changed
+and held still for `TYPED_SETTLE_MS` (2.5s) — Jupiter's amount is typed on its own keypad and
+reports nothing else (`advance reason=typed`). The settle restarts the quiet time only when it
+really changes Heylana's window; restarting it under an unchanged step card swallowed a tap.
+Debug: `--ez one_step true` makes the next question's pointed reply a one-step task.
 
 **When a step is done: `screen/StepAdvance`.** Every session's step (teaching or not) moves on
 only on (a) a click whose element matches the pointed one, or (b) the target app's content

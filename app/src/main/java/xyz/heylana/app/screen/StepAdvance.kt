@@ -6,6 +6,9 @@ package xyz.heylana.app.screen
  *
  * A step moves on only when:
  *  - the user clicks the element it points at, or
+ *  - on a step that says to type (a [typing] step), the pointed field's value — digits and
+ *    all — has changed and then stayed put for [TYPED_SETTLE_MS]: Jupiter's amount is typed
+ *    on its own keypad, reports no clicks, and a number changing is otherwise no change, or
  *  - the target app's content really changes: its node set differs from the step's
  *    by more than [CHANGE_THRESHOLD] (a new screen, a sheet, the app handing over to
  *    another one), measured on a fresh read — with every number taken out first, so a
@@ -23,14 +26,42 @@ package xyz.heylana.app.screen
  *  - for anything from Heylana's own package, or with no package at all.
  */
 class StepAdvance(
-    private val pointedKey: String?,
+    val pointedKey: String?,
     private val targetPackage: String,
     baseline: Set<String>,
     private val landedAt: Long,
     private val ownPackage: String = OWN_PACKAGE
 ) {
 
-    enum class Reason(val log: String) { CLICK("click"), CONTENT_CHANGED("content_changed") }
+    enum class Reason(val log: String) { CLICK("click"), CONTENT_CHANGED("content_changed"), TYPED("typed") }
+
+    /** The step says to type into the pointed field; [value] is what it held when the step began. */
+    private var typedFrom: String? = null
+    private var typing = false
+    private var typedAt = 0L
+
+    fun expectTyping(value: String?) {
+        typing = true
+        typedFrom = value
+    }
+
+    /**
+     * A fresh read of the pointed field during a typing step. A new value starts the settle
+     * clock again; a value back to where it began stops it. Returns how long to wait before
+     * [tick] should look again, or null when nothing is pending.
+     */
+    fun onValue(now: Long, value: String?): Long? {
+        if (!typing || done) return null
+        if (value == null || value == typedFrom) {
+            typedAt = 0L
+            return null
+        }
+        if (value != lastValue) typedAt = now
+        lastValue = value
+        return TYPED_SETTLE_MS - (now - typedAt)
+    }
+
+    private var lastValue: String? = null
 
     sealed interface Decision {
         data object Wait : Decision
@@ -77,7 +108,10 @@ class StepAdvance(
     }
 
     /** Time has passed with nothing new: the quiet time may be over, with something held. */
-    fun tick(now: Long): Decision = release(now)
+    fun tick(now: Long): Decision {
+        if (typing && typedAt > 0 && now - typedAt >= TYPED_SETTLE_MS) return hold(now, Reason.TYPED)
+        return release(now)
+    }
 
     fun onClick(now: Long, key: String?, packageName: String?): Decision {
         if (done) return Decision.Ignore
@@ -123,6 +157,9 @@ class StepAdvance(
 
     companion object {
         const val OWN_PACKAGE = "xyz.heylana.app"
+
+        /** A typed value this long unchanged is the user done typing. */
+        const val TYPED_SETTLE_MS = 2_500L
 
         /** No step moves on this soon after the disc lands. */
         const val QUIET_MS = 1_500L

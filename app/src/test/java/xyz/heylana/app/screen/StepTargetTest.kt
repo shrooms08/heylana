@@ -87,4 +87,39 @@ class StepTargetTest {
         assertEquals(2, StepTarget.choose("Tap Install beside the app.", 2, twins))
         assertEquals(3, StepTarget.choose("Tap Install beside the app.", 3, twins))
     }
+
+    @Test
+    fun `Jupiter step 1 as the Seeker said it - Trade, not Home's Swap`() {
+        val home = listOf(
+            Candidate(1, "Swap", editable = false, clickable = true),
+            Candidate(2, "Earn", editable = false, clickable = true),
+            Candidate(3, "Trade", editable = false, clickable = true),
+            Candidate(4, "Home", editable = false, clickable = false)
+        )
+        assertEquals(3, StepTarget.choose("To swap, first tap Trade at the bottom, then Swap, then Market to open the swap screen.", 1, home))
+    }
+
+    @Test
+    fun `a tab and its label named alike are one target - the model's Swap moves to Trade`() {
+        // Jupiter's Home as the Seeker read it: the Trade tab and its label, both clickable.
+        val home = listOf(
+            Candidate(1, "Swap", editable = false, clickable = true, box = intArrayOf(940, 594, 1083, 737)),
+            Candidate(2, "Trade", editable = false, clickable = true, box = intArrayOf(518, 2425, 747, 2568)),
+            Candidate(3, "Trade", editable = false, clickable = true, box = intArrayOf(580, 2520, 690, 2560))
+        )
+        assertEquals(2, StepTarget.choose("To swap, first tap Trade at the bottom, then Swap, then Market.", 1, home))
+    }
+
+    @Test
+    fun `a heading never takes the pointer from a chip that takes the tap`() {
+        // As the Seeker said it: the Sell card's token chip pointed, "Sell" is its heading.
+        assertEquals(8, StepTarget.choose("You are swapping USDC to SOL right now, so first tap the Sell chip to switch it to SOL instead.", 8, jupiterSwap))
+    }
+
+    @Test
+    fun `whether a step says to type`() {
+        assertEquals(true, StepTarget.isTyping("The sell token is already set to SOL, so now tap the amount field. Type in 0.0009 there."))
+        assertEquals(true, StepTarget.isTyping("Now enter the amount you want to sell."))
+        assertEquals(false, StepTarget.isTyping("Tap Trade at the bottom to get started."))
+    }
 }

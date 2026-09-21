@@ -217,6 +217,11 @@ class HeylanaAccessibilityService : AccessibilityService() {
      * and packages per window, never a word of what is on them.
      */
     fun snapshot(): ScreenSnapshot {
+        // Android keeps a copy of every node this service has read, and only an app's own
+        // events tell it a copy is out of date. Compose apps (the Wallet, the dApp Store)
+        // send this service none, so without this a read on their next screen came back as
+        // the screen before: found on the Seeker, Settings open and Home's 30 elements read.
+        if (android.os.Build.VERSION.SDK_INT >= 34) runCatching { clearCache() }
         val merged = WindowMerge.merge(readWindows(), ownPackage = packageName)
         HeylanaLog.state(
             "screen: windows=${runCatching { windows.size }.getOrDefault(-1)} read=${merged.windows.size} " +

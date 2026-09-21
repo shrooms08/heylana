@@ -136,4 +136,44 @@ class StepAdvanceTest {
         assertEquals(Decision.Ignore, step.onContentChange(9_000L, app, app, changed(15)))
         assertEquals(0.0, step.lastDifference, 0.0001)
     }
+
+    private val typed = Decision.Advance(StepAdvance.Reason.TYPED)
+
+    @Test
+    fun `a typing step moves on once the typed value settles - Jupiter's keypad`() {
+        val s = step()
+        s.expectTyping("0")
+        // The user types 0.0009 over a couple of seconds, well after the quiet time.
+        val t0 = 5_000L
+        assertEquals(StepAdvance.TYPED_SETTLE_MS, s.onValue(t0, "0."))
+        s.onValue(t0 + 400, "0.0")
+        s.onValue(t0 + 800, "0.00")
+        s.onValue(t0 + 1_200, "0.0009")
+        // Not yet: still inside the settle time of the last key.
+        assertEquals(Decision.Wait, s.tick(t0 + 2_000))
+        assertEquals(typed, s.tick(t0 + 1_200 + StepAdvance.TYPED_SETTLE_MS))
+    }
+
+    @Test
+    fun `a typing step waits for the line to end, and a value put back is not typed`() {
+        val s = step()
+        s.expectTyping("0")
+        s.speechStarted()
+        s.onValue(5_000, "0.5")
+        assertEquals(Decision.Wait, s.tick(5_000 + StepAdvance.TYPED_SETTLE_MS))
+        assertEquals(typed, s.speechEnded(9_000))
+
+        val back = step()
+        back.expectTyping("0")
+        back.onValue(5_000, "5")
+        assertEquals(null, back.onValue(5_500, "0"))
+        assertEquals(Decision.Wait, back.tick(5_500 + StepAdvance.TYPED_SETTLE_MS))
+    }
+
+    @Test
+    fun `a step that does not say to type ignores its field changing`() {
+        val s = step()
+        assertEquals(null, s.onValue(5_000, "0.5"))
+        assertEquals(Decision.Wait, s.tick(5_000 + StepAdvance.TYPED_SETTLE_MS))
+    }
 }

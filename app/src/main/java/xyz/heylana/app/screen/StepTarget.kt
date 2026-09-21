@@ -11,8 +11,17 @@ package xyz.heylana.app.screen
  */
 object StepTarget {
 
-    /** An element as this rule sees it: its id, its visible words, whether it takes typing. */
-    data class Candidate(val id: Int, val label: String?, val editable: Boolean, val clickable: Boolean)
+    /**
+     * An element as this rule sees it: its id, its visible words, whether it takes typing or a
+     * tap, and where it is (left, top, right, bottom), when known.
+     */
+    class Candidate(
+        val id: Int,
+        val label: String?,
+        val editable: Boolean,
+        val clickable: Boolean,
+        val box: IntArray? = null
+    )
 
     private val TAP_VERBS = listOf("tap", "press", "hit", "click", "choose", "select", "pick", "toggle", "slide", "swipe")
     private val TYPE_VERBS = listOf("type", "enter", "fill in", "put in", "key in")
@@ -45,14 +54,42 @@ object StepTarget {
      */
     fun choose(say: String, pointed: Int?, candidates: List<Candidate>): Int? {
         val instruction = firstInstruction(say) ?: return pointed
-        val scored = candidates.mapNotNull { c -> score(instruction, c).takeIf { it > 0 }?.let { c to it } }
+        // The model's element takes a tap: only something that also takes one may replace it.
+        // "Tap the Sell chip" pointed at the token chip, and the heading "Sell" is not it.
+        val pointedActs = candidates.firstOrNull { it.id == pointed }?.let { it.clickable || it.editable } ?: false
+        val scored = candidates
+            .filter { !pointedActs || it.id == pointed || it.clickable || it.editable }
+            .mapNotNull { c -> score(instruction, c).takeIf { it > 0 }?.let { c to it } }
         if (scored.isEmpty()) return pointed
         if (pointed != null && scored.any { it.first.id == pointed }) return pointed
         val best = scored.maxOf { it.second }
         val top = scored.filter { it.second == best }
-        // Two elements named equally: the one that takes a tap, else leave the model's choice.
-        val pick = top.singleOrNull() ?: top.filter { it.first.clickable || it.first.editable }.singleOrNull()
+        // Two elements named equally: one drawn inside the other is one thing (a tab and its
+        // label, as Jupiter's bottom bar reports them); else the one that takes a tap; else
+        // leave the model's choice.
+        val pick = top.singleOrNull()
+            ?: top.firstOrNull { outer -> top.all { it === outer || contains(outer.first.box, it.first.box) } }
+            ?: top.filter { it.first.clickable || it.first.editable }.singleOrNull()
         return pick?.first?.id ?: pointed
+    }
+
+    /**
+     * Whether the step tells the user to type or enter something, anywhere in it: "tap the
+     * amount field. Type in 0.0009 there." is a typing step though it opens with a tap.
+     */
+    fun isTyping(say: String): Boolean = clauses(say).any { words ->
+        val rest = words.dropWhile { it in LEAD }.joinToString(" ")
+        TYPE_VERBS.any { rest == it || rest.startsWith("$it ") }
+    }
+
+    private fun clauses(say: String): List<List<String>> =
+        say.lowercase().replace(Regex("[“”‘’\"]"), " ").split(Regex("[.!?;,:]|\\bthen\\b"))
+            .map { clause -> clause.split(Regex("[^a-z0-9%']+")).filter { it.isNotEmpty() } }
+
+    /** For the trace: how many elements the first instruction names, or -1 with no instruction. */
+    fun matches(say: String, candidates: List<Candidate>): Int {
+        val instruction = firstInstruction(say) ?: return -1
+        return candidates.count { score(instruction, it) > 0 }
     }
 
     /** The first clause of [say] that tells the user to do something: its verb and what it names. */
@@ -81,6 +118,10 @@ object StepTarget {
         }
         return null
     }
+
+    private fun contains(outer: IntArray?, inner: IntArray?): Boolean =
+        outer != null && inner != null &&
+            outer[0] <= inner[0] && outer[1] <= inner[1] && outer[2] >= inner[2] && outer[3] >= inner[3]
 
     private fun score(instruction: Instruction, candidate: Candidate): Int {
         val label = candidate.label?.trim()?.lowercase().orEmpty()

@@ -347,6 +347,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     val isPanelOpen: Boolean get() = mode != Mode.DOCKED
 
+    /** The full-screen box is up: the app under it is dimmed and partly left out of a read. */
+    val isFullScreen: Boolean get() = mode == Mode.COMPOSE
+
     fun showThinking() {
         panel.showThinking()
     }

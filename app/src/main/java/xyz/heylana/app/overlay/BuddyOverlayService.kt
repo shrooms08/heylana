@@ -66,6 +66,7 @@ import xyz.heylana.app.brain.FinishedTask
 import xyz.heylana.app.brain.ErrorTable
 import xyz.heylana.app.brain.GuidanceSession
 import xyz.heylana.app.brain.HeylanaPrompt
+import xyz.heylana.app.brain.TaskState
 import xyz.heylana.app.brain.Teaching
 import xyz.heylana.app.net.Proxy
 import xyz.heylana.app.screen.HeylanaAccessibilityService
@@ -206,8 +207,12 @@ class BuddyOverlayService : Service() {
             return@Runnable
         }
         HeylanaLog.state("settle: run")
-        // The box changing shape uncovers part of the app: a fresh quiet time for the step.
-        stepAdvance?.ownWindowsChanged(SystemClock.uptimeMillis())
+        // The box changing shape uncovers part of the app: a fresh quiet time for the step —
+        // only when it really changes. A step's small card stays as it is, and restarting the
+        // quiet time there swallowed the user's tap on the dApp Store's gear on the Seeker.
+        if (view.isFullScreen || (view.wasSpoken && !view.isCapsuleShowing)) {
+            stepAdvance?.ownWindowsChanged(SystemClock.uptimeMillis())
+        }
         view.endVoiceExchange()
         // Never while the capsule is still on screen: closing the box abandons
         // the microphone, and that is not what the end of an answer means.
@@ -832,9 +837,14 @@ class BuddyOverlayService : Service() {
                         sayLine(SendText.NO_ACTION)
                         return@launch
                     }
-                    val task = reply.task
+                    // Debug builds: a forced one-step task the model answered as a one-off still
+                    // becomes one pointed step waiting for the tap, as a walk-through's would.
+                    val forcedTask = if (forceStep && (reply.task == null || reply.task.done) &&
+                        (reply.pointAt ?: reply.segments.firstNotNullOfOrNull { it.pointAt }) != null
+                    ) TaskState(question, false).also { HeylanaLog.state("debug: one-off made a one-step task") } else null
+                    val task = forcedTask ?: reply.task
                     if (task != null && !task.done) {
-                        startSession(task.goal, reply, snapshot, teaching)
+                        startSession(task.goal, reply, snapshot, teaching || forceStep)
                     } else {
                         conversation.record(question, reply.text, if (chat != null) null else snapshot.packageName)
                         showOneShot(reply, snapshot)
@@ -1457,7 +1467,7 @@ class BuddyOverlayService : Service() {
             val segment = segments.getOrNull(index) ?: return finish()
             // A sentence that tells the user to do something points at what it names.
             val pointed = segment.pointAt?.let { id ->
-                StepTarget.choose(segment.text, id, snapshot.nodes.map { StepTarget.Candidate(it.id, it.text ?: it.contentDescription, it.editable, it.clickable) })
+                StepTarget.choose(segment.text, id, snapshot.nodes.map { StepTarget.Candidate(it.id, it.text ?: it.contentDescription, it.editable, it.clickable, intArrayOf(it.bounds.left, it.bounds.top, it.bounds.right, it.bounds.bottom)) })
             }
             if (pointed != segment.pointAt) HeylanaLog.state("teach: pointer moved to the instruction's element from=${segment.pointAt} to=$pointed")
             val node = pointed?.let { snapshot.node(it) }
@@ -1684,10 +1694,11 @@ class BuddyOverlayService : Service() {
         // the tap: a label's clickable card rather than the label.
         // …and at what the words tell the user to act on next, if the model pointed elsewhere.
         val modelPointed = reply.pointAt ?: reply.segments.firstNotNullOfOrNull { it.pointAt }
-        val pointed = StepTarget.choose(
-            reply.text,
-            modelPointed,
-            snapshot.nodes.map { StepTarget.Candidate(it.id, it.text ?: it.contentDescription, it.editable, it.clickable) }
+        val candidates = snapshot.nodes.map { StepTarget.Candidate(it.id, it.text ?: it.contentDescription, it.editable, it.clickable, intArrayOf(it.bounds.left, it.bounds.top, it.bounds.right, it.bounds.bottom)) }
+        val pointed = StepTarget.choose(reply.text, modelPointed, candidates)
+        HeylanaLog.state(
+            "step: instruction matches=${StepTarget.matches(reply.text, candidates)} " +
+                "nodes=${snapshot.nodes.size} truncated=${snapshot.truncated}"
         )
         if (pointed != modelPointed) HeylanaLog.state("step: pointer moved to the instruction's element from=$modelPointed to=$pointed")
         val node = snapshot.node(pointed)?.let { snapshot.clickTarget(it) }
@@ -1718,7 +1729,7 @@ class BuddyOverlayService : Service() {
                 highlight?.ring(node.bounds)
                 view.lookAt(android.graphics.PointF(node.bounds.exactCenterX(), node.bounds.exactCenterY()))
                 // The step's clock starts as the disc lands.
-                armStep(node, snapshot)
+                armStep(node, snapshot, typing = StepTarget.isTyping(spoken))
                 if (speak(spoken)) stepSpeaking(true)
             }
             return
@@ -1845,17 +1856,31 @@ class BuddyOverlayService : Service() {
      * The step is finished when the thing we pointed at has gone, or the user has
      * moved to a different app.
      */
-    private fun considerAutoAdvance() {
+    private fun considerAutoAdvance(polled: Boolean = false) {
         val current = session ?: return
         if (current.stuck) return
         if (inFlight?.isActive == true) return
 
-        val step = stepAdvance ?: return
-        val snapshot = HeylanaAccessibilityService.snapshotOrNull() ?: return
-        if (snapshot.isEmpty) return
+        val step = stepAdvance ?: return HeylanaLog.state("step: change with no step armed")
+        val snapshot = HeylanaAccessibilityService.snapshotOrNull()
+        if (snapshot == null || snapshot.isEmpty) return HeylanaLog.state("step: change, but the read came back empty")
         val decision = step.onContentChange(
             SystemClock.uptimeMillis(), lastChangeFrom, snapshot.packageName, StepAdvance.signature(snapshot.nodes)
         )
+        // A poll that finds nothing new says nothing: once a second would drown the trace.
+        if (!polled || step.lastDifference > StepAdvance.CHANGE_THRESHOLD || decision !is StepAdvance.Decision.Ignore) {
+            HeylanaLog.state(
+                "step: change seen diff=${"%.2f".format(step.lastDifference)} same_app=${snapshot.packageName == lastChangeFrom} " +
+                    "decision=${decision.javaClass.simpleName} polled=$polled"
+            )
+        }
+        stepPointedBounds?.let { bounds ->
+            step.onValue(SystemClock.uptimeMillis(), valueAt(snapshot, bounds))?.let { wait ->
+                HeylanaLog.state("step: typed value changed, settles in ${wait}ms")
+                main.removeCallbacks(stepTick)
+                main.postDelayed(stepTick, wait.coerceAtLeast(0) + STEP_TICK_SLACK_MS)
+            }
+        }
         if (step.lastDifference > StepAdvance.CHANGE_THRESHOLD && decision is StepAdvance.Decision.Ignore) {
             HeylanaLog.state("step: change without a tap ignored diff=${"%.2f".format(step.lastDifference)}")
         }
@@ -1863,6 +1888,33 @@ class BuddyOverlayService : Service() {
     }
 
     // ------------------------------------------------------------ step advance
+
+    /** A step's own look, every [STEP_POLL_MS], for apps that send no events. */
+    private var stepPollFrom: String? = null
+    private val stepPoll: Runnable = Runnable {
+        if (stepAdvance == null || session == null) return@Runnable
+        if (inFlight?.isActive != true) {
+            lastChangeFrom = stepPollFrom
+            considerAutoAdvance(polled = true)
+        }
+        if (stepAdvance != null) main.postDelayed(stepPoll, STEP_POLL_MS)
+    }
+
+    /** Where the running step's element is, to read its value on a typing step. */
+    private var stepPointedBounds: android.graphics.Rect? = null
+
+    /**
+     * What the field at [bounds] holds now: the element there that overlaps it most (a
+     * right-aligned amount grows leftwards as it is typed). Compared, never logged.
+     */
+    private fun valueAt(snapshot: ScreenSnapshot, bounds: android.graphics.Rect): String? =
+        snapshot.nodes
+            .filter { (it.text ?: it.contentDescription) != null && android.graphics.Rect.intersects(it.bounds, bounds) }
+            .maxByOrNull {
+                val overlap = android.graphics.Rect(it.bounds)
+                if (overlap.intersect(bounds)) overlap.width().toLong() * overlap.height() else 0L
+            }
+            ?.let { it.text ?: it.contentDescription }
 
     /** The rule for when the running step is done: see [StepAdvance]. */
     private var stepAdvance: StepAdvance? = null
@@ -1873,13 +1925,24 @@ class BuddyOverlayService : Service() {
      * up): taps come from the tap feed, content changes from the screen feed, and once the
      * quiet time is over anything held is looked at again.
      */
-    private fun armStep(node: ScreenNode?, snapshot: ScreenSnapshot) {
+    private fun armStep(node: ScreenNode?, snapshot: ScreenSnapshot, typing: Boolean = false) {
         stopTapWatch()
         main.removeCallbacks(stepTick)
         val now = SystemClock.uptimeMillis()
         stepAdvance = StepAdvance(node?.key, snapshot.packageName, StepAdvance.signature(snapshot.nodes), now)
+        stepPointedBounds = node?.bounds
+        // "Type the amount": done when the pointed field's value changes and settles.
+        if (typing && node != null) {
+            stepAdvance?.expectTyping(valueAt(snapshot, node.bounds))
+            HeylanaLog.state("step: waits for typing in the pointed field")
+        }
         HeylanaAccessibilityService.watchTaps { signal -> main.post { onStepSignal(signal) } }
         main.postDelayed(stepTick, StepAdvance.QUIET_MS + STEP_TICK_SLACK_MS)
+        // Compose apps report no clicks and no changes to this service, so while a step
+        // waits it also looks again every second itself — only while a step is up.
+        main.removeCallbacks(stepPoll)
+        stepPollFrom = snapshot.packageName
+        main.postDelayed(stepPoll, STEP_POLL_MS)
         HeylanaLog.state("step: armed pointed=${node != null} quiet_ms=${StepAdvance.QUIET_MS}")
         // Debug builds only (HeylanaLog is): where it is, never what it says.
         node?.bounds?.let { HeylanaLog.state("step: pointed bounds=${it.left},${it.top},${it.right},${it.bottom} pkg=${snapshot.packageName}") }
@@ -1888,7 +1951,9 @@ class BuddyOverlayService : Service() {
     private fun onStepSignal(signal: ScreenSignal) {
         val step = stepAdvance ?: return
         if (signal !is ScreenSignal.Clicked) return
-        decideStep(step.onClick(SystemClock.uptimeMillis(), signal.key, signal.packageName))
+        val decision = step.onClick(SystemClock.uptimeMillis(), signal.key, signal.packageName)
+        HeylanaLog.state("step: click seen on_target=${signal.key != null && signal.key == step.pointedKey} decision=${decision.javaClass.simpleName}")
+        decideStep(decision)
     }
 
     /** The step's line has started or finished being spoken. */
@@ -1917,6 +1982,8 @@ class BuddyOverlayService : Service() {
     private fun disarmStep() {
         main.removeCallbacks(stepTick)
         stepAdvance = null
+        stepPointedBounds = null
+        main.removeCallbacks(stepPoll)
         HeylanaAccessibilityService.watchTaps(null)
     }
 
@@ -2831,6 +2898,9 @@ class BuddyOverlayService : Service() {
 
         /** A little past the quiet time, so a held tap is acted on as soon as it may be. */
         private const val STEP_TICK_SLACK_MS = 120L
+
+        /** How often a waiting step looks at the screen itself, for apps that send no events. */
+        private const val STEP_POLL_MS = 1_000L
 
         /** How long a clarifying question waits for its answer. */
         private const val CLARIFY_WINDOW_MS = 60_000L

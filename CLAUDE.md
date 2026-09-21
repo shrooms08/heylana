@@ -723,7 +723,10 @@ searched but cited nothing — the closest result scoring at least 0.7 (`sources
 (polish-10):** the knowledge base is developer material end to end, so a user's question —
 how to install, swap, earn, stake or send, or about their own balance (`isUserHowTo`, no
 developer words) — is not looked up first and gets no developer page as a chip, cited or top
-(`user_how_to`, `sources_dropped_developer` in the chat log). The dApp Store's "how do I install
+(`user_how_to`, `sources_dropped_developer` in the chat log). **Inside a consumer app it holds
+whatever the wording**: whenever a built-in app skill is carried the phone sends `app_skill`, and
+the worker attaches no developer page (`app_skill: true` in the log) — "which button do I tap to
+review this swap" on Jupiter matched none of the words and had carried a docs link. The dApp Store's "how do I install
 an app" had carried "Solana Mobile: Submit a New App". The error table's line names the
 docs ("The Anchor docs have more.") and its link is the chip; every lesson note has `link` and
 `link_title` in its front matter (checked on Sept 19) and that chip rides under every turn; a
@@ -1213,6 +1216,20 @@ verdicts, and it fails unless every one of the sixty loads Solana on the phone a
 mechanics treatment. Sept 20: 24 of 60, then 30 with the notes in `scripts/kb/notes/`, then **39 of
 60** (stackexchange 12, errors 13, infrastructure 14) once the knowledge base was read
 rather than offered and the answer's shape forced.
+
+**Walk-through steps never truncate (polish-10).** On the Seeker two steps ran into the phone's
+300 output tokens with no `say` at all, and Heylana said "I didn't catch that" — the ears' line,
+for a reply the model got wrong. Now a walk-through's first question and every step send
+`shape: "answer"`: the worker answers with the answer tool alone (fields, `say` first, never
+prose) and 700 tokens (`shape: answer`, `max_tokens` on the chat log). Every /chat logs whether
+it fit — `chat: stop=end_turn out=134/700 say=y point=y` — from the reply's `stop_reason` and
+`usage.max_tokens`, which the worker now passes on (a cut-off answer tool says `max_tokens`).
+Measured on Sept 21: steps 134–179 of 700. A reply the limit still cuts off keeps the whole
+sentences of speech and the target that arrived (`ReplyParser.salvage`, `reply: cut off, speech
+kept`); with none it is asked once for one short sentence (`ONE_SENTENCE`), then Heylana says
+"Give me a second, let me look again." and reads the screen again once; a second time ends the
+task with the plain line. An unreadable reply is "Something went wrong on my side." — the ears'
+line is only the ears' (`TruncatedReplyTest` holds the source to it).
 
 **Answers have a word cap, enforced once.** `brain/AnswerLength`: a signing
 explanation is two sentences under 40 words (the prompt asks for it); everything else
@@ -1738,7 +1755,13 @@ an unnamed box with the word inside it), and between groups a position word deci
 top), then "tab" (the smaller), then "button", a colour or nothing at all (the primary action:
 larger, then lower). `WALK_THROUGH_LINE` asks the model to name such an element unambiguously.
 Checked on the Seeker on Sept 21: the model pointed at the Swap tab, the ring went to the green
-Swap button (`from=46 to=29`). Known: the ring then hugs the button's word, not the whole bar.
+Swap button (`from=46 to=29`). **The ring is the whole button** (`ClickTarget.target`): a word
+that takes no tap rings the smallest button-sized tappable box around it, and a tappable word
+inside an unnamed button-sized tappable box rings the box; a named row stays out of it. "The
+screen" for the half-the-screen guard is the area every element spans — Jupiter's read has no
+page-sized element, so its largest one, the green bar itself, had counted as the screen. The step
+trace says `step: ring grew to its button|stays on the element holders=… button_sized=… sizes=…`.
+A "type 0.0009" clause names the amount, so a later "tap Swap" never moves the pointer off the field.
 
 **Compose apps send no events, so reads clear the cache and steps look for themselves.** The
 Wallet and the dApp Store send this service no accessibility events at all, and Android's copy of

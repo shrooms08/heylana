@@ -5,7 +5,7 @@ you to do, puts no developer pages under everyday questions, and notices your ta
 used to hide it from her (the Wallet, the dApp Store, Jupiter's keypad). Install the app, run
 `./scripts/a11y.sh` once, **wait five seconds**, then Menu → hold **Start buddy**.
 
-**Live calls this test spends: about 9 chat, 9 spoken lines. Mainnet apps: never approve
+**Live calls this test spends: about 10 chat, 10 spoken lines. Mainnet apps: never approve
 anything. In Jupiter, the green Swap button goes straight to a confirm request — cancel it.**
 
 ---
@@ -49,15 +49,23 @@ Ask again once.
 3. Step 1: the ring is on **Trade** in the bottom bar. Tap it. She moves on by herself.
 4. Step 2: the ring is on the **Sell amount**, not on Market. Tap it and type **0.0009** on
    Jupiter's keypad. About two and a half seconds after your last key she moves on.
-5. Step 3: she tells you to tap the green **Swap** button, and the ring is on the **green
-   button** (on its word "Swap"), never on the "Swap" tab at the top.
+5. Step 3: she tells you to tap the green **Swap** button, and the ring goes round the **whole
+   green bar**, never just its word and never the "Swap" tab at the top.
 6. **Stop here.** Tapping green Swap goes straight to a confirm request. If you tap it, cancel.
+
+## 4b. Jupiter: "which button" gets no link (1 chat)
+
+1. On Jupiter's Trade screen with an amount in, hold the disc and say **which button do I tap to
+   review this swap**.
+2. She names the green Swap button. **No link chip** under the answer.
 
 ## 5. Nothing on screen goes into the log
 
 In Android Studio's Logcat, filter on `HeylanaState` while you do any of the above. Lines
 about a new window say `glance: window pkg=… title_chars=…`: an app name and a number, never
-the window's title. Nothing you can read on the phone's screen appears in the log.
+the window's title. Nothing you can read on the phone's screen appears in the log. Every
+question also logs `chat: stop=end_turn out=…/700 say=y point=y` for a walk-through step:
+`stop=max_tokens` there means a step ran out of room, and should never appear.
 
 ## 6. Balances say their network (1 chat)
 

@@ -169,6 +169,11 @@ object StepTarget {
             val after = rest.removePrefix(verb).trim().split(' ').filter { it.isNotEmpty() }
             val obj = after.takeWhile { it !in OBJECT_ENDS }
             val inQuotes = quoted.filter { q -> clause.contains(q) }
+            // "Type 0.0009 in the Sell box": what is typed is a number, and the thing to act on
+            // is the field the model pointed at — not the "Swap" a later clause names.
+            if (verb in TYPE_VERBS && obj.isNotEmpty() && obj.none { w -> w.any(Char::isLetter) }) {
+                return Instruction(typing = true, named = setOf("amount"), quoted = emptyList())
+            }
             // "type how much SOL to sell": the thing named is the amount, whatever it is in.
             val howMuch = verb in TYPE_VERBS && after.take(2) == listOf("how", "much")
             val named = if (howMuch) setOf("amount") else obj.filter { it !in FILLER && it.any(Char::isLetter) }.toSet()

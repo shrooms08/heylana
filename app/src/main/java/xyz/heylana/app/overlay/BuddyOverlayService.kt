@@ -1719,6 +1719,19 @@ class BuddyOverlayService : Service() {
         )
         if (pointed != modelPointed) HeylanaLog.state("step: pointer moved to the instruction's element from=$modelPointed to=$pointed")
         val node = snapshot.node(pointed)?.let { snapshot.clickTarget(it) }
+        // Whether the ring grew from a word to its button, and how many tappable boxes hold the
+        // word at any size: counts only.
+        snapshot.node(pointed)?.let { word ->
+            val around = snapshot.nodes.filter { it !== word && it.bounds.contains(word.bounds) }
+            val area = word.bounds.width().toLong() * word.bounds.height()
+            val buttonSized = around.filter { it.bounds.width().toLong() * it.bounds.height() <= area * xyz.heylana.app.screen.ClickTarget.MAX_GROWTH }
+            HeylanaLog.state(
+                "step: ring ${if (node !== word) "grew to its button" else "stays on the element"} clickable=${word.clickable} " +
+                    "holders=${around.size} button_sized=${buttonSized.size} tappable=${buttonSized.count { it.clickable }} " +
+                    "named=${buttonSized.count { it.text != null || it.contentDescription != null }} " +
+                    "sizes=${buttonSized.joinToString("|") { "${it.bounds.width()}x${it.bounds.height()}" }}"
+            )
+        }
         val repeated = current.record(
             say = reply.text,
             elementKey = node?.key,

@@ -31,7 +31,10 @@ object ClickTarget {
      */
     fun containing(inner: IntArray, boxes: List<IntArray>, clickable: List<Boolean>): Int? {
         val innerArea = ((inner[2] - inner[0]).toLong() * (inner[3] - inner[1])).coerceAtLeast(1)
-        val screenArea = boxes.maxOfOrNull { (it[2] - it[0]).toLong() * (it[3] - it[1]) } ?: 0L
+        // The screen is what every element spans together: Jupiter's read has no page-sized
+        // element, and measured by its largest one the green Swap bar was "half the screen".
+        val screenArea = if (boxes.isEmpty()) 0L else
+            (boxes.maxOf { it[2] } - boxes.minOf { it[0] }).toLong() * (boxes.maxOf { it[3] } - boxes.minOf { it[1] })
         var best: Int? = null
         var bestArea = Long.MAX_VALUE
         boxes.forEachIndexed { i, box ->

@@ -59,4 +59,20 @@ class ClickTargetTest {
         val boxes = listOf(intArrayOf(40, 1700, 1160, 1800), intArrayOf(990, 1713, 1159, 1795))
         assertEquals(1, ClickTarget.target(1, boxes, listOf(true, true), listOf(true, true)))
     }
+
+    @Test
+    fun `with no page element in the read, the bar is still a button - Jupiter as read`() {
+        // What the Seeker's read held on Sept 21: the word not tappable, one unnamed tappable
+        // 1098x122 box around it, the tab, the keypad, the bottom bar; no page-sized element.
+        val boxes = listOf(
+            intArrayOf(44, 248, 166, 370),       // Swap tab
+            intArrayOf(51, 1672, 1149, 1794),    // the green bar
+            intArrayOf(547, 1709, 654, 1759),    // "Swap", not tappable
+            intArrayOf(52, 1840, 305, 1960),     // MAX
+            intArrayOf(40, 2425, 1160, 2568)     // bottom bar
+        )
+        val clickable = listOf(true, true, false, true, true)
+        val named = listOf(true, false, true, true, true)
+        assertEquals(1, ClickTarget.target(2, boxes, clickable, named))
+    }
 }

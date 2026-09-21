@@ -166,4 +166,11 @@ class StepTargetTest {
         assertEquals(46, StepTarget.choose("First tap the Swap tab at the top.", 60, swapTwins))
         assertEquals(46, StepTarget.choose("Tap the Swap tab.", 60, swapTwins))
     }
+
+    @Test
+    fun `typing a number keeps the model's field, never a later clause's button`() {
+        // Walk 1 on the Seeker: the model pointed at the amount; "tap Swap" came after.
+        assertEquals(13, StepTarget.choose("Type 0.0009 in the Sell box, then tap Swap.", 13, jupiterSwap))
+        assertEquals(13, StepTarget.choose("Now enter 0.0009 on the keypad.", 13, jupiterSwap))
+    }
 }

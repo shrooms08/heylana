@@ -59,6 +59,15 @@ object Teaching {
 
     fun wantsSession(question: String): Boolean = SESSION.containsMatchIn(question)
 
+    /**
+     * Whether a running task's step, given as pieces, is an explanation that walks around the
+     * screen — or the step itself. Several pieces walk; one pointed sentence *is* the step to do,
+     * and it waits for the tap. Found on the Seeker: "how do I earn on my USDC" came back as a
+     * task whose one sentence pointed at Start, and the phone played it once as a flight, flew
+     * home and ended the task before anyone could tap.
+     */
+    fun stepWalksTheScreen(pieces: Int, teaches: Boolean): Boolean = teaches && pieces > 1
+
     fun isStop(question: String): Boolean = STOP.containsMatchIn(question)
 
     fun isWhy(question: String): Boolean =

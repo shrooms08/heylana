@@ -1730,7 +1730,10 @@ feeds it made-up event streams. Done stays, and "stop", "cancel", "that's
 enough", "never mind" said on their own (`Teaching.isStop`) end it the same way. The session
 ends on `done`, Done, stop or the 8-step cap; its last line is spoken and then the disc flies
 home (`closeTask`, `flyHomeAfterSpeech`). A walk-through is never added to a send, a quick
-action or chat. Explanations that need no taps stay one-shot segmented answers.
+action or chat. Explanations that need no taps stay one-shot segmented answers. A running task's step that comes back as **one** pointed sentence
+is the step itself and waits for the tap (`Teaching.stepWalksTheScreen`: only several pieces walk
+the screen); on the Seeker "how do I earn on my USDC" came back as a task whose one sentence
+pointed at Start, and the phone played it once, flew home and ended the task.
 
 **The recap.** When a task ends (done, Done, the panel closing, an error, the cap, or a new
 question), its goal and one-line steps are kept in memory as a `FinishedTask` for ten

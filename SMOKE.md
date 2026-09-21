@@ -1,75 +1,44 @@
-# Smoke test — polish-9-states (what a send is doing, which network, readable anywhere)
+# Smoke test — polish-10-skills (Jupiter, Wallet Earn and the dApp Store, from real screens)
 
-For Minos. Every send now says where it stands on its card — **Prepared, not signed**, then
-**Waiting for your wallet**, then **Sent** or **Not sent** — and which network it is on. The
-server is deployed already. Install the app, then run `./scripts/a11y.sh` once.
+For Minos. Three of Heylana's app notes were rewritten from screenshots of this Seeker, so
+when you ask "show me what to tap" she points at buttons that really exist. Install the app,
+run `./scripts/a11y.sh` once, then Menu → hold **Start buddy**.
 
-**Live calls this test spends: 3 chat, plus one or two for a teaching question, about 4 spoken lines. Devnet only. One real devnet
-transfer of 0.01 USDC to the Heylana treasury (play money).** Before you start: in Seed
-Vault, make sure Heylana is **not** marked as trusted, or it will sign without asking you.
-
----
-
-## 1. Home shows the network (no live calls)
-
-1. Open Heylana. You are on Home.
-2. Beside "Heylana / your buddy" at the top there is a small **Devnet** badge in **amber**.
-   (On a mainnet server it would say **Mainnet**, in grey.)
+**Live calls this test spends: about 6 chat, 6 spoken lines. Mainnet apps: never approve
+anything. Stop at every review screen.**
 
 ---
 
-## 2. A send you approve (1 chat)
+## 1. Jupiter (2–4 chat)
 
-1. Menu → hold **Start buddy** until it ticks. Press the phone's **Home** button.
-2. Hold the disc and say: `send 0.01 USDC to` and the treasury address (or type it in the box).
-3. A dark, solid card comes up — the home-screen icons do **not** show through the words.
-   At the top, **Prepared, not signed** in bold with an amber **Devnet** pill beside it and the
-   speaker on the right. Then, as label and value: **Leaves your wallet** / **0.01 USDC**
-   (the biggest thing on the card), **Arrives** / **0.01 USDC at your Heylana treasury
-   (7c2y…SxSv)**, **Fee** / **0.000005 SOL**. Then, in grey, **Seed Vault will ask you to
-   approve. Leave 'trust' unticked.** — nothing cut off. At the bottom, a green **✓ Simulation
-   passed** on the left and **cancel** / **confirm** on the right. The numbers look like the rest
-   of the words, not typewriter spacing ("0.01", not "0 . 01").
-   She says: *"I've prepared it on devnet. Nothing moves until you approve in your wallet."*
-4. Tap **confirm**. The card goes small and moves to the top of the screen: **Waiting for your
-   wallet** with the Devnet pill — "Approve it in Seed Vault, or reject it there." It never sits
-   over Seed Vault's buttons, and your **first** tap in Seed Vault works.
-5. In Seed Vault tap your wallet card, then **approve**.
-6. The card says **Signed, confirming** for a moment, then **Sent · Devnet** — *"Done. 0.01
-   USDC went to 7c2y…SxSv."* (spoken), with a **Signature …** chip under it.
-7. Tap the chip: Explorer opens on the transaction, on devnet.
+1. Open **Jupiter** (unlock it if it asks).
+2. Hold the disc and say **teach me to swap**.
+3. She points at **Trade** in the bottom bar. Tap it.
+4. She says you are on **Swap** with **Market** and tells you to type an amount. Type a
+   small one you actually have (0.001). Too much and the green button says **Insufficient
+   SOL balance** — that is expected.
+5. Tap the green button. **Stop at the review screen.** She tells you what you would be
+   signing; she never approves. Do not approve.
 
----
+## 2. Wallet Earn (1–2 chat)
 
-## 3. A send you reject (1 chat)
+1. Open the **Wallet**, home screen.
+2. Hold the disc and say **how do I earn on my USDC**.
+3. She points at **Start** on the row "Earn …% on your USDC — Powered by kamino", and says the
+   rate as "about". If she walks you on, tap **Start**. With no USDC you get the Receive page;
+   with USDC the Kamino pages, then Deposit. **Stop at the review.**
 
-1. Open the **Wallet** app. Ask for the same send again.
-2. The same solid card comes up over the Wallet — full width, readable over its white buttons.
-3. Tap **confirm**, then **Waiting for your wallet**, as before.
-4. In Seed Vault, **reject** it (or close the sheet).
-5. The card says **Not sent · Devnet** — *"Cancelled. Nothing left your wallet."* (spoken).
-   Nothing is tried again.
+## 3. dApp Store (1 chat)
 
----
-
-## 4. Everything Heylana writes is readable (1 chat)
-
-1. Open your busiest page — the app drawer with every icon on it is good.
-2. Tap the disc. The box opens: dark and solid, nothing of the icons behind it shows through.
-   Type a few letters: they are bright white, and a blue caret blinks where you type.
-3. Ask `what is the capital of Kenya`. The answer strip under the disc is dark and solid too.
-4. Hold the disc and say `teach me how to open the camera` (or any teaching question): each
-   step's bubble beside the disc is dark and solid, the words easy to read.
-5. With Heylana running, open a site that asks for a recovery phrase, or a Seed Vault signing
-   screen: the warning beside the disc ("heads up", "watching") is dark and solid.
-6. Nowhere does a blue streak cross the words or the field; a blue light may lap the edge.
+1. Open the **dApp Store**.
+2. Hold the disc and say **how do I install an app**.
+3. On Home she points at an **Install** button; on Search, at the **search field**, and says
+   Install beside the app. Nothing needs installing for the test.
 
 ---
 
 ## What I would want to hear about
 
-- Heylana saying "Careful…" about Seed Vault's window during her own send — she should keep
-  quiet then.
-- Anything of Heylana's covering Seed Vault's buttons while it is open.
-- "Sent" when nothing arrived, or "Not sent" when something did.
-- The Devnet badge missing, or saying Mainnet on this server.
+- A button she names that is not on the screen, or a pointer on the wrong thing.
+- A walk-through that stops by itself before you have tapped.
+- Anything that sounds like she approved, signed or confirmed.

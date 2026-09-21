@@ -7,12 +7,12 @@ author: Heylana
 summary: The Seeker's app store for Solana apps - find, install, open, update and remove.
 privacy: Reference text only. It reads nothing and sends nothing.
 ---
-Labels read off this Seeker's screens on 2026-09-21 (store v1.58.0).
+Labels read off this Seeker's screens on 2026-09-21.
 
 Screens
 Home: "Solana dApp Store", a gear at the top right (Settings), FEATURED cards each with "Install", "dApp Spotlight", lists such as "Games" with "Install", then "Categories" (Top Picks, Games, Trading & Markets, Earn & DeFi, DePIN and more).
 The bottom bar is two icons, no words: a house (Home) and a magnifier (Search).
-Search: a field, an X to clear it, results with "Install", or "Open" if the app is already on the phone.
+Search: a field (Categories below it), an X to clear it, results with "Install", or "Open" if the app is already on the phone.
 An app's page: back arrow, icon, name, rating, "Install" (or "Open"), the description with "Show more", "Preview".
 Settings: "My dApps" (how many installed), "dApp Updates" (how many waiting), "Auto Update", "Update over cellular data", "Check for an update".
 My dApps: each installed app with a bin icon to remove it.

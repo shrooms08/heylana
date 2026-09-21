@@ -94,4 +94,14 @@ class TeachingTest {
         assertNull(plain.solana)
         assertTrue(Routing.TEACH_WHY.skipsScreen)
     }
+
+    @Test
+    fun `one pointed sentence in a task is the step to do, several pieces are a walk around the screen`() {
+        // "how do I earn on my USDC": one sentence pointing at Start. It must wait for the tap.
+        assertEquals(false, Teaching.stepWalksTheScreen(pieces = 1, teaches = true))
+        // An explanation in pieces walks the screen and needs no tap.
+        assertEquals(true, Teaching.stepWalksTheScreen(pieces = 3, teaches = true))
+        // Plain words never walk.
+        assertEquals(false, Teaching.stepWalksTheScreen(pieces = 0, teaches = false))
+    }
 }

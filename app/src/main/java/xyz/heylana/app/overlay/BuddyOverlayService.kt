@@ -1695,7 +1695,7 @@ class BuddyOverlayService : Service() {
 
         // A step that only explains walks the screen and needs no Next or Done: the user
         // is not being asked to change anything yet.
-        if (!repeated && reply.teaches && runTeaching(reply, snapshot)) {
+        if (!repeated && Teaching.stepWalksTheScreen(reply.segments.size, reply.teaches) && runTeaching(reply, snapshot)) {
             view.hideSession()
             return
         }

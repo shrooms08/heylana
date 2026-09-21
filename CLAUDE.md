@@ -196,7 +196,25 @@ box, the strip, the task HUD, the pills — draws through `ui/GlassDrawable`:
   black 40%). The mark is white, 70% docked and 100% active.
 - **Blur behind** stays the system's FLAG_BLUR_BEHIND, at 8dp.
 
-**Legibility over white is still low.** Measured on the debug states screen (WCAG
+**Every overlay surface with words is opaque (polish-9).** Clear glass let a home screen's
+icons and labels through the words, and typed text vanished over the dApp Store icon. So the
+pane in every shape — the ask box, the reply strip, the task HUD, teaching steps, the lookout's
+signing, seed-phrase and look-alike warnings, notices, send cards — and the listening capsule
+are a near-opaque blue-black (`HeylanaTokens.txCardFill`, #0B0E17 at 95%, `GlassDrawable.solid`),
+the glass kept on the edge only (rim and hairline; the beam laps the rim and its glow stops well
+short of the words; the streak is not drawn on a solid pane). The question field is its own
+opaque fill (`inputFillSolid`, #161A25) with an accent caret; typed words 15.8:1, the placeholder
+9.4:1. The capsule's "thinking…" on the aurora is `onAccent`, never white. Pills, the mode chip
+and the badges sit on the opaque pane unchanged. `OverlayContrastTest` composites every one of
+them over a pure white page (the worst case: 5% of it leaks through) and holds each word to
+4.5:1 — the weakest is the send card's row labels at 5.15. Blur behind stays where it was (the
+box). Only the disc is still clear glass: it has no words. "Darker glass" now darkens the disc
+alone. Known and left: while a gooey merge runs (about 300ms) the pane's fill steps aside for the
+goo silhouette, as it always has. Checked on the Seeker on Sept 21 over the app drawer: the ask
+box with typed text, a reply, a teaching step, the three warnings and a send.
+
+**Legibility over white is still low** (this paragraph is about the disc now, and the clear glass
+it describes is what the text surfaces used to be). Measured on the debug states screen (WCAG
 contrast): body text over the pane on a pure white page 1.32:1 (1.54:1 at the letter
 edge, against its own shadow halo), over black 17.8:1; the idle mark over white 1.19:1,
 over black 9.6:1. With "Darker glass" (30% more black) over white: text 2.61:1, mark

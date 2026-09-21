@@ -389,6 +389,11 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
             setTextSize(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.BODY_SP)
             inputType = InputType.TYPE_CLASS_TEXT
             isSingleLine = true
+            // A caret that can be seen on the dark field: the accent, 2dp.
+            textCursorDrawable = android.graphics.drawable.GradientDrawable().apply {
+                setColor(HeylanaTokens.accent)
+                setSize(dp(HeylanaTokens.CARET_DP), 0)
+            }
             imeOptions = EditorInfo.IME_ACTION_SEND
             setPadding(
                 dp(HeylanaTokens.SPACE_3_DP), dp(HeylanaTokens.SPACE_3_DP),
@@ -555,11 +560,15 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
             if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.RADIUS_CARD_DP else GlassSpec.PANEL.radiusDp,
             blurBehind, GlassDrawable.Kind.PANEL,
             withShadow = true
-        ).also { it.solid = if (txShown) HeylanaTokens.txCardFill else null }
-        // The field is a lighter sheet sunk into the panel, never a darker hole.
+        ).also {
+            // Opaque, whatever it is showing: an answer, a warning, a step or a send. Clear glass
+            // let a home screen's icons through the words. The glass keeps only its edge.
+            it.solid = HeylanaTokens.txCardFill
+        }
+        // The field is a lighter sheet sunk into the panel, never a darker hole — and opaque.
         input.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_MD_DP, blurBehind, GlassDrawable.Kind.INPUT
-        )
+        ).also { it.solid = HeylanaTokens.inputFillSolid }
         stepChip.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_FULL_DP, blurBehind, GlassDrawable.Kind.PILL
         )
@@ -673,7 +682,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
 
     /** Secondary text on clear glass is white, a step back; on tinted glass the old lavender grey. */
     private val secondaryText: Int
-        get() = if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.textSecondary else HeylanaTokens.withAlpha(android.graphics.Color.WHITE, 0.72f)
+        get() = if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.textSecondary else HeylanaTokens.withAlpha(android.graphics.Color.WHITE, HeylanaTokens.SECONDARY_WHITE)
 
     private val selectedText: Int
         get() = if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.textPrimary else GlassSpec.CHIP_SELECTED_TEXT
@@ -861,7 +870,6 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         txScroll.visibility = View.VISIBLE
         txScroll.scrollTo(0, 0)
         txShown = true
-        (background as? GlassDrawable)?.solid = HeylanaTokens.txCardFill
         enable(true)
         HeylanaLog.state("panel: tx card title=\"${card.title}\" rows=${card.rows.size} chars=${card.text.length}")
     }
@@ -871,7 +879,6 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         if (!txShown) return
         txShown = false
         txScroll.visibility = View.GONE
-        (background as? GlassDrawable)?.solid = null
     }
 
     private fun showOrHide(view: TextView, text: String?) {

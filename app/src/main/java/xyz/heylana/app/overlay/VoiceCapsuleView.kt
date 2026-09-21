@@ -29,7 +29,10 @@ class VoiceCapsuleView(context: Context) : TextView(context) {
     private val body = RectF()
     private val glass = GlassDrawable(
         context, HeylanaTokens.RADIUS_FULL_DP, blurBehind = false, kind = GlassDrawable.Kind.PILL
-    )
+    ).also {
+        // The words heard so far, read over any page: the pane's opaque fill, not clear glass.
+        it.solid = HeylanaTokens.txCardFill
+    }
 
     private var drift = 0f
     private var animator: ValueAnimator? = null
@@ -54,6 +57,7 @@ class VoiceCapsuleView(context: Context) : TextView(context) {
     fun showTranscript(words: String) {
         thinking = false
         stopDrift()
+        setTextColor(HeylanaTokens.textPrimary)
         text = words.ifBlank { LISTENING }
         background = glass
         invalidate()
@@ -88,6 +92,7 @@ class VoiceCapsuleView(context: Context) : TextView(context) {
     private fun reset() {
         stopDrift()
         thinking = false
+        setTextColor(HeylanaTokens.textPrimary)
         text = ""
         alpha = 1f
         scaleX = 1f
@@ -98,6 +103,8 @@ class VoiceCapsuleView(context: Context) : TextView(context) {
     /** The same pill, now carrying the aurora while the answer is fetched. */
     fun showThinking() {
         thinking = true
+        // Words on the accent are never white (3:1 at best on the aurora): the palette's own.
+        setTextColor(HeylanaTokens.onAccent)
         text = THINKING
         background = null
         startDrift()

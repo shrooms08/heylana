@@ -335,7 +335,7 @@ class GlassDrawable(
         when (kind) {
             Kind.INPUT -> {
                 clearFill.shader = null
-                clearFill.color = HeylanaTokens.inputFill
+                clearFill.color = solid ?: HeylanaTokens.inputFill
                 canvas.drawRoundRect(body, r, r, clearFill)
                 clearStroke.shader = null
                 clearStroke.color = HeylanaTokens.inputBorder
@@ -345,7 +345,7 @@ class GlassDrawable(
             }
             Kind.PILL -> {
                 clearFill.shader = null
-                clearFill.color = if (selected) {
+                clearFill.color = solid ?: if (selected) {
                     HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.CHIP_SELECTED_WHITE)
                 } else {
                     HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.CHIP_UNSELECTED_BLACK)

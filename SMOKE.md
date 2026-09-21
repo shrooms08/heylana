@@ -4,7 +4,7 @@ For Minos. Every send now says where it stands on its card — **Prepared, not s
 **Waiting for your wallet**, then **Sent** or **Not sent** — and which network it is on. The
 server is deployed already. Install the app, then run `./scripts/a11y.sh` once.
 
-**Live calls this test spends: 2 chat, about 4 spoken lines. Devnet only. One real devnet
+**Live calls this test spends: 3 chat, plus one or two for a teaching question, about 4 spoken lines. Devnet only. One real devnet
 transfer of 0.01 USDC to the Heylana treasury (play money).** Before you start: in Seed
 Vault, make sure Heylana is **not** marked as trusted, or it will sign without asking you.
 
@@ -49,6 +49,20 @@ Vault, make sure Heylana is **not** marked as trusted, or it will sign without a
 4. In Seed Vault, **reject** it (or close the sheet).
 5. The card says **Not sent · Devnet** — *"Cancelled. Nothing left your wallet."* (spoken).
    Nothing is tried again.
+
+---
+
+## 4. Everything Heylana writes is readable (1 chat)
+
+1. Open your busiest page — the app drawer with every icon on it is good.
+2. Tap the disc. The box opens: dark and solid, nothing of the icons behind it shows through.
+   Type a few letters: they are bright white, and a blue caret blinks where you type.
+3. Ask `what is the capital of Kenya`. The answer strip under the disc is dark and solid too.
+4. Hold the disc and say `teach me how to open the camera` (or any teaching question): each
+   step's bubble beside the disc is dark and solid, the words easy to read.
+5. With Heylana running, open a site that asks for a recovery phrase, or a Seed Vault signing
+   screen: the warning beside the disc ("heads up", "watching") is dark and solid.
+6. Nowhere does a blue streak cross the words or the field; a blue light may lap the edge.
 
 ---
 

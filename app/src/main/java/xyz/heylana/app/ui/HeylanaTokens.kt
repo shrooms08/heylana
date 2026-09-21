@@ -38,12 +38,16 @@ object HeylanaTokens {
     val text2 = Color.parseColor(TEXT_2_HEX)
     /** Labels, hints, detail lines. */
     val textSecondary = Color.parseColor(TEXT_SECONDARY_HEX)
-    val accent = Color.parseColor("#5B8CFF")
-    val accentHover = Color.parseColor("#7BA3FF")
+    const val ACCENT_HEX = "#5B8CFF"
+    const val ACCENT_HOVER_HEX = "#7BA3FF"
+    const val ACCENT_TEXT_HEX = "#93B3FF"
+    const val ON_ACCENT_HEX = "#08122C"
+    val accent = Color.parseColor(ACCENT_HEX)
+    val accentHover = Color.parseColor(ACCENT_HOVER_HEX)
     /** Words on an accent fill: never white. */
-    val onAccent = Color.parseColor("#08122C")
+    val onAccent = Color.parseColor(ON_ACCENT_HEX)
     /** Links and accent words on dark. */
-    val accentText = Color.parseColor("#93B3FF")
+    val accentText = Color.parseColor(ACCENT_TEXT_HEX)
     /** Soft accent backgrounds: a selected row. */
     val accentSoft = withAlpha(accent, 0.14f)
     val success = Color.parseColor(SUCCESS_HEX)
@@ -121,7 +125,8 @@ object HeylanaTokens {
 
     /** The question field: its own smoked base, then a lighter fill on top. */
     val inputBase = withAlpha(Color.BLACK, 0.30f)
-    val inputFill = withAlpha(Color.WHITE, 0.08f)
+    const val INPUT_FILL_WHITE = 0.08f
+    val inputFill = withAlpha(Color.WHITE, INPUT_FILL_WHITE)
     val inputBorder = withAlpha(Color.WHITE, 0.14f)
 
     /** The highlight along the top edge of a primary button. */
@@ -330,17 +335,30 @@ object HeylanaTokens {
     /** Titles and the amount on a transaction card: Outfit's weight axis at 600, not a fake bold. */
     const val WEIGHT_SEMIBOLD = 600
 
-    // ------------------------------------------------------ transaction cards
+    // ------------------------------------------- every overlay surface with words
 
     /**
-     * A send's card has to be read over anything — a home screen full of white icons, the
-     * Wallet's own pages — so it is not clear glass: a near-opaque blue-black fill, with the
-     * glass left only on its edge. [TX_CARD_FILL_ALPHA] is what guarantees every word on it at
-     * least 4.5:1 against a pure white page behind (`TxCardContrastTest`).
+     * Anything of Heylana's with words on it has to be read over anything — a home screen full
+     * of white icons, the Wallet's own pages — so none of it is clear glass any more: the
+     * pane (the ask box, the reply strip, the task HUD, teaching steps, warnings, send cards)
+     * and the listening capsule are a near-opaque blue-black, with the glass left only on the
+     * edge. [TX_CARD_FILL_ALPHA] is what guarantees every word at least 4.5:1 against a pure
+     * white page behind (`OverlayContrastTest`). Only the disc stays clear glass: it has no words.
      */
     val txCardBase = Color.parseColor(TX_CARD_BASE_HEX)
     const val TX_CARD_FILL_ALPHA = 0.95f
     val txCardFill = withAlpha(txCardBase, TX_CARD_FILL_ALPHA)
+    /**
+     * The question field's own fill: opaque, a step lighter than the pane so it reads as a
+     * field, and dark enough that typed words stay 15:1 (`OverlayContrastTest`).
+     */
+    const val INPUT_FILL_SOLID_HEX = "#161A25"
+    val inputFillSolid = Color.parseColor(INPUT_FILL_SOLID_HEX)
+    /** Secondary words on the pane: white at 72%. Placeholders, status, unselected chips. */
+    const val SECONDARY_WHITE = 0.72f
+    /** The caret in the question field: the accent, this wide. */
+    const val CARET_DP = 2f
+
     /** The Mainnet badge's pill: quiet, grey. The Devnet pill is [warnSoft] with [warn] words. */
     val txBadgeNeutralFill = withAlpha(Color.WHITE, TX_BADGE_NEUTRAL_WHITE)
     /** The card never takes more than this of the screen's height; beyond it, it scrolls. */

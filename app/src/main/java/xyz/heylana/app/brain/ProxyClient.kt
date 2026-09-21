@@ -474,7 +474,10 @@ class ProxyClient(private val settings: HeylanaSettings) {
      */
     private fun logRawReply(raw: String) {
         if (!BuildConfig.DEBUG) return
-        HeylanaLog.state("reply: raw chars=${raw.length} braces=${raw.contains('{')} say_key=${raw.contains("\"say\"")}")
+        // The contract's key names are Heylana's own words, never the screen's: safe to name.
+        val keys = Regex("\"(say|steps|point_at|task|goal|done|code|cite|text|action|sources|unseen)\"\\s*:")
+            .findAll(raw).map { it.groupValues[1] }.distinct().joinToString(",")
+        HeylanaLog.state("reply: raw chars=${raw.length} braces=${raw.contains('{')} say_key=${raw.contains("\"say\"")} keys=[$keys]")
     }
 
     /** What the app sends: the kind of work, not the model. */
@@ -535,7 +538,8 @@ class ProxyClient(private val settings: HeylanaSettings) {
             "usage: mode=$mode input_tokens=${usage.optInt("input_tokens", -1)} " +
                 "output_tokens=${usage.optInt("output_tokens", -1)} " +
                 "tool_ms=${usage.optInt("tool_ms", 0)} tools=${usage.optString("tools").ifEmpty { "none" }} " +
-                "cache_read=${usage.optInt("cache_read_input_tokens", 0)} cache_write=${usage.optInt("cache_creation_input_tokens", 0)}"
+                "cache_read=${usage.optInt("cache_read_input_tokens", 0)} cache_write=${usage.optInt("cache_creation_input_tokens", 0)} " +
+                "stop=${runCatching { JSONObject(body).optString("stop_reason") }.getOrDefault("").ifEmpty { "none" }}"
         )
     }
 

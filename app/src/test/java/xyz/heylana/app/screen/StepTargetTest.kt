@@ -145,6 +145,22 @@ class StepTargetTest {
         assertEquals(61, StepTarget.choose("Tap the green Swap button.", 61, swapTwins))
     }
 
+    // As Jupiter really reports it: the green button is a tappable box with no words of its
+    // own, and "Swap" is a separate text inside it that takes no tap.
+    private val swapAsReported = listOf(
+        Candidate(46, "Swap", editable = false, clickable = true, box = intArrayOf(44, 248, 166, 370)),
+        Candidate(4, "Market", editable = false, clickable = true, box = intArrayOf(51, 400, 367, 484)),
+        Candidate(60, null, editable = false, clickable = true, box = intArrayOf(52, 1672, 1148, 1792)),
+        Candidate(61, "Swap", editable = false, clickable = false, box = intArrayOf(548, 1710, 652, 1755))
+    )
+
+    @Test
+    fun `Jupiter step 3 as reported - the unnamed green box with Swap inside it`() {
+        assertEquals(61, StepTarget.choose("Now tap the green Swap button to review the rate.", 46, swapAsReported))
+        assertEquals(61, StepTarget.choose("Now tap Swap.", 46, swapAsReported))
+        assertEquals(46, StepTarget.choose("Tap the Swap tab at the top.", 61, swapAsReported))
+    }
+
     @Test
     fun `the words can ask for the tab too`() {
         assertEquals(46, StepTarget.choose("First tap the Swap tab at the top.", 60, swapTwins))

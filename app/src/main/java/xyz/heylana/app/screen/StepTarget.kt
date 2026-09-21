@@ -56,9 +56,13 @@ object StepTarget {
         val instruction = firstInstruction(say) ?: return pointed
         // The model's element takes a tap: only something that also takes one may replace it.
         // "Tap the Sell chip" pointed at the token chip, and the heading "Sell" is not it.
-        val pointedActs = candidates.firstOrNull { it.id == pointed }?.let { it.clickable || it.editable } ?: false
+        // A label inside a button-sized tappable box is that button: Jupiter's green Swap is an
+        // unnamed box with the word "Swap" inside it, and dropping the word lost the button.
+        val acting = candidates.associate { c -> c.id to (c.clickable || c.editable || holder(c, candidates) != null) }
+        val pointedActs = acting[pointed] ?: false
         val scored = candidates
-            .filter { !pointedActs || it.id == pointed || it.clickable || it.editable }
+            .filter { !pointedActs || it.id == pointed || acting[it.id] == true }
+            .map { c -> holder(c, candidates)?.let { h -> c.withBox(h.box) } ?: c }
             .mapNotNull { c -> score(instruction, c).takeIf { it > 0 }?.let { c to it } }
         if (scored.isEmpty()) return pointed
         val best = scored.maxOf { it.second }
@@ -174,6 +178,19 @@ object StepTarget {
         }
         return null
     }
+
+    /** The button-sized tappable box a label sits in, if it is not tappable itself. */
+    private fun holder(c: Candidate, all: List<Candidate>): Candidate? {
+        val box = c.box ?: return null
+        if (c.clickable || c.editable) return null
+        return all.filter { it.clickable && it.id != c.id && contains(it.box, box) && area(it.box!!) <= area(box) * HOLDER_AREA }
+            .minByOrNull { area(it.box!!) }
+    }
+
+    /** A holder more than this many times the label's area is a card or a page, not its button. */
+    private const val HOLDER_AREA = 40L
+
+    private fun Candidate.withBox(box: IntArray?): Candidate = Candidate(id, label, editable, clickable, box)
 
     private fun contains(outer: IntArray?, inner: IntArray?): Boolean =
         outer != null && inner != null &&

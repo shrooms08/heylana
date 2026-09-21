@@ -1,4 +1,4 @@
-# Smoke test — polish-9-states (what a send is doing, and which network)
+# Smoke test — polish-9-states (what a send is doing, which network, readable anywhere)
 
 For Minos. Every send now says where it stands on its card — **Prepared, not signed**, then
 **Waiting for your wallet**, then **Sent** or **Not sent** — and which network it is on. The
@@ -22,13 +22,18 @@ Vault, make sure Heylana is **not** marked as trusted, or it will sign without a
 
 1. Menu → hold **Start buddy** until it ticks. Press the phone's **Home** button.
 2. Hold the disc and say: `send 0.01 USDC to` and the treasury address (or type it in the box).
-3. A card comes up headed **Prepared, not signed · Devnet** (Devnet in amber), then three lines:
-   **Leaves your wallet: 0.01 USDC**, **Arrives: 0.01 USDC at your Heylana treasury
-   (7c2y…SxSv)**, **Fee: 0.000005 SOL**, and a green **✓ Simulation passed**.
+3. A dark, solid card comes up — the home-screen icons do **not** show through the words.
+   At the top, **Prepared, not signed** in bold with an amber **Devnet** pill beside it and the
+   speaker on the right. Then, as label and value: **Leaves your wallet** / **0.01 USDC**
+   (the biggest thing on the card), **Arrives** / **0.01 USDC at your Heylana treasury
+   (7c2y…SxSv)**, **Fee** / **0.000005 SOL**. Then, in grey, **Seed Vault will ask you to
+   approve. Leave 'trust' unticked.** — nothing cut off. At the bottom, a green **✓ Simulation
+   passed** on the left and **cancel** / **confirm** on the right. The numbers look like the rest
+   of the words, not typewriter spacing ("0.01", not "0 . 01").
    She says: *"I've prepared it on devnet. Nothing moves until you approve in your wallet."*
-4. Tap **confirm**. The card goes small, beside the disc: **Waiting for your wallet ·
-   Devnet** — "Approve it in Seed Vault, or reject it there." Seed Vault's sheet is fully
-   usable underneath it.
+4. Tap **confirm**. The card goes small and moves to the top of the screen: **Waiting for your
+   wallet** with the Devnet pill — "Approve it in Seed Vault, or reject it there." It never sits
+   over Seed Vault's buttons, and your **first** tap in Seed Vault works.
 5. In Seed Vault tap your wallet card, then **approve**.
 6. The card says **Signed, confirming** for a moment, then **Sent · Devnet** — *"Done. 0.01
    USDC went to 7c2y…SxSv."* (spoken), with a **Signature …** chip under it.
@@ -38,10 +43,11 @@ Vault, make sure Heylana is **not** marked as trusted, or it will sign without a
 
 ## 3. A send you reject (1 chat)
 
-1. Press **Home**. Ask for the same send again.
-2. **Prepared, not signed**, then **confirm**, then **Waiting for your wallet**, as before.
-3. In Seed Vault, **reject** it (or close the sheet).
-4. The card says **Not sent · Devnet** — *"Cancelled. Nothing left your wallet."* (spoken).
+1. Open the **Wallet** app. Ask for the same send again.
+2. The same solid card comes up over the Wallet — full width, readable over its white buttons.
+3. Tap **confirm**, then **Waiting for your wallet**, as before.
+4. In Seed Vault, **reject** it (or close the sheet).
+5. The card says **Not sent · Devnet** — *"Cancelled. Nothing left your wallet."* (spoken).
    Nothing is tried again.
 
 ---

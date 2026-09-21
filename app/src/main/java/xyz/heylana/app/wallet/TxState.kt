@@ -51,6 +51,33 @@ sealed interface TxState {
     val ended: Boolean get() = this is Sent || this is NotSent || this is Unsure
 }
 
+/**
+ * What a send's card shows, before any view draws it: a title row (the label, the network's
+ * badge), label-and-value rows, one plain line, what the bytes do, and a warning. The view
+ * decides weight and size; this decides the words and their order.
+ */
+data class TxCard(
+    val title: String,
+    val badge: ClusterBadge,
+    val rows: List<Row> = emptyList(),
+    val body: String? = null,
+    val details: List<String> = emptyList(),
+    val warning: String? = null
+) {
+    /** [lead]: the amount leaving the wallet, drawn largest. */
+    data class Row(val label: String, val value: String, val lead: Boolean = false)
+
+    /** Every word on the card in reading order: what TalkBack reads, and nothing is left off. */
+    val text: String
+        get() = buildList {
+            add("$title, ${badge.label}")
+            rows.forEach { add("${it.label}: ${it.value}") }
+            body?.let(::add)
+            addAll(details)
+            warning?.let(::add)
+        }.joinToString("\n")
+}
+
 /** Why a send did not go: said, and shown, differently. */
 enum class TxEnding { CANCELLED, FAILED, EXPIRED }
 
@@ -169,12 +196,40 @@ object TxText {
     fun heading(state: TxState, cluster: Cluster): String =
         state.label + BADGE_SEPARATOR + ClusterBadge.of(cluster).label
 
-    /** The prepared card: the heading, then what leaves, what arrives and the fee. */
-    fun preparedCard(summary: TxSummary): String =
-        heading(TxState.Prepared(summary), summary.cluster) + "\n" +
-            "Leaves your wallet: ${summary.leaves}\n" +
-            "Arrives: ${summary.arrives}\n" +
-            "Fee: ${summary.fee}"
+    /** Row labels on the prepared card. */
+    const val LEAVES = "Leaves your wallet"
+    const val ARRIVES = "Arrives"
+    const val FEE = "Fee"
+
+    /**
+     * Under every prepared card: approve it by hand. Seed Vault can be told to trust an app
+     * and then signs without asking; this is the line that keeps every send the user's own.
+     */
+    const val TRUST_WARNING = "Seed Vault will ask you to approve. Leave 'trust' unticked."
+
+    /**
+     * The prepared card: its label and the network, then what leaves (the amount, largest),
+     * what arrives and the fee as label and value, what the bytes do, and the trust warning.
+     */
+    fun preparedCard(summary: TxSummary, does: List<String> = emptyList(), firstDestination: Boolean = false): TxCard =
+        TxCard(
+            title = PREPARED,
+            badge = ClusterBadge.of(summary.cluster),
+            rows = listOf(
+                TxCard.Row(LEAVES, summary.leaves, lead = true),
+                TxCard.Row(ARRIVES, summary.arrives),
+                TxCard.Row(FEE, summary.fee),
+            ),
+            details = (if (firstDestination) listOf(SendText.FIRST_DESTINATION) else emptyList()) + does.take(MAX_DETAILS),
+            warning = TRUST_WARNING
+        )
+
+    /** Any later card: the state's label and the network, and one line under it. */
+    fun card(state: TxState, cluster: Cluster, line: String): TxCard =
+        TxCard(title = state.label, badge = ClusterBadge.of(cluster), body = line)
+
+    /** The most "what it does" lines a card carries; the worker's reading of the bytes. */
+    const val MAX_DETAILS = 4
 
     /**
      * Said once the simulation passes. On devnet it says so, because the first thing heard

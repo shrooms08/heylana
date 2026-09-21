@@ -946,6 +946,20 @@ Nothing is ever retried by itself. `TxMachine` decides which label follows which
 never moves an ended send; nothing is "Sent" that the wallet was never asked to sign); the chip
 stays out of the way while a card is up, and says "waiting for your wallet" in the same words.
 The trace says `tx: <label> -> <label> cluster=…`. `TxStateTest`, `SendFlowTest`.
+**Every card reads over any page.** A card is data (`TxCard`: title, badge, label/value rows,
+one line, what the bytes do, the warning) drawn by `ChatPanelView.showTxCard` on a
+near-opaque blue-black (`txCardFill`, #0B0E17 at 95%, `GlassDrawable.solid`: the glass kept on
+its edge only — rim and hairline, no refraction or streak). The title is Outfit at 600 on its
+own axis with the network's pill drawn inside its text (`PillSpan`, so it wraps with the title
+and is never squeezed off); the amount leaving is the largest thing (22sp semibold); labels are
+muted, values primary; the warning — "Seed Vault will ask you to approve. Leave 'trust'
+unticked." — and the details in the secondary colour; numbers in Outfit's tabular figures
+(`tnum`), never monospace. Nothing is cut: every line wraps, and past 60% of the screen the card
+scrolls. `TxCardContrastTest` composites the fill over pure white and holds every word to 4.5:1
+(labels 5.15, badges 6.57 and 7.83, main text 15.81). A prepared card always takes the full box,
+even if the last send's card is still beside the disc; the cards after Confirm stay compact, at
+the top of the screen (`keepHudHigh`), clear of Seed Vault's sheet. Checked on the Seeker on
+Sept 21 over the home screen and the Wallet app, with one approved and one rejected send.
 **After Confirm the card is passive** (`BuddyOverlayView.showTxCard`: the HUD shape a glance
 uses, never the full-screen box): on the Seeker the box stayed over Seed Vault and the tap
 meant for "Testing wallet" closed Heylana's box instead, so the wallet ended "cancelled

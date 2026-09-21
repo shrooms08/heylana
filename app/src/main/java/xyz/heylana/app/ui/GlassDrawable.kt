@@ -270,6 +270,19 @@ class GlassDrawable(
     /** How much padding a view needs so this drawable's shadow is not clipped. */
     fun shadowPadding(): Int = if (withShadow) shadowInset.toInt() else 0
 
+    /**
+     * A solid fill instead of clear glass: the inside is this colour and the glass keeps only
+     * its edge — the rim, the hairline and the beam. For a transaction card, which must be
+     * read over any page; nothing else uses it. Null is clear glass, as always.
+     */
+    var solid: Int? = null
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidateSelf()
+            }
+        }
+
     /** While a gooey merge carries this surface's shape, the glass itself steps aside. */
     var hidden: Boolean = false
         set(value) {
@@ -349,6 +362,12 @@ class GlassDrawable(
                 }
             }
             Kind.PANEL -> {
+                val fill = solid
+                if (fill != null) {
+                    drawSolid(canvas, r, fill)
+                    if (beamStrength > 0f && canvas.isHardwareAccelerated) drawBeam(canvas, r)
+                    return
+                }
                 if (GlassSpec.darkerGlass) {
                     clearFill.shader = null
                     clearFill.color = HeylanaTokens.withAlpha(Color.BLACK, GlassSpec.DARKER_BASE_BLACK)
@@ -445,6 +464,25 @@ class GlassDrawable(
         clearStroke.strokeWidth = (GlassSpec.LENS_LINE_WIDTH * edge).coerceAtLeast(1f)
         insetRoundRect(canvas, r, GlassSpec.LENS_LINE_AT * edge, clearStroke)
 
+        drawHairline(canvas, r)
+    }
+
+    /** [fill] inside, and only the glass's edge on top: the lit rim and the hairline. No refraction, no streak. */
+    private fun drawSolid(canvas: Canvas, r: Float, fill: Int) {
+        clearFill.shader = null
+        clearFill.color = fill
+        canvas.drawRoundRect(body, r, r, clearFill)
+        val edge = surface.edgeDp * scale
+        val rimWidth = (GlassSpec.RIM_WIDTH * edge).coerceAtLeast(1f)
+        clearStroke.strokeWidth = rimWidth
+        clearStroke.shader = LinearGradient(
+            body.left, body.top, body.right, body.bottom,
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.RIM_BASE + GlassSpec.RIM_LIGHT),
+            HeylanaTokens.withAlpha(Color.WHITE, GlassSpec.RIM_BASE - GlassSpec.RIM_SHADE),
+            Shader.TileMode.CLAMP
+        )
+        insetRoundRect(canvas, r, rimWidth / 2f, clearStroke)
+        clearStroke.shader = null
         drawHairline(canvas, r)
     }
 

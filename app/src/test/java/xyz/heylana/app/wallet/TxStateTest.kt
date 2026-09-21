@@ -97,16 +97,51 @@ class TxStateTest {
 
     @Test
     fun `the prepared card says what leaves, what arrives and the fee, from the simulation's preview`() {
-        val card = TxText.preparedCard(summary)
+        val card = TxText.preparedCard(summary, does = listOf("Transfers 0.01 USDC to the treasury's USDC account."))
+        assertEquals("Prepared, not signed", card.title)
+        assertEquals(ClusterBadge.DEVNET, card.badge)
         assertEquals(
-            "Prepared, not signed · Devnet\n" +
-                "Leaves your wallet: 0.01 USDC\n" +
-                "Arrives: 0.01 USDC at your Heylana treasury (7c2y…SxSv)\n" +
-                "Fee: 0.000005 SOL",
-            card
+            listOf(
+                TxCard.Row("Leaves your wallet", "0.01 USDC", lead = true),
+                TxCard.Row("Arrives", "0.01 USDC at your Heylana treasury (7c2y…SxSv)"),
+                TxCard.Row("Fee", "0.000005 SOL"),
+            ),
+            card.rows
         )
+        // The amount leaving is the one thing drawn largest.
+        assertEquals(listOf("0.01 USDC"), card.rows.filter { it.lead }.map { it.value })
+        assertEquals("Seed Vault will ask you to approve. Leave 'trust' unticked.", card.warning)
+        assertEquals(listOf("Transfers 0.01 USDC to the treasury's USDC account."), card.details)
         val opening = TxSummary.of(preview.copy(createsAccount = true, accountRentSol = "0.00203928"))
         assertEquals("0.01 USDC, and 0.00203928 SOL to open their account", opening.leaves)
+    }
+
+    @Test
+    fun `nothing on a card is left off - every word is in its reading order`() {
+        val card = TxText.preparedCard(summary, does = List(6) { "Line $it." }, firstDestination = true)
+        // At most four lines of what the bytes do, after the first-time note.
+        assertEquals(SendText.FIRST_DESTINATION, card.details.first())
+        assertEquals(5, card.details.size)
+        val text = card.text
+        for (word in listOf("Prepared, not signed, Devnet", "Leaves your wallet: 0.01 USDC", "Arrives:", "Fee: 0.000005 SOL", "Leave 'trust' unticked.")) {
+            assertTrue(word, text.contains(word))
+        }
+        assertTrue(text.indexOf("Leaves") < text.indexOf("Arrives") && text.indexOf("Arrives") < text.indexOf("Fee"))
+    }
+
+    @Test
+    fun `every later state is a title, its badge and one line`() {
+        val waiting = TxText.card(TxState.Waiting, Cluster.DEVNET, TxText.APPROVE_IN_WALLET)
+        assertEquals("Waiting for your wallet", waiting.title)
+        assertEquals(ClusterBadge.DEVNET, waiting.badge)
+        assertEquals(TxText.APPROVE_IN_WALLET, waiting.body)
+        assertTrue(waiting.rows.isEmpty())
+        val sent = TxText.card(TxState.Sent("5555…5555", null), Cluster.MAINNET, TxText.done("0.01", "USDC", treasury))
+        assertEquals("Sent", sent.title)
+        assertEquals(ClusterBadge.MAINNET, sent.badge)
+        for (state in listOf(TxState.Confirming(true), TxState.Confirming(false), TxState.Unsure, TxState.NotSent(TxEnding.CANCELLED))) {
+            assertEquals(state.label, TxText.card(state, Cluster.DEVNET, "x").title)
+        }
     }
 
     @Test

@@ -22,11 +22,22 @@ object HeylanaTokens {
      * Compose screens read the same values through `ui/theme/Theme.kt`.
      */
     val bg = Color.parseColor("#0A0A0E")
-    val textPrimary = Color.parseColor("#F4F4F6")
+    // The hex of the colours a transaction card uses, as constants, so the contrast test
+    // (TxCardContrastTest) reads the same values the views do, without Android.
+    const val TEXT_PRIMARY_HEX = "#F4F4F6"
+    const val TEXT_2_HEX = "#C8C8D2"
+    const val TEXT_SECONDARY_HEX = "#8B8B96"
+    const val SUCCESS_HEX = "#6FE39F"
+    const val WARN_HEX = "#FF9F45"
+    const val TX_CARD_BASE_HEX = "#0B0E17"
+    const val WARN_SOFT_ALPHA = 0.14f
+    const val TX_BADGE_NEUTRAL_WHITE = 0.10f
+
+    val textPrimary = Color.parseColor(TEXT_PRIMARY_HEX)
     /** Second-rank words: summaries, chip labels. */
-    val text2 = Color.parseColor("#C8C8D2")
+    val text2 = Color.parseColor(TEXT_2_HEX)
     /** Labels, hints, detail lines. */
-    val textSecondary = Color.parseColor("#8B8B96")
+    val textSecondary = Color.parseColor(TEXT_SECONDARY_HEX)
     val accent = Color.parseColor("#5B8CFF")
     val accentHover = Color.parseColor("#7BA3FF")
     /** Words on an accent fill: never white. */
@@ -35,10 +46,10 @@ object HeylanaTokens {
     val accentText = Color.parseColor("#93B3FF")
     /** Soft accent backgrounds: a selected row. */
     val accentSoft = withAlpha(accent, 0.14f)
-    val success = Color.parseColor("#6FE39F")
-    val warn = Color.parseColor("#FF9F45")
+    val success = Color.parseColor(SUCCESS_HEX)
+    val warn = Color.parseColor(WARN_HEX)
     /** The badge fill behind a warning word: "Devnet" on Home and on a send's card. */
-    val warnSoft = withAlpha(warn, 0.14f)
+    val warnSoft = withAlpha(warn, WARN_SOFT_ALPHA)
     val error = Color.parseColor("#FF7E6E")
 
     /** Hairlines and edges, glass buttons, and the solid border of chips; the unselected chip's fill. */
@@ -316,6 +327,31 @@ object HeylanaTokens {
     const val WEIGHT_LIGHT = 300
     const val WEIGHT_REGULAR = 400
     const val WEIGHT_MEDIUM = 500
+    /** Titles and the amount on a transaction card: Outfit's weight axis at 600, not a fake bold. */
+    const val WEIGHT_SEMIBOLD = 600
+
+    // ------------------------------------------------------ transaction cards
+
+    /**
+     * A send's card has to be read over anything — a home screen full of white icons, the
+     * Wallet's own pages — so it is not clear glass: a near-opaque blue-black fill, with the
+     * glass left only on its edge. [TX_CARD_FILL_ALPHA] is what guarantees every word on it at
+     * least 4.5:1 against a pure white page behind (`TxCardContrastTest`).
+     */
+    val txCardBase = Color.parseColor(TX_CARD_BASE_HEX)
+    const val TX_CARD_FILL_ALPHA = 0.95f
+    val txCardFill = withAlpha(txCardBase, TX_CARD_FILL_ALPHA)
+    /** The Mainnet badge's pill: quiet, grey. The Devnet pill is [warnSoft] with [warn] words. */
+    val txBadgeNeutralFill = withAlpha(Color.WHITE, TX_BADGE_NEUTRAL_WHITE)
+    /** The card never takes more than this of the screen's height; beyond it, it scrolls. */
+    const val TX_CARD_MAX_SCREEN = 0.60f
+    const val TX_TITLE_SP = 16f
+    /** The amount leaving the wallet: the largest thing on the card. */
+    const val TX_AMOUNT_SP = 22f
+    const val TX_VALUE_SP = 15f
+    const val TX_LABEL_SP = 12f
+    /** Numbers in Outfit's own tabular figures, not in monospace. */
+    const val TABULAR_FIGURES = "tnum"
 
     /** Label tracking, as a fraction of the em, for TextView.letterSpacing. */
     const val LABEL_TRACKING_EM = 0.08f

@@ -1218,12 +1218,8 @@ class BuddyOverlayService : Service() {
             // "Prepared, not signed" with the network's badge: what leaves, what arrives, the
             // fee; what the bytes actually do under it. The first send on this phone also says
             // to approve it in Seed Vault by hand. One line is spoken, never the card.
-            val trust = if (!settings.sendConfirmedOnce) "\n" + BuildText.TRUST_HINT else ""
             HeylanaLog.state("send: does lines=${preview.does.size} grants_power=${preview.grantsPower}")
-            overlayView?.showSimulationPassed(
-                SendText.withDetail(TxText.preparedCard(summary) + trust, preview.does),
-                ClusterBadge.of(quote.cluster)
-            )
+            overlayView?.showSimulationPassed(TxText.preparedCard(summary, preview.does))
             speak(TxText.preparedSpoken(quote.cluster))
         }
     }
@@ -1331,7 +1327,7 @@ class BuddyOverlayService : Service() {
     private fun showCard(detail: String) {
         val state = tx ?: return
         val cluster = txQuote?.cluster ?: return
-        overlayView?.showTxCard(TxText.heading(state, cluster) + "\n" + detail, ClusterBadge.of(cluster))
+        overlayView?.showTxCard(TxText.card(state, cluster, detail))
     }
 
     /** The card with [line] under its heading, and [line] spoken — the heading never is. */
@@ -1344,7 +1340,7 @@ class BuddyOverlayService : Service() {
             return
         }
         val shown = Sources.spoken(AddressText.shorten(line))
-        view.showTxCard(TxText.heading(state, cluster) + "\n" + shown, ClusterBadge.of(cluster))
+        view.showTxCard(TxText.card(state, cluster, shown))
         view.showSources(sources)
         if (!speak(shown)) settleSoon()
     }

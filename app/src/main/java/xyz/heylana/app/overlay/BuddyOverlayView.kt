@@ -473,6 +473,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
     /** Shows the step counter with next and done while a task is running. */
     fun showSession(stepNumber: Int, ofSteps: Int, withNext: Boolean = true) {
+        keepHudHigh = false
         panel.showSession(stepNumber, ofSteps, withNext)
         // A task hands the keyboard back to the app the user is about to operate.
         if (mode == Mode.COMPOSE) enterMode(Mode.HUD)
@@ -489,6 +490,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * app underneath. Nothing is spoken; tapping the disc opens the box as it always does.
      */
     fun showGlance(text: String) {
+        keepHudHigh = false
         panel.showNotice(text)
         if (mode == Mode.DOCKED || mode == Mode.CAPSULE) enterMode(Mode.HUD)
         if (panel.shape != ChatPanelView.Shape.STRIP) {
@@ -514,7 +516,11 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      */
     fun showSendConfirm(text: String, simulation: ChatPanelView.Simulation) {
         panel.showNotice(text)
-        ensurePanelOpen()
+        // A send is read in the full box, whatever was up before — found on the Seeker, where
+        // the last send's "Sent" card was still beside the disc and the next prepared card
+        // came up in its narrow shape, the badge squeezed out and the footer a letter a line.
+        keepHudHigh = false
+        if (mode == Mode.HUD) openCompose(withKeyboard = false) else ensurePanelOpen()
         if (mode == Mode.COMPOSE && panel.shape == ChatPanelView.Shape.BOX) {
             panel.releaseInput()
             panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
@@ -533,8 +539,8 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * The send's simulation passed: the strip becomes the "Prepared, not signed" card with
      * the network's badge, and Confirm can be tapped.
      */
-    fun showSimulationPassed(text: String, badge: xyz.heylana.app.wallet.ClusterBadge) {
-        panel.showTxCard(text, badge)
+    fun showSimulationPassed(card: xyz.heylana.app.wallet.TxCard) {
+        panel.showTxCard(card)
         panel.setSimulation(ChatPanelView.Simulation.PASSED)
         applyPosition()
     }
@@ -548,9 +554,13 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
      * Heylana's box instead and the wallet ended "cancelled before connected". Beside the disc,
      * every touch outside the card reaches the wallet.
      */
-    fun showTxCard(text: String, badge: xyz.heylana.app.wallet.ClusterBadge) {
-        panel.showTxCard(text, badge)
+    fun showTxCard(card: xyz.heylana.app.wallet.TxCard) {
+        // High on the screen: Seed Vault's sheet comes up from the bottom, and its buttons
+        // are where a disc docked low would put this card.
+        keepHudHigh = true
         if (mode != Mode.HUD) enterMode(Mode.HUD)
+        // After the mode change, which rebuilds the glass.
+        panel.showTxCard(card)
         if (panel.shape != ChatPanelView.Shape.STRIP) {
             panel.releaseInput()
             panel.morphTo(ChatPanelView.Shape.STRIP) { applyPosition() }
@@ -558,6 +568,9 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         HeylanaLog.state("send: card is passive, touches reach the wallet")
         applyPosition()
     }
+
+    /** While a send's card rides beside the disc: the window at the top of the screen. */
+    private var keepHudHigh = false
 
     /**
      * The full-screen box covers the app, and Android leaves a covered window out
@@ -711,6 +724,7 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
 
         when (next) {
             Mode.DOCKED -> {
+                keepHudHigh = false
                 panel.releaseInput()
                 panel.visibility = View.GONE
                 // The capsule belongs to a spoken exchange and nothing else, so
@@ -1529,11 +1543,10 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         // Docked, the bloom margin may hang off the side, so the disc rests 6dp from it.
         val overhang = if (mode == Mode.DOCKED) edgeOverhang else 0
         val x = clamp(spriteLeft - spriteOffsetX, -overhang, usableWidth - measuredContainerWidth + overhang)
-        val y = clamp(
-            spriteTop - (measuredContainerHeight - discSize) / 2,
-            0,
-            usableHeight - measuredContainerHeight
-        )
+        val beside = spriteTop - (measuredContainerHeight - discSize) / 2
+        // A send's card goes to the top, out of the way of the wallet's sheet at the bottom.
+        val wanted = if (mode == Mode.HUD && keepHudHigh) HeylanaTokens.dpInt(context, HeylanaTokens.SPACE_4_DP) else beside
+        val y = clamp(wanted, 0, usableHeight - measuredContainerHeight)
 
         params.x = x
         params.y = y

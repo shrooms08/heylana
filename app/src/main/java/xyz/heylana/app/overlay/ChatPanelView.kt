@@ -184,6 +184,17 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     /** A source chip was tapped: open its page. */
     var onSourceTapped: ((Source) -> Unit)? = null
 
+    // ------------------------------------------------------- transaction card
+    /** A send's card, in place of the answer while a send is on the strip: see [showTxCard]. */
+    private val txScroll = CappedScroll(context)
+    private val txCard = LinearLayout(context)
+    private val txTitle = TextView(context)
+    private val txRows = LinearLayout(context)
+    private val txBody = TextView(context)
+    private val txDetails = TextView(context)
+    private val txWarning = TextView(context)
+    private var txShown = false
+
     private val confirmRow = LinearLayout(context)
     private val simStatus = TextView(context)
     private val confirm = TextView(context)
@@ -261,6 +272,8 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
             setLineSpacing(HeylanaTokens.dp(context, HeylanaTokens.SPACE_1_DP), 1f)
         }
         topRow.addView(answer, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        buildTxCard()
+        topRow.addView(txScroll, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
         mute.apply {
             contentDescription = MUTE_LABEL
@@ -283,7 +296,8 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         }
         sourceChips.forEachIndexed { i, chip ->
             stylePill(chip, "", secondaryText) { sources.getOrNull(i)?.let { onSourceTapped?.invoke(it) } }
-            chip.maxLines = 1
+            // Two lines before an ellipsis: a signature chip on a narrow card was clipped at one.
+            chip.maxLines = 2
             chip.ellipsize = android.text.TextUtils.TruncateAt.END
             chip.gravity = Gravity.CENTER_VERTICAL or Gravity.START
             sourceRow.addView(
@@ -541,7 +555,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
             if (GlassSpec.TINTED_EXTRAS) HeylanaTokens.RADIUS_CARD_DP else GlassSpec.PANEL.radiusDp,
             blurBehind, GlassDrawable.Kind.PANEL,
             withShadow = true
-        )
+        ).also { it.solid = if (txShown) HeylanaTokens.txCardFill else null }
         // The field is a lighter sheet sunk into the panel, never a darker hole.
         input.background = GlassDrawable(
             context, HeylanaTokens.RADIUS_MD_DP, blurBehind, GlassDrawable.Kind.INPUT
@@ -745,6 +759,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
      * question was spoken, only if the user has asked to see the words at all.
      */
     private fun say(text: String) {
+        hideTxCard()
         answer.text = xyz.heylana.app.ui.NumberText.spanned(text)
         val wanted = text.isNotBlank() && (!isVoiceMode || voiceShowsText)
         answer.visibility = if (wanted) View.VISIBLE else View.GONE
@@ -785,6 +800,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
 
     /** A notice or error — keeps whatever the user typed so they can retry. */
     fun showNotice(text: String) {
+        hideTxCard()
         streakThinking = false
         // A problem is always worth reading, whatever the user asked for.
         answer.text = xyz.heylana.app.ui.NumberText.spanned(text)
@@ -794,22 +810,161 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     }
 
     /**
-     * A send's card ([xyz.heylana.app.wallet.TxText]): the first line is its label and the
-     * network's badge — the badge amber on devnet, quiet on mainnet — and the rest reads as
-     * a notice.
+     * A send's card ([xyz.heylana.app.wallet.TxCard]), readable over any page: a near-opaque
+     * blue-black fill with the glass kept on its edge only; the label in semibold with the
+     * network's pill beside it and the speaker on the right; then label-and-value rows, the
+     * amount largest; the line, what the bytes do and the warning in the secondary colour.
+     * Every line wraps — nothing is cut off — and past 60% of the screen it scrolls. Numbers
+     * are Outfit's tabular figures, never monospace.
      */
-    fun showTxCard(text: String, badge: xyz.heylana.app.wallet.ClusterBadge) {
-        showNotice(text)
-        val shown = android.text.SpannableStringBuilder(answer.text)
-        val firstLineEnd = shown.indexOf('\n').let { if (it < 0) shown.length else it }
-        val at = shown.lastIndexOf(badge.label, firstLineEnd)
-        if (at >= 0) {
-            shown.setSpan(
-                android.text.style.ForegroundColorSpan(if (badge.amber) HeylanaTokens.warn else secondaryText),
-                at, at + badge.label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+    fun showTxCard(card: xyz.heylana.app.wallet.TxCard) {
+        streakThinking = false
+        answer.visibility = View.GONE
+        // The badge is part of the title's own text, a pill drawn in place: it wraps with the
+        // title and can never be squeezed off the row, however narrow the card.
+        txTitle.text = android.text.SpannableStringBuilder(card.title).apply {
+            append(" ")
+            val at = length
+            append(card.badge.label)
+            setSpan(
+                PillSpan(
+                    fill = if (card.badge.amber) HeylanaTokens.warnSoft else HeylanaTokens.txBadgeNeutralFill,
+                    words = if (card.badge.amber) HeylanaTokens.warn else HeylanaTokens.text2,
+                    textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, HeylanaTokens.TX_LABEL_SP, resources.displayMetrics),
+                    typeface = HeylanaTokens.typeface(context, HeylanaTokens.WEIGHT_MEDIUM),
+                    padH = HeylanaTokens.dp(context, HeylanaTokens.SPACE_2_DP),
+                    padV = HeylanaTokens.dp(context, HeylanaTokens.SPACE_1_DP) / 2f,
+                    gap = HeylanaTokens.dp(context, HeylanaTokens.SPACE_1_DP)
+                ),
+                at, length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
             )
         }
-        answer.text = shown
+        txRows.removeAllViews()
+        card.rows.forEachIndexed { i, row ->
+            val label = TextView(context).also { txText(it, HeylanaTokens.TX_LABEL_SP, HeylanaTokens.WEIGHT_REGULAR, HeylanaTokens.textSecondary) }
+            label.text = row.label
+            val value = TextView(context).also {
+                if (row.lead) txText(it, HeylanaTokens.TX_AMOUNT_SP, HeylanaTokens.WEIGHT_SEMIBOLD, HeylanaTokens.textPrimary)
+                else txText(it, HeylanaTokens.TX_VALUE_SP, HeylanaTokens.WEIGHT_REGULAR, HeylanaTokens.textPrimary)
+            }
+            value.text = row.value
+            txRows.addView(label, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                if (i > 0) topMargin = dp(HeylanaTokens.SPACE_3_DP)
+            })
+            txRows.addView(value, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        }
+        txRows.visibility = if (card.rows.isEmpty()) View.GONE else View.VISIBLE
+        showOrHide(txBody, card.body)
+        showOrHide(txDetails, card.details.takeIf { it.isNotEmpty() }?.joinToString("\n") { "• $it" })
+        showOrHide(txWarning, card.warning)
+        txCard.contentDescription = card.text
+        txScroll.visibility = View.VISIBLE
+        txScroll.scrollTo(0, 0)
+        txShown = true
+        (background as? GlassDrawable)?.solid = HeylanaTokens.txCardFill
+        enable(true)
+        HeylanaLog.state("panel: tx card title=\"${card.title}\" rows=${card.rows.size} chars=${card.text.length}")
+    }
+
+    /** Back to clear glass and the ordinary answer: any other words on the strip. */
+    private fun hideTxCard() {
+        if (!txShown) return
+        txShown = false
+        txScroll.visibility = View.GONE
+        (background as? GlassDrawable)?.solid = null
+    }
+
+    private fun showOrHide(view: TextView, text: String?) {
+        view.text = text ?: ""
+        view.visibility = if (text.isNullOrBlank()) View.GONE else View.VISIBLE
+    }
+
+    /** A card's words: Outfit at [weight] on its own axis, tabular figures, no halo (the card is opaque). */
+    private fun txText(view: TextView, sp: Float, weight: Int, color: Int) {
+        view.setTextColor(color)
+        view.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp)
+        view.typeface = HeylanaTokens.typeface(context, weight)
+        view.fontVariationSettings = "'wght' $weight"
+        view.fontFeatureSettings = HeylanaTokens.TABULAR_FIGURES
+        view.setLineSpacing(HeylanaTokens.dp(context, HeylanaTokens.SPACE_1_DP) / 2f, 1f)
+    }
+
+    private fun buildTxCard() {
+        txCard.orientation = VERTICAL
+        val title = LinearLayout(context).apply {
+            orientation = HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        txText(txTitle, HeylanaTokens.TX_TITLE_SP, HeylanaTokens.WEIGHT_SEMIBOLD, HeylanaTokens.textPrimary)
+        title.addView(txTitle, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        txCard.addView(title, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+        txRows.orientation = VERTICAL
+        txCard.addView(txRows, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(HeylanaTokens.SPACE_3_DP)
+        })
+        txText(txBody, HeylanaTokens.BODY_SP, HeylanaTokens.WEIGHT_REGULAR, HeylanaTokens.textPrimary)
+        txCard.addView(txBody, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(HeylanaTokens.SPACE_2_DP)
+        })
+        txText(txDetails, HeylanaTokens.TX_LABEL_SP, HeylanaTokens.WEIGHT_REGULAR, HeylanaTokens.text2)
+        txCard.addView(txDetails, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(HeylanaTokens.SPACE_3_DP)
+        })
+        txText(txWarning, HeylanaTokens.TX_LABEL_SP, HeylanaTokens.WEIGHT_REGULAR, HeylanaTokens.text2)
+        txCard.addView(txWarning, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(HeylanaTokens.SPACE_3_DP)
+        })
+        txScroll.addView(txCard, android.widget.FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        txScroll.isVerticalScrollBarEnabled = true
+        txScroll.visibility = View.GONE
+    }
+
+    /** The network's badge inside the title's text: a rounded pill with its word, kept whole. */
+    private class PillSpan(
+        private val fill: Int,
+        private val words: Int,
+        private val textSize: Float,
+        private val typeface: android.graphics.Typeface,
+        private val padH: Float,
+        private val padV: Float,
+        private val gap: Float
+    ) : android.text.style.ReplacementSpan() {
+        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
+
+        private fun ready(): android.graphics.Paint = paint.also {
+            it.textSize = textSize
+            it.typeface = typeface
+            it.fontFeatureSettings = HeylanaTokens.TABULAR_FIGURES
+        }
+
+        override fun getSize(p: android.graphics.Paint, text: CharSequence, start: Int, end: Int, fm: android.graphics.Paint.FontMetricsInt?): Int {
+            return (gap + ready().measureText(text, start, end) + 2 * padH).toInt()
+        }
+
+        override fun draw(
+            canvas: android.graphics.Canvas, text: CharSequence, start: Int, end: Int,
+            x: Float, top: Int, y: Int, bottom: Int, p: android.graphics.Paint
+        ) {
+            val pill = ready()
+            val width = pill.measureText(text, start, end) + 2 * padH
+            val metrics = pill.fontMetrics
+            val textTop = y + metrics.ascent
+            val textBottom = y + metrics.descent
+            val rect = android.graphics.RectF(x + gap, textTop - padV, x + gap + width, textBottom + padV)
+            pill.color = fill
+            canvas.drawRoundRect(rect, rect.height() / 2f, rect.height() / 2f, pill)
+            pill.color = words
+            canvas.drawText(text, start, end, x + gap + padH, y.toFloat(), pill)
+        }
+    }
+
+    /** A scroll that grows with what it holds, up to [HeylanaTokens.TX_CARD_MAX_SCREEN] of the screen. */
+    private class CappedScroll(context: Context) : android.widget.ScrollView(context) {
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            val cap = (resources.displayMetrics.heightPixels * HeylanaTokens.TX_CARD_MAX_SCREEN).toInt()
+            super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(cap, MeasureSpec.AT_MOST))
+        }
     }
 
     /** Microphone open: the field fills in live as words are recognised. */
@@ -911,6 +1066,7 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
     }
 
     override fun clearSignals() {
+        hideTxCard()
         modeChip.visibility = View.GONE
         showSources(emptyList())
         streakThinking = false

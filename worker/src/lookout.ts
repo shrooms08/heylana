@@ -21,12 +21,15 @@
  *
  * What the worker does to them is small on purpose — split lines, keep what looks like a
  * domain, drop the rest — because a Worker's CPU budget is small and this runs for
- * everyone. No hashing here: the phone holds the list as it is, and hashing a public list
+ * everyone. Every domain either source lists is kept: each is a known scam. No hashing here: the phone holds the list as it is, and hashing a public list
  * would buy nothing but bytes.
  */
 
 export const LOOKOUT_KEY = 'lookout:list'
-export const LOOKOUT_SEED_KEY = 'lookout:seed'
+/** v2: the seed folded in whole, once more, after the Solana-words filter was dropped. */
+export const LOOKOUT_SEED_KEY = 'lookout:seed:v2'
+/** A stored list without this format was built with the filter, and is rebuilt at once. */
+export const LOOKOUT_FORMAT = 2
 /** Rebuilt a day after it was last built. */
 export const LOOKOUT_TTL_SECONDS = 24 * 60 * 60
 /** Kept far longer than that, so a source being down is not an outage here. */
@@ -38,7 +41,10 @@ export const LOOKOUT_CAP = 8_000
 export const SCAMSNIFFER_ARCHIVE = 'https://raw.githubusercontent.com/scamsniffer/scam-database/main/blacklist/archive/'
 /** Frozen since January 2025: fetched once as a seed, never as a live source. */
 export const PHANTOM_SEED = 'https://raw.githubusercontent.com/phantom/blocklist/master/blocklist.yaml'
-/** Their open feed lags their own by a week, so that is how far back the day is taken. */
+/**
+ * Upstream's open feed is 7 days delayed; 8 gives a one-day margin for archives that land
+ * late, so the day asked for has always been published.
+ */
 export const ARCHIVE_LAG_DAYS = 8
 
 export interface Lookout {
@@ -48,6 +54,8 @@ export interface Lookout {
   domains: string[]
   /** Where they came from, in the words PRODUCT.md uses. */
   sources: string[]
+  /** [LOOKOUT_FORMAT] once built without the Solana-words filter. */
+  format?: number
 }
 
 /** The day [ms] falls in, in UTC, as "2026-09-20". */
@@ -124,34 +132,33 @@ export function cleanDomain(value: string): string | null {
 }
 
 /**
- * The words that make a domain worth one of the phone's places. The list is capped, and a
- * Solana buddy's list should be a Solana one: a parcel-delivery scam is someone else's job
- * and the browser's own warning already covers a great many of them.
+ * The new list, newest first: what the day's source adds that the list did not have, then
+ * everything it had. **Every listed domain is kept** — each one is a known scam, so a
+ * "Solana words only" filter (there was one, until Sept 21) only cut coverage: it kept 24
+ * of a day's 77 Scam Sniffer domains and 1,220 of Phantom's 2,241. [last] folds a source in
+ * at the end instead, which is where Phantom's frozen snapshot goes: past the cap the end is
+ * what is dropped, so the newest Scam Sniffer entries are the last to go. Pure — the caller
+ * stores what comes back and logs [dropped].
  */
-const WORTH_KEEPING = [
-  'sol', 'phantom', 'solflare', 'backpack', 'jup', 'raydium', 'orca', 'meteora', 'kamino',
-  'marginfi', 'drift', 'marinade', 'jito', 'sanctum', 'magiceden', 'tensor', 'pump', 'bonk',
-  'seeker', 'saga', 'wallet', 'airdrop', 'claim', 'mint', 'nft', 'swap', 'dapp', 'token',
-  'crypto', 'web3', 'ledger', 'connect', 'metamask', 'trezor', 'seed', 'staking',
-]
-
-/** Whether a domain is one this list is for. */
-export function worthKeeping(domain: string): boolean {
-  return WORTH_KEEPING.some((word) => domain.includes(word))
+export function fold(
+  current: string[],
+  adding: string[],
+  options: { cap?: number; last?: boolean } = {},
+): { domains: string[]; dropped: number } {
+  const cap = options.cap ?? LOOKOUT_CAP
+  const had = new Set(current)
+  const fresh: string[] = []
+  for (const domain of adding) {
+    if (had.has(domain)) continue
+    had.add(domain)
+    fresh.push(domain)
+  }
+  const all = options.last ? [...current, ...fresh] : [...fresh, ...current]
+  if (all.length <= cap) return { domains: all, dropped: 0 }
+  return { domains: all.slice(0, cap), dropped: all.length - cap }
 }
 
-/**
- * The new list: what it had, plus what the day's sources add, the ones worth keeping
- * first and the oldest dropped past the cap. Pure — the caller stores what comes back.
- */
+/** [fold] without the count, for the callers that only want the list. */
 export function foldIn(current: string[], adding: string[], cap = LOOKOUT_CAP): string[] {
-  const kept = new Set(current)
-  for (const domain of adding) {
-    if (!worthKeeping(domain)) continue
-    kept.add(domain)
-  }
-  const all = [...kept]
-  // Past the cap the oldest go: a domain that has been on the list for months and has
-  // never been seen is worth less than one added today.
-  return (all.length > cap ? all.slice(all.length - cap) : all).sort()
+  return fold(current, adding, { cap }).domains
 }

@@ -26,8 +26,8 @@ import { rpcClusterMismatch } from './cluster.ts'
 import { makeRpc, type Rpc } from './rpc.ts'
 import { SYSTEM_PROGRAM } from './instructions.ts'
 import {
-  LOOKOUT_KEEP_SECONDS, LOOKOUT_KEY, LOOKOUT_SEED_KEY, PHANTOM_SEED, archiveFor, dayOf as lookoutDay,
-  domainsIn, foldIn, type Lookout,
+  LOOKOUT_FORMAT, LOOKOUT_KEEP_SECONDS, LOOKOUT_KEY, LOOKOUT_SEED_KEY, PHANTOM_SEED, archiveFor, dayOf as lookoutDay, fold,
+  domainsIn, type Lookout,
 } from './lookout.ts'
 import {
   FIRSTS_TTL_SECONDS, FIRST_DESTINATION, FIRST_PROGRAM, firstsKey, hashFirst, parseFirsts, remember, unseen,
@@ -756,7 +756,8 @@ async function lookout(request: Request, env: Env, started: number, context?: Wa
   const today = lookoutDay(clock.now())
   let list = await readLookout(env)
   // A day old or missing: rebuild it, but never keep the phone waiting on a source.
-  if (list === null || list.version !== today) {
+  // A list built before the filter was dropped is rebuilt at once, not tomorrow.
+  if (list === null || list.version !== today || list.format !== LOOKOUT_FORMAT) {
     const rebuilt = await buildLookout(env, list, today)
     if (rebuilt) {
       list = rebuilt
@@ -782,7 +783,10 @@ async function readLookout(env: Env): Promise<Lookout | null> {
     if (!stored) return null
     const parsed = JSON.parse(stored)
     if (!Array.isArray(parsed?.domains)) return null
-    return { version: String(parsed.version ?? ''), domains: parsed.domains, sources: parsed.sources ?? [] }
+    return {
+      version: String(parsed.version ?? ''), domains: parsed.domains, sources: parsed.sources ?? [],
+      format: typeof parsed.format === 'number' ? parsed.format : undefined,
+    }
   } catch {
     return null
   }
@@ -803,9 +807,13 @@ async function buildLookout(env: Env, current: Lookout | null, today: string): P
     return await res.text()
   }
 
+  let dropped = 0
   if (!(await env.CAPS.get(LOOKOUT_SEED_KEY))) {
     try {
-      domains = foldIn(domains, domainsIn(await get(PHANTOM_SEED)))
+      // The frozen snapshot goes in at the end: past the cap, it is what goes first.
+      const seeded = fold(domains, domainsIn(await get(PHANTOM_SEED)), { last: true })
+      domains = seeded.domains
+      dropped += seeded.dropped
       sources.add('phantom/blocklist (snapshot)')
       await env.CAPS.put(LOOKOUT_SEED_KEY, today, { expirationTtl: LOOKOUT_KEEP_SECONDS })
     } catch {
@@ -813,13 +821,17 @@ async function buildLookout(env: Env, current: Lookout | null, today: string): P
     }
   }
   try {
-    domains = foldIn(domains, domainsIn(await get(archiveFor(clock.now()))))
+    const archived = fold(domains, domainsIn(await get(archiveFor(clock.now()))))
+    domains = archived.domains
+    dropped += archived.dropped
     sources.add('scamsniffer/scam-database')
   } catch {
     // No archive for that day, or the source is down: the list stands as it was.
   }
+  // Never silently: a cap that cut the list is worth knowing about.
+  if (dropped > 0) log({ route: 'lookout', what: 'cap_truncated', dropped, kept: domains.length, level: 'warn' })
   if (domains.length === 0) return null
-  return { version: today, domains, sources: [...sources] }
+  return { version: today, domains, sources: [...sources], format: LOOKOUT_FORMAT }
 }
 
 function speakable(body: any, env: Env): boolean {

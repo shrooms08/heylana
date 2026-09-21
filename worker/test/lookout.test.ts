@@ -2,7 +2,7 @@ import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import worker, { clock, type Env } from '../src/index.ts'
 import {
-  ARCHIVE_LAG_DAYS, LOOKOUT_CAP, PHANTOM_SEED, archiveFor, cleanDomain, dayOf, domainsIn, foldIn, worthKeeping,
+  ARCHIVE_LAG_DAYS, LOOKOUT_CAP, LOOKOUT_KEY, PHANTOM_SEED, archiveFor, cleanDomain, dayOf, domainsIn, fold, foldIn,
 } from '../src/lookout.ts'
 
 const DEVICE = '3f0b6a2e-91cd-4a5e-9a7c-7b2f8c1d4e55'
@@ -36,19 +36,29 @@ test('what is not a domain never reaches the phone', () => {
   assert.equal(cleanDomain('a'.repeat(120) + '.com'), null)
 })
 
-test('the list is a Solana buddy\'s list, and is capped', () => {
-  assert.equal(worthKeeping('claim-solana-airdrop.net'), true)
-  assert.equal(worthKeeping('phantom-wallet-verify.io'), true)
-  // Someone else's job: a parcel scam is not what this list is for.
-  assert.equal(worthKeeping('dhl-parcel-redelivery.info'), false)
-
-  const many = Array.from({ length: LOOKOUT_CAP + 50 }, (_, i) => `sol-scam-${i}.xyz`)
-  const folded = foldIn([], many)
-  assert.equal(folded.length, LOOKOUT_CAP)
+test('every listed domain is kept: no Solana-words filter', () => {
+  // Each is a known scam; a filter only cut coverage (24 of 77, 1,220 of 2,241).
+  assert.deepEqual(foldIn([], ['dhl-parcel-redelivery.info', 'claim-sol.xyz']), ['dhl-parcel-redelivery.info', 'claim-sol.xyz'])
   // What is kept twice is kept once.
   assert.equal(foldIn(['claim-sol.xyz'], ['claim-sol.xyz']).length, 1)
-  // And what does not belong is not kept at all.
-  assert.deepEqual(foldIn([], ['dhl-parcel-redelivery.info']), [])
+})
+
+test('past the cap the oldest go, the newest Scam Sniffer entries stay, and it is counted', () => {
+  // A snapshot at the end, older archive days, then today's.
+  const seed = Array.from({ length: 30 }, (_, i) => `seed-${i}.app`)
+  const older = Array.from({ length: 30 }, (_, i) => `old-${i}.xyz`)
+  const today = Array.from({ length: 30 }, (_, i) => `new-${i}.xyz`)
+  let list = fold([], older, { cap: 50 }).domains
+  const seeded = fold(list, seed, { cap: 50, last: true })
+  assert.equal(seeded.dropped, 10)
+  list = seeded.domains
+  const folded = fold(list, today, { cap: 50 })
+  assert.equal(folded.domains.length, 50)
+  assert.equal(folded.dropped, 30)
+  // Today's first, then the older archive day; the snapshot is what went.
+  assert.deepEqual(folded.domains.slice(0, 30), today)
+  assert.ok(folded.domains.slice(30).every((d) => d.startsWith('old-')))
+  assert.equal(folded.domains.some((d) => d.startsWith('seed-')), false)
 })
 
 test('the day asked for is a week behind, because their open feed is', () => {
@@ -107,8 +117,8 @@ test('the phone is handed the whole list, and never asked what it is looking at'
   assert.equal(res.status, 200)
   const body = await res.json() as any
   assert.equal(body.version, '2026-09-20')
-  // Both sources went in; the parcel scam did not.
-  assert.deepEqual(body.domains.sort(), ['claim-sol-airdrop.xyz', 'phantomweb.app', 'solvision.io'].sort())
+  // Both sources went in whole: the parcel scam is a scam too.
+  assert.deepEqual(body.domains.sort(), ['claim-sol-airdrop.xyz', 'dhl-parcel.info', 'phantomweb.app', 'solvision.io'].sort())
   assert.ok(body.sources.includes('phantom/blocklist (snapshot)'))
   assert.ok(body.sources.includes('scamsniffer/scam-database'))
   // The request carries nothing about the user but the device header every route takes.
@@ -157,4 +167,29 @@ test('a source answering with rubbish adds nothing', async () => {
   sources[archiveFor(SEPT)] = { status: 200, body: '<!doctype html><h1>404</h1>' }
   const body = await (await worker.fetch(ask(), e)).json() as any
   assert.deepEqual(body.domains, ['phantomweb.app', 'solvision.io'])
+})
+
+test('a list built with the old filter is rebuilt at once, whole, and the seed fetched again', async () => {
+  const kv = store()
+  // Yesterday's filtered list, stored today, with no format.
+  kv.values.set(LOOKOUT_KEY, JSON.stringify({ version: '2026-09-20', domains: ['claim-sol-airdrop.xyz'], sources: ['scamsniffer/scam-database'] }))
+  kv.values.set('lookout:seed', '2026-09-01')
+  const body = await (await worker.fetch(ask(), env(kv))).json() as any
+  assert.equal(fetched.filter((url) => url === PHANTOM_SEED).length, 1, 'the snapshot is folded in whole once more')
+  assert.ok(body.domains.includes('dhl-parcel.info'))
+  assert.ok(body.domains.includes('claim-sol-airdrop.xyz'), 'what it had is kept')
+})
+
+test('a cap that cuts the list says so in the log', async () => {
+  const lines: string[] = []
+  console.log = (line: string) => { lines.push(String(line)) }
+  const huge = Array.from({ length: LOOKOUT_CAP + 5 }, (_, i) => `scam-${i}.xyz`)
+  sources[archiveFor(SEPT)] = { status: 200, body: JSON.stringify(huge) }
+  const body = await (await worker.fetch(ask(), env())).json() as any
+  assert.equal(body.domains.length, LOOKOUT_CAP)
+  // The newest (today's archive) are kept; the snapshot went first.
+  assert.equal(body.domains.includes('phantomweb.app'), false)
+  const warning = lines.map((l) => { try { return JSON.parse(l) } catch { return null } }).find((l) => l?.what === 'cap_truncated')
+  assert.ok(warning, 'the truncation is logged')
+  assert.equal(warning.dropped, 7)
 })

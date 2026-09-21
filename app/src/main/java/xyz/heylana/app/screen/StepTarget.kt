@@ -61,17 +61,67 @@ object StepTarget {
             .filter { !pointedActs || it.id == pointed || it.clickable || it.editable }
             .mapNotNull { c -> score(instruction, c).takeIf { it > 0 }?.let { c to it } }
         if (scored.isEmpty()) return pointed
-        if (pointed != null && scored.any { it.first.id == pointed }) return pointed
         val best = scored.maxOf { it.second }
-        val top = scored.filter { it.second == best }
-        // Two elements named equally: one drawn inside the other is one thing (a tab and its
-        // label, as Jupiter's bottom bar reports them); else the one that takes a tap; else
-        // leave the model's choice.
-        val pick = top.singleOrNull()
-            ?: top.firstOrNull { outer -> top.all { it === outer || contains(outer.first.box, it.first.box) } }
-            ?: top.filter { it.first.clickable || it.first.editable }.singleOrNull()
-        return pick?.first?.id ?: pointed
+        val top = scored.filter { it.second == best }.map { it.first }
+        // Elements named equally, grouped: one drawn inside the other is one thing (a tab and
+        // its label, as Jupiter's bottom bar reports them).
+        val groups = groups(top)
+        if (groups.size == 1) {
+            val group = groups.single()
+            if (pointed != null && group.any { it.id == pointed }) return pointed
+            // The model's element is not named: the group's outermost, else what takes a tap.
+            val pick = group.firstOrNull { outer -> group.all { it === outer || contains(outer.box, it.box) } }
+                ?: group.filter { it.clickable || it.editable }.singleOrNull()
+            return pick?.id ?: pointed
+        }
+        // Two different things share the name — Jupiter's "Swap" tab at the top and its green
+        // Swap button: the words decide; with nothing to go on, the primary action.
+        val chosen = resolve(groups, instruction.qualifiers)
+            ?: return pointed?.takeIf { id -> top.any { it.id == id } } ?: pointed
+        if (pointed != null && chosen.any { it.id == pointed }) return pointed
+        return (chosen.firstOrNull { outer -> chosen.all { it === outer || contains(outer.box, it.box) } } ?: chosen.first()).id
     }
+
+    /** How the instruction tells same-named things apart. */
+    internal enum class Qualifier { LOW, HIGH, TAB, PRIMARY }
+
+    private val QUALIFIER_WORDS = mapOf(
+        "bottom" to Qualifier.LOW, "lower" to Qualifier.LOW, "below" to Qualifier.LOW,
+        "top" to Qualifier.HIGH, "upper" to Qualifier.HIGH, "header" to Qualifier.HIGH, "above" to Qualifier.HIGH,
+        "tab" to Qualifier.TAB, "tabs" to Qualifier.TAB,
+        "button" to Qualifier.PRIMARY, "green" to Qualifier.PRIMARY, "blue" to Qualifier.PRIMARY,
+        "big" to Qualifier.PRIMARY, "large" to Qualifier.PRIMARY, "main" to Qualifier.PRIMARY
+    )
+
+    /** Groups of candidates, each group one thing on screen (boxes inside one another). */
+    private fun groups(top: List<Candidate>): List<List<Candidate>> {
+        val groups = mutableListOf<MutableList<Candidate>>()
+        for (c in top) {
+            val home = groups.firstOrNull { g -> g.any { contains(it.box, c.box) || contains(c.box, it.box) } }
+            if (home != null) home += c else groups += mutableListOf(c)
+        }
+        return groups
+    }
+
+    /**
+     * Which group the words mean: a position word first (bottom, top), then "tab" (the
+     * smaller), then a button, a colour or nothing at all (the primary action: the larger,
+     * then the lower). Null when the boxes are not known.
+     */
+    private fun resolve(groups: List<List<Candidate>>, qualifiers: Set<Qualifier>): List<Candidate>? {
+        fun outer(g: List<Candidate>): IntArray? = g.mapNotNull { it.box }.maxByOrNull { area(it) }
+        if (groups.any { outer(it) == null }) return null
+        val boxed = groups.map { it to outer(it)!! }
+        val pick = when {
+            Qualifier.LOW in qualifiers -> boxed.maxByOrNull { it.second[3] }
+            Qualifier.HIGH in qualifiers -> boxed.minByOrNull { it.second[1] }
+            Qualifier.TAB in qualifiers -> boxed.minByOrNull { area(it.second) }
+            else -> boxed.maxWithOrNull(compareBy<Pair<List<Candidate>, IntArray>>({ area(it.second) }, { it.second[3] }))
+        }
+        return pick?.first
+    }
+
+    private fun area(box: IntArray): Long = (box[2] - box[0]).toLong() * (box[3] - box[1])
 
     /**
      * Whether the step tells the user to type or enter something, anywhere in it: "tap the
@@ -93,7 +143,12 @@ object StepTarget {
     }
 
     /** The first clause of [say] that tells the user to do something: its verb and what it names. */
-    internal data class Instruction(val typing: Boolean, val named: Set<String>, val quoted: List<String>)
+    internal data class Instruction(
+        val typing: Boolean,
+        val named: Set<String>,
+        val quoted: List<String>,
+        val qualifiers: Set<Qualifier> = emptySet()
+    )
 
     internal fun firstInstruction(say: String): Instruction? {
         val quoted = QUOTED.findAll(say).map { it.groupValues[1].trim().lowercase() }.toList()
@@ -114,7 +169,8 @@ object StepTarget {
             val howMuch = verb in TYPE_VERBS && after.take(2) == listOf("how", "much")
             val named = if (howMuch) setOf("amount") else obj.filter { it !in FILLER && it.any(Char::isLetter) }.toSet()
             if (named.isEmpty() && inQuotes.isEmpty()) continue
-            return Instruction(typing = verb in TYPE_VERBS, named = named, quoted = inQuotes)
+            val qualifiers = after.takeWhile { it != "to" && it != "so" }.mapNotNull { QUALIFIER_WORDS[it] }.toSet()
+            return Instruction(typing = verb in TYPE_VERBS, named = named, quoted = inQuotes, qualifiers = qualifiers)
         }
         return null
     }

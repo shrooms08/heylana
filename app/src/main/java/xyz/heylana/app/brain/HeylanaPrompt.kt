@@ -215,7 +215,9 @@ object HeylanaPrompt {
     const val WALK_THROUGH_LINE: String =
         "They want to be walked through doing this. If it takes more than one tap, reply with a task " +
             "(goal set, done false): say is the first step only, starting with one short reason, under 25 " +
-            "words, and point_at is its element. If it needs no taps, answer in say pieces."
+            "words, and point_at is its element. If two elements share a name (a Swap tab and a green Swap " +
+            "button), say which one: \"the green Swap button at the bottom\", never just \"Swap\". " +
+            "If it needs no taps, answer in say pieces."
 
     /** Debug builds only (`--ez one_step true`): a task even for one tap, to check the wait for it. */
     const val DEBUG_ONE_STEP_LINE: String =

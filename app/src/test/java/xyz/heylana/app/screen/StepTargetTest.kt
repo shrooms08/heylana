@@ -122,4 +122,32 @@ class StepTargetTest {
         assertEquals(true, StepTarget.isTyping("Now enter the amount you want to sell."))
         assertEquals(false, StepTarget.isTyping("Tap Trade at the bottom to get started."))
     }
+
+    // Jupiter's Trade screen as the Seeker read it on 2026-09-21, bounds in pixels: the "Swap"
+    // tab at the top and the green Swap button above the keypad, each with its label inside.
+    private val swapTwins = listOf(
+        Candidate(46, "Swap", editable = false, clickable = true, box = intArrayOf(44, 248, 166, 370)),
+        Candidate(47, "Swap", editable = false, clickable = false, box = intArrayOf(52, 285, 158, 335)),
+        Candidate(4, "Market", editable = false, clickable = true, box = intArrayOf(51, 400, 367, 484)),
+        Candidate(13, "0.0009", editable = false, clickable = true, box = intArrayOf(407, 637, 1108, 760)),
+        Candidate(60, "Swap", editable = false, clickable = true, box = intArrayOf(52, 1672, 1148, 1792)),
+        Candidate(61, "Swap", editable = false, clickable = false, box = intArrayOf(548, 1710, 652, 1755))
+    )
+
+    @Test
+    fun `Jupiter step 3 - the green Swap button, not the Swap tab`() {
+        // As the Seeker said it, with the model pointing at the tab.
+        assertEquals(60, StepTarget.choose("You typed 0.0009 in the Sell box. Tap the green Swap button to review the rate and fee.", 46, swapTwins))
+        assertEquals(60, StepTarget.choose("Now tap Swap at the bottom.", 46, swapTwins))
+        // No qualifier at all: the primary action, the big button.
+        assertEquals(60, StepTarget.choose("Now tap Swap.", 46, swapTwins))
+        // The model already on the button's label: it stays on the button.
+        assertEquals(61, StepTarget.choose("Tap the green Swap button.", 61, swapTwins))
+    }
+
+    @Test
+    fun `the words can ask for the tab too`() {
+        assertEquals(46, StepTarget.choose("First tap the Swap tab at the top.", 60, swapTwins))
+        assertEquals(46, StepTarget.choose("Tap the Swap tab.", 60, swapTwins))
+    }
 }

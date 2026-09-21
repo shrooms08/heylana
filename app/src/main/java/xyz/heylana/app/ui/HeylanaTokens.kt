@@ -37,6 +37,8 @@ object HeylanaTokens {
     val accentSoft = withAlpha(accent, 0.14f)
     val success = Color.parseColor("#6FE39F")
     val warn = Color.parseColor("#FF9F45")
+    /** The badge fill behind a warning word: "Devnet" on Home and on a send's card. */
+    val warnSoft = withAlpha(warn, 0.14f)
     val error = Color.parseColor("#FF7E6E")
 
     /** Hairlines and edges, glass buttons, and the solid border of chips; the unselected chip's fill. */

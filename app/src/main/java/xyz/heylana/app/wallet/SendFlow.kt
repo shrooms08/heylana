@@ -5,13 +5,34 @@ import xyz.heylana.app.HeylanaLog
 
 /** How a confirmed send ended, told back to the buddy. */
 sealed interface SendResult {
-    /** [autoSigned]: the wallet signed too fast for anyone to have approved it (it trusts Heylana). */
-    data class Sent(val shortSignature: String, val autoSigned: Boolean = false) : SendResult
-    data class Stopped(val line: String) : SendResult
+    /**
+     * [autoSigned]: the wallet signed too fast for anyone to have approved it (it trusts
+     * Heylana). [fullSignature]: for the Explorer link under "Done"; never logged.
+     */
+    data class Sent(val shortSignature: String, val autoSigned: Boolean = false, val fullSignature: String? = null) : SendResult
+
+    /**
+     * [line]: the plain reason, as the worker or the wallet gave it. [kind]: how it ended,
+     * which decides what is said about the wallet. [code]: the one word behind [line], which
+     * picks the next step ([TxText.nextStep]).
+     */
+    data class Stopped(val line: String, val kind: StopKind = StopKind.FAILED, val code: String? = null) : SendResult
 }
 
-/** Where a confirmed send has got to, for the mode chip: simulating, approve in wallet, sent. */
-enum class SendStage { SIMULATING, APPROVE_IN_WALLET, CHECKING }
+/**
+ * How a send that did not land ended. The first three are certain that nothing left the
+ * wallet; the last two are not, and never say it did not.
+ */
+enum class StopKind { CANCELLED, FAILED, EXPIRED, UNSURE_SIGNED, NOT_FOUND }
+
+/**
+ * Where a confirmed send has got to, for the mode chip and the strip's label: the final
+ * simulation, the wallet, then the chain — [CHECKING] with a signature, [LOOKING] without one.
+ */
+enum class SendStage { SIMULATING, APPROVE_IN_WALLET, CHECKING, LOOKING }
+
+/** The worker saw the send land: its signature short (for words) and whole (for Explorer). */
+data class Landed(val shortSignature: String, val fullSignature: String?)
 
 /** Carries progress and the result from [SendActivity] to the overlay service, in the same process. */
 object SendRelay {
@@ -38,7 +59,7 @@ class SendFlow(
     private val build: suspend (id: String, cluster: Cluster) -> Answer<BuiltTransfer>,
     private val signAndSend: suspend (ByteArray, Cluster) -> SeedVault.Trip<SeedVault.Signed>,
     /** [signature] is null when the wallet gave none: the worker then looks for the transfer itself. */
-    private val confirm: suspend (id: String, signature: String?) -> Answer<String>,
+    private val confirm: suspend (id: String, signature: String?) -> Answer<Landed>,
     private val log: (String) -> Unit = { HeylanaLog.state(it) },
     private val now: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
@@ -83,40 +104,40 @@ class SendFlow(
             is Answer.Ok -> answer.value
             is Answer.Refused -> {
                 log("send: not built reason=${answer.reason} cluster=${request.cluster.id}")
-                return SendResult.Stopped(answer.detail.ifBlank { WalletProblem.fromWorker(answer.reason).words })
+                return SendResult.Stopped(answer.detail.ifBlank { WalletProblem.fromWorker(answer.reason).words }, code = answer.reason)
             }
-            is Answer.Unreachable -> return SendResult.Stopped(WalletProblem.UNREACHABLE.words)
+            is Answer.Unreachable -> return SendResult.Stopped(WalletProblem.UNREACHABLE.words, code = UNREACHABLE)
         }
         val simulation = built.simulation
         if (simulation is SimulationResult.Failed) {
             log("send: simulation failed reason=${simulation.reason}, wallet not opened")
-            return SendResult.Stopped(BuildText.failed(simulation.words))
+            return SendResult.Stopped(simulation.words, code = simulation.reason)
         }
-        val bytes = built.transaction ?: return SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED)
+        val bytes = built.transaction ?: return SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED, code = NOT_CONFIRMED)
         val verdict = BuiltCheck.check(
             bytes,
             BuiltCheck.Expected(from = from, to = request.to, mint = request.mint, tokenProgram = request.tokenProgram, units = request.units)
         )
         if (verdict is BuiltCheck.Verdict.Differs) {
             log("send: built transfer differs from the confirmed one why=${verdict.why}, wallet not opened")
-            return SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED)
+            return SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED, code = NOT_CONFIRMED)
         }
 
         stage(SendStage.APPROVE_IN_WALLET)
         log("send: simulation passed, opening Seed Vault cluster=${request.cluster.id}")
         val signed = when (val trip = signAndSend(bytes, request.cluster)) {
             is SeedVault.Trip.Done -> trip.value
-            SeedVault.Trip.NoWallet -> return SendResult.Stopped(WalletProblem.NO_WALLET.words)
+            SeedVault.Trip.NoWallet -> return SendResult.Stopped(WalletProblem.NO_WALLET.words, code = "no_wallet")
             is SeedVault.Trip.Stopped -> {
                 // Rejected in the wallet: nothing was submitted, and it is never asked again.
                 if (trip.problem == WalletProblem.CANCELLED) {
                     log("send: rejected in the wallet")
-                    return SendResult.Stopped(BuildText.REJECTED)
+                    return SendResult.Stopped(BuildText.REJECTED, StopKind.CANCELLED)
                 }
-                if (trip.problem !in UNSURE) return SendResult.Stopped(trip.problem.words)
+                if (trip.problem !in UNSURE) return SendResult.Stopped(trip.problem.words, code = trip.problem.name.lowercase())
                 // Anything else, a timeout included, may still have gone through.
                 log("send: wallet gave no signature (${trip.problem.name}), looking for it on chain cluster=${request.cluster.id}")
-                stage(SendStage.CHECKING)
+                stage(SendStage.LOOKING)
                 return awaitLanded(request.id, null)
             }
         }
@@ -145,15 +166,21 @@ class SendFlow(
                     "signature=${if (signature == null) "none" else "given"} result=${describe(answer)}"
             )
             when (answer) {
-                is Answer.Ok -> return SendResult.Sent(answer.value)
+                // The wallet's own signature is whole; the worker's is whole when it found the send itself.
+                is Answer.Ok -> return SendResult.Sent(answer.value.shortSignature, fullSignature = signature ?: answer.value.fullSignature)
                 is Answer.Refused -> when (answer.code) {
-                    MISMATCH, NOT_YOURS -> return SendResult.Stopped(DID_NOT_MATCH)
-                    GONE -> return SendResult.Stopped(BuildText.EXPIRED)
+                    // Something landed, but not this send as prepared: it may have left the wallet.
+                    MISMATCH, NOT_YOURS -> return SendResult.Stopped(DID_NOT_MATCH, StopKind.UNSURE_SIGNED)
+                    GONE -> return SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED)
                 }
                 is Answer.Unreachable -> Unit
             }
             if (attempt > waits.size) {
-                return SendResult.Stopped(if (signature == null) BuildText.NOT_FOUND else BuildText.UNKNOWN_SIGNED)
+                return if (signature == null) {
+                    SendResult.Stopped(BuildText.NOT_FOUND, StopKind.NOT_FOUND)
+                } else {
+                    SendResult.Stopped(BuildText.UNKNOWN_SIGNED, StopKind.UNSURE_SIGNED)
+                }
             }
             sleep(waits[attempt - 1])
         }
@@ -164,6 +191,8 @@ class SendFlow(
         private const val MISMATCH = 402
         private const val NOT_YOURS = 403
         private const val GONE = 410
+        private const val UNREACHABLE = "unreachable"
+        private const val NOT_CONFIRMED = "not_what_was_confirmed"
 
         /** What the wallet can end with even after a send went out, a timeout among them. */
         private val UNSURE = setOf(WalletProblem.UNKNOWN, WalletProblem.TOOK_TOO_LONG)

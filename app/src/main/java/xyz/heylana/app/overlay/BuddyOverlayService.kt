@@ -50,6 +50,14 @@ import xyz.heylana.app.wallet.SendActivity
 import xyz.heylana.app.wallet.SimulationResult
 import xyz.heylana.app.wallet.SendQuote
 import xyz.heylana.app.wallet.SendRelay
+import xyz.heylana.app.wallet.SendStage
+import xyz.heylana.app.wallet.ClusterBadge
+import xyz.heylana.app.wallet.TxEnding
+import xyz.heylana.app.wallet.TxEvent
+import xyz.heylana.app.wallet.TxMachine
+import xyz.heylana.app.wallet.TxState
+import xyz.heylana.app.wallet.TxSummary
+import xyz.heylana.app.wallet.TxText
 import xyz.heylana.app.wallet.SendResult
 import xyz.heylana.app.wallet.SendText
 import xyz.heylana.app.wallet.WalletApi
@@ -1142,7 +1150,7 @@ class BuddyOverlayService : Service() {
                     if (SendGuard.overLimit(quote.amount, quote.balance)) {
                         HeylanaLog.state("send: over a quarter of the balance amount=${quote.amount}")
                         overLimit = PendingSend(quote, System.currentTimeMillis())
-                        sayLine(SendGuard.overLimitLine(quote.token))
+                        sayLine(TxText.onNetwork(SendGuard.overLimitLine(quote.token), quote.cluster))
                     } else {
                         showSendStrip(quote)
                     }
@@ -1176,36 +1184,47 @@ class BuddyOverlayService : Service() {
             mode(null)
             // Cancelled, or another send, while this one was being checked.
             if (awaitingConfirm !== quote) return@launch
-            val failure: String? = when (built) {
+            // A failure here is a send that never got as far as prepared: the reason and what
+            // to do next, under "Not sent" — the plain reason is the worker's own words.
+            val failure: SendResult.Stopped? = when (built) {
                 is Answer.Ok -> when (val sim = built.value.simulation) {
                     SimulationResult.Passed -> null
                     is SimulationResult.Failed -> {
                         HeylanaLog.state("send: simulation failed reason=${sim.reason}, wallet not opened")
-                        BuildText.failed(sim.words)
+                        SendResult.Stopped(sim.words, code = sim.reason)
                     }
                 }
                 is Answer.Refused -> {
                     HeylanaLog.state("send: not built reason=${built.reason}")
-                    built.detail.ifBlank { WalletProblem.fromWorker(built.reason).words }
+                    SendResult.Stopped(built.detail.ifBlank { WalletProblem.fromWorker(built.reason).words }, code = built.reason)
                 }
-                is Answer.Unreachable -> WalletProblem.UNREACHABLE.words
+                is Answer.Unreachable -> SendResult.Stopped(WalletProblem.UNREACHABLE.words, code = "unreachable")
             }
             if (failure != null) {
                 awaitingConfirm = null
                 overlayView?.hideSendConfirm()
-                sayLine(failure)
+                txQuote = quote
+                tx = TxState.NotSent(TxEnding.FAILED)
+                HeylanaLog.state("tx: none -> ${TxText.NOT_SENT} cluster=${quote.cluster.id}")
+                sayCard(TxText.ending(failure).line)
                 return@launch
             }
             val preview = (built as Answer.Ok).value.preview
             simulationPassed = true
             HeylanaLog.state("send: simulation passed fee=${preview.feeSol} new_account=${preview.createsAccount} cluster=${preview.cluster}")
-            // The first send on this phone also says: approve it yourself, don't trust Heylana there.
-            val text = SendText.previewed(preview, firstSend = !settings.sendConfirmedOnce)
-            // What it actually does goes on the strip under the confirmation; what is said
-            // aloud stays the two sentences it always was.
+            txQuote = quote
+            val summary = TxSummary.of(preview).copy(cluster = quote.cluster)
+            advance(TxEvent.Built(summary))
+            // "Prepared, not signed" with the network's badge: what leaves, what arrives, the
+            // fee; what the bytes actually do under it. The first send on this phone also says
+            // to approve it in Seed Vault by hand. One line is spoken, never the card.
+            val trust = if (!settings.sendConfirmedOnce) "\n" + BuildText.TRUST_HINT else ""
             HeylanaLog.state("send: does lines=${preview.does.size} grants_power=${preview.grantsPower}")
-            overlayView?.showSimulationPassed(SendText.withDetail(text, preview.does))
-            speak(text)
+            overlayView?.showSimulationPassed(
+                SendText.withDetail(TxText.preparedCard(summary) + trust, preview.does),
+                ClusterBadge.of(quote.cluster)
+            )
+            speak(TxText.preparedSpoken(quote.cluster))
         }
     }
 
@@ -1223,12 +1242,14 @@ class BuddyOverlayService : Service() {
         settings.sendConfirmedOnce = true
         mouth?.stop()
         overlayView?.hideSendConfirm()
-        overlayView?.showNotice("Approve it in Seed Vault.")
+        // Still prepared and still unsigned while it is built and checked once more.
+        showCard(TxText.OPENING_WALLET)
         HeylanaLog.state("send: confirmed, opening Seed Vault")
-        // Seed Vault, then the chain: the working orb until the send lands or stops.
+        // Seed Vault, then the chain: the working orb until the send lands or stops. The
+        // card's label says where it is; the chip would only say it twice.
         overlayView?.setWorking(true)
-        mode(BuddyMode.SIMULATING)
-        SendRelay.progress = { stage -> main.post { mode(BuddyMode.of(stage)) } }
+        mode(null)
+        SendRelay.progress = { stage -> main.post { onSendStage(stage) } }
         SendRelay.listener = { result -> main.post { onSendResult(result) } }
         startActivity(
             SendActivity.intentFor(this, quote)
@@ -1242,26 +1263,90 @@ class BuddyOverlayService : Service() {
         simulationPassed = false
         overlayView?.hideSendConfirm()
         HeylanaLog.state("send: cancelled")
-        sayLine(SendText.CANCELLED)
+        advance(TxEvent.Rejected)
+        sayCard(TxText.CANCELLED)
+    }
+
+    /** The confirmed send moved on: the wallet opened, or the chain is being asked. */
+    private fun onSendStage(stage: SendStage) {
+        when (stage) {
+            SendStage.SIMULATING -> Unit
+            SendStage.APPROVE_IN_WALLET -> {
+                advance(TxEvent.WalletOpened)
+                showCard(TxText.APPROVE_IN_WALLET)
+            }
+            SendStage.CHECKING -> {
+                advance(TxEvent.Checking(signed = true))
+                showCard(TxText.CONFIRMING_DETAIL)
+            }
+            SendStage.LOOKING -> {
+                advance(TxEvent.Checking(signed = false))
+                showCard(TxText.LOOKING_DETAIL)
+            }
+        }
     }
 
     private fun onSendResult(result: SendResult) {
         SendRelay.listener = null
         SendRelay.progress = null
         overlayView?.setWorking(false)
-        mode(if (result is SendResult.Sent) BuddyMode.SENT else null)
+        mode(null)
+        val quote = txQuote
         when (result) {
             is SendResult.Sent -> {
-                HeylanaLog.state("send: landed auto_signed=${result.autoSigned}")
+                HeylanaLog.state("send: landed auto_signed=${result.autoSigned} explorer=${result.fullSignature != null}")
+                val url = quote?.let { q -> result.fullSignature?.let { TxText.explorerUrl(it, q.cluster) } }
+                advance(TxEvent.Landed(result.shortSignature, url))
                 // Signed faster than anyone could have approved it: say so, and how to undo it.
                 val trusted = if (result.autoSigned) " ${BuildText.AUTO_SIGNED}" else ""
-                sayLine(SendText.sent(result.shortSignature) + trusted)
+                val done = quote?.let { TxText.done(it.amount, it.token, it.toAddress) } ?: SendText.sent(result.shortSignature)
+                val chip = url?.let { listOf(Source(TxText.signatureChipTitle(result.shortSignature), it)) } ?: emptyList()
+                sayCard(done + trusted, chip)
             }
             is SendResult.Stopped -> {
-                HeylanaLog.state("send: stopped")
-                sayLine(result.line)
+                HeylanaLog.state("send: stopped kind=${result.kind} code=${result.code}")
+                val ending = TxText.ending(result)
+                advance(ending.event)
+                sayCard(ending.line)
             }
         }
+    }
+
+    // ------------------------------------------------------------ the send's label
+
+    /** Where the send on the strip stands, and the quote it is for. */
+    private var tx: TxState? = null
+    private var txQuote: SendQuote? = null
+
+    /** Moves the label on; a move that does not fit where the send stands is ignored. */
+    private fun advance(event: TxEvent) {
+        val before = tx
+        val after = TxMachine.next(before, event) ?: return
+        if (after == before) return
+        tx = after
+        HeylanaLog.state("tx: ${before?.label ?: "none"} -> ${after.label} cluster=${txQuote?.cluster?.id}")
+    }
+
+    /** The card for where the send stands, with [detail] under its heading. Nothing is spoken. */
+    private fun showCard(detail: String) {
+        val state = tx ?: return
+        val cluster = txQuote?.cluster ?: return
+        overlayView?.showTxCard(TxText.heading(state, cluster) + "\n" + detail, ClusterBadge.of(cluster))
+    }
+
+    /** The card with [line] under its heading, and [line] spoken — the heading never is. */
+    private fun sayCard(line: String, sources: List<Source> = emptyList()) {
+        val view = overlayView ?: return
+        val state = tx
+        val cluster = txQuote?.cluster
+        if (state == null || cluster == null) {
+            sayLine(line, sources)
+            return
+        }
+        val shown = Sources.spoken(AddressText.shorten(line))
+        view.showTxCard(TxText.heading(state, cluster) + "\n" + shown, ClusterBadge.of(cluster))
+        view.showSources(sources)
+        if (!speak(shown)) settleSoon()
     }
 
     // ------------------------------------------------------------------ lessons

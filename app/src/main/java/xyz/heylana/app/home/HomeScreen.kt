@@ -53,6 +53,7 @@ import xyz.heylana.app.ui.app.FlatChip
 import xyz.heylana.app.ui.app.FlatPage
 import xyz.heylana.app.ui.app.FlatSurface
 import xyz.heylana.app.ui.app.Glyph
+import xyz.heylana.app.ui.app.NetworkBadge
 import xyz.heylana.app.ui.app.Icon
 import xyz.heylana.app.ui.app.LibraryOrb
 import xyz.heylana.app.ui.app.MarkPill
@@ -78,6 +79,8 @@ object HomeText {
 fun HomeScreen(
     name: String,
     chat: AppChat,
+    /** The worker's network, as /me last said; null until it has been heard. */
+    cluster: xyz.heylana.app.wallet.ClusterBadge? = null,
     muted: Boolean,
     onMenu: () -> Unit,
     onMute: (Boolean) -> Unit,
@@ -111,6 +114,10 @@ fun HomeScreen(
                 BarButton(Glyph.MENU, "Menu", onMenu)
                 Spacer(Modifier.weight(1f))
                 MarkPill(if (thinking) "thinking…" else "your buddy", subtitleAccent = thinking)
+                cluster?.let {
+                    Spacer(Modifier.width(10.dp))
+                    NetworkBadge(it)
+                }
                 Spacer(Modifier.weight(1f))
                 BarButton(if (muted) Glyph.SPEAKER_OFF else Glyph.SPEAKER, if (muted) "Speaker off" else "Speaker on", { onMute(!muted) })
             }

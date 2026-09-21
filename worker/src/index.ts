@@ -1991,7 +1991,9 @@ async function sendConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Prom
   const sent = JSON.parse(stored) as PreparedSend
   if (sent.from !== who.wallet) return fail(403, 'not_yours', 'That send belongs to another wallet.')
   const already = await env.CAPS.get(`sent:${id}`)
-  if (already) return json(200, { confirmed: true, signature: short(already), already_confirmed: true })
+  // The whole signature too, for the Explorer link under "Done": a signature is public on chain,
+  // and it goes back only to the wallet that sent it. It is never logged.
+  if (already) return json(200, { confirmed: true, signature: short(already), full_signature: already, already_confirmed: true })
 
   let signature = given
   let verdict: { ok: true } | { ok: false; reason: string }
@@ -2041,7 +2043,7 @@ async function sendConfirm(request: Request, env: Env, who: Who, rpc: Rpc): Prom
   )
   count({ sendsConfirmed: 1 })
   log({ ...logged, confirmed: true })
-  return json(200, { confirmed: true, signature: short(signature!) })
+  return json(200, { confirmed: true, signature: short(signature!), full_signature: signature! })
 }
 
 const SIGNATURE = /^[1-9A-HJ-NP-Za-km-z]{64,88}$/

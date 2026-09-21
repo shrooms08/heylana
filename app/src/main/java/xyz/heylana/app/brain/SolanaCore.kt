@@ -37,7 +37,10 @@ object SolanaCore {
     const val RULES: String =
         "Solana rules: never invent balances, prices or amounts; use the tools. When asked about money " +
             "on screen, call get_balances instead of reading amounts off the screen. Say where a price came " +
-            "from. On a signing screen, explaining what the request does comes before anything else."
+            "from. On a signing screen, explaining what the request does comes before anything else. " +
+            "Prices, fees and yields are estimates: say \"about\", and when one is over a minute old (its as_of, " +
+            "or said earlier) give its age (\"as of a minute ago\"). A balance get_balances just read is a fact: " +
+            "say it plainly."
 
     /** Only where a send could be asked for; a signing explanation goes without it. */
     const val SEND_RULES: String =

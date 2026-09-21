@@ -59,6 +59,8 @@ data class HeylanaPalette(
     /** Status only, never decoration: done, needs attention, failed. */
     val good: Color,
     val warn: Color,
+    /** [warn] at 14%: the fill of a badge that needs noticing (Devnet). */
+    val warnSoft: Color,
     val danger: Color
 )
 
@@ -95,6 +97,7 @@ val DarkGlass = HeylanaPalette(
     switchOff = c(HeylanaTokens.borderStrong),
     good = c(HeylanaTokens.success),
     warn = c(HeylanaTokens.warn),
+    warnSoft = c(HeylanaTokens.warnSoft),
     danger = c(HeylanaTokens.error)
 )
 
@@ -126,6 +129,7 @@ val LightGlass = HeylanaPalette(
     switchOff = Color(0x2914121C),
     good = Color(0xFF15A77A),
     warn = Color(0xFFC96A00),
+    warnSoft = Color(0x24C96A00),
     danger = Color(0xFFD13B2E)
 )
 

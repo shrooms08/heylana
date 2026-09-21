@@ -14,7 +14,8 @@ enum class BuddyMode(val label: String) {
     THINKING("thinking"),
     PREPARING("preparing"),
     SIMULATING("simulating"),
-    APPROVE_IN_WALLET("approve in wallet"),
+    /** The same words as the strip's label while Seed Vault is open ([xyz.heylana.app.wallet.TxText.WAITING]). */
+    APPROVE_IN_WALLET("waiting for your wallet"),
     SENT("sent"),
     WORKING("working"),
 
@@ -32,7 +33,7 @@ enum class BuddyMode(val label: String) {
         fun of(stage: SendStage): BuddyMode = when (stage) {
             SendStage.SIMULATING -> SIMULATING
             SendStage.APPROVE_IN_WALLET -> APPROVE_IN_WALLET
-            SendStage.CHECKING -> WORKING
+            SendStage.CHECKING, SendStage.LOOKING -> WORKING
         }
     }
 }

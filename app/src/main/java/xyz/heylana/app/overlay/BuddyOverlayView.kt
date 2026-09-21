@@ -529,10 +529,20 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         applyPosition()
     }
 
-    /** The send's simulation passed: the strip's words become the full preview, and Confirm can be tapped. */
-    fun showSimulationPassed(text: String) {
-        panel.showNotice(text)
+    /**
+     * The send's simulation passed: the strip becomes the "Prepared, not signed" card with
+     * the network's badge, and Confirm can be tapped.
+     */
+    fun showSimulationPassed(text: String, badge: xyz.heylana.app.wallet.ClusterBadge) {
+        panel.showTxCard(text, badge)
         panel.setSimulation(ChatPanelView.Simulation.PASSED)
+        applyPosition()
+    }
+
+    /** A send's card after Confirm: waiting for the wallet, confirming, sent or not sent. */
+    fun showTxCard(text: String, badge: xyz.heylana.app.wallet.ClusterBadge) {
+        ensurePanelOpen()
+        panel.showTxCard(text, badge)
         applyPosition()
     }
 

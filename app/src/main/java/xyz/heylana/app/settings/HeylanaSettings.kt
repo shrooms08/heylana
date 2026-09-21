@@ -229,6 +229,16 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         }.apply()
     }
 
+    /**
+     * The network the worker last said it is on (/me's cluster: "devnet" or "mainnet-beta"),
+     * for the badge on Home's header. Null until /me has been heard: no badge rather than a guess.
+     */
+    var clusterId: String?
+        get() = prefs.getString(KEY_CLUSTER, null)
+        set(value) {
+            prefs.edit().apply { if (value.isNullOrBlank()) remove(KEY_CLUSTER) else putString(KEY_CLUSTER, value) }.apply()
+        }
+
     var skillsCap: Int?
         get() = prefs.getInt(KEY_SKILLS_CAP, 0).takeIf { it > 0 }
         set(value) {
@@ -365,6 +375,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_WARM_UP = "warm_up_connection"
         private const val KEY_SKILLS_OFF = "skills_off"
         private const val KEY_SKILLS_CAP = "skills_cap"
+        private const val KEY_CLUSTER = "worker_cluster"
         private const val KEY_VOICE_PROVIDER = "voice_provider"
         private const val KEY_VOICE_NAME_PREFIX = "voice_name_"
         private const val KEY_SIMULATE_FREE = "simulate_free_plan"

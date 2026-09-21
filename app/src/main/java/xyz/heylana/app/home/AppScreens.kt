@@ -15,6 +15,7 @@ import xyz.heylana.app.skills.SkillCap
 import xyz.heylana.app.skills.SkillStore
 import xyz.heylana.app.wallet.Answer
 import xyz.heylana.app.wallet.Standing
+import xyz.heylana.app.wallet.ClusterBadge
 import xyz.heylana.app.wallet.WalletApi
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.DisposableEffect
@@ -50,6 +51,17 @@ fun AppScreens(
     // screen asks for it and starts.
     var voiceStartOnOpen by remember { mutableStateOf(false) }
 
+    // The network badge on Home's header: the last one heard at once, then /me again, since
+    // the worker's CLUSTER is the only thing that decides it.
+    var cluster by remember { mutableStateOf(ClusterBadge.of(settings.clusterId)) }
+    LaunchedEffect(Unit) {
+        (WalletApi(settings).me() as? Answer.Ok)?.let { heard ->
+            settings.clusterId = heard.value.cluster.id
+            cluster = ClusterBadge.of(heard.value.cluster.id)
+            HeylanaLog.state("app: cluster badge=${cluster?.label ?: "none"}")
+        }
+    }
+
     // The menu's plan and the buddy's switch: read again whenever the menu opens.
     var standing by remember { mutableStateOf<Standing?>(null) }
     var buddyOn by remember { mutableStateOf(BuddyOverlayService.isRunning) }
@@ -67,6 +79,8 @@ fun AppScreens(
                     answer.value
                 }
                 settings.skillsCap = answer.value.skillsCap
+                settings.clusterId = answer.value.cluster.id
+                cluster = ClusterBadge.of(answer.value.cluster.id)
                 answer.value.voice?.let { settings.rememberVoice(it.provider, it.skylar, it.archie, it.ears) }
                 HeylanaLog.state("app: plan ${answer.value.plan}")
             }
@@ -87,6 +101,7 @@ fun AppScreens(
     if (screen == Screen.HOME || homeHeld) HomeScreen(
             name = settings.callMe,
             chat = chat,
+            cluster = cluster,
             muted = muted,
             onMenu = {
                 HeylanaLog.state("app: menu opened")

@@ -793,6 +793,25 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
         enable(true)
     }
 
+    /**
+     * A send's card ([xyz.heylana.app.wallet.TxText]): the first line is its label and the
+     * network's badge — the badge amber on devnet, quiet on mainnet — and the rest reads as
+     * a notice.
+     */
+    fun showTxCard(text: String, badge: xyz.heylana.app.wallet.ClusterBadge) {
+        showNotice(text)
+        val shown = android.text.SpannableStringBuilder(answer.text)
+        val firstLineEnd = shown.indexOf('\n').let { if (it < 0) shown.length else it }
+        val at = shown.lastIndexOf(badge.label, firstLineEnd)
+        if (at >= 0) {
+            shown.setSpan(
+                android.text.style.ForegroundColorSpan(if (badge.amber) HeylanaTokens.warn else secondaryText),
+                at, at + badge.label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+            )
+        }
+        answer.text = shown
+    }
+
     /** Microphone open: the field fills in live as words are recognised. */
     fun showListening() {
         say(LISTENING)

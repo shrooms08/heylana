@@ -12,7 +12,7 @@ class ModeChipTest {
     fun `the chip says one of nine things`() {
         assertEquals(
             listOf(
-                "reading", "thinking", "preparing", "simulating", "approve in wallet", "sent", "working",
+                "reading", "thinking", "preparing", "simulating", "waiting for your wallet", "sent", "working",
                 // The two the lookout uses when nobody asked it anything.
                 "watching", "heads up", "Remembered",
             ),
@@ -21,10 +21,11 @@ class ModeChipTest {
     }
 
     @Test
-    fun `a confirmed send's stages are simulating, approve in wallet, then working until it lands`() {
+    fun `a confirmed send's stages are simulating, waiting for your wallet, then working until it lands`() {
         assertEquals(BuddyMode.SIMULATING, BuddyMode.of(SendStage.SIMULATING))
         assertEquals(BuddyMode.APPROVE_IN_WALLET, BuddyMode.of(SendStage.APPROVE_IN_WALLET))
         assertEquals(BuddyMode.WORKING, BuddyMode.of(SendStage.CHECKING))
+        assertEquals(BuddyMode.WORKING, BuddyMode.of(SendStage.LOOKING))
     }
 
     @Test

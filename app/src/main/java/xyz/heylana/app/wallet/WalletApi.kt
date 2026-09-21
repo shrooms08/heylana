@@ -309,9 +309,9 @@ class WalletApi(private val settings: HeylanaSettings) {
         }
 
     /** Answers Refused(409, "not_confirmed") until the send has landed; then its short signature. */
-    suspend fun confirmSend(id: String, signature: String?): Answer<String> =
+    suspend fun confirmSend(id: String, signature: String?): Answer<Landed> =
         post("send/confirm", JSONObject().put("id", id).apply { if (signature != null) put("signature", signature) }) {
-            it.optString("signature")
+            Landed(it.optString("signature"), it.optString("full_signature").ifEmpty { null })
         }
 
     companion object {

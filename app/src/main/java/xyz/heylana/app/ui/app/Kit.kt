@@ -72,6 +72,28 @@ fun MarkPill(subtitle: String, subtitleAccent: Boolean = false) {
     }
 }
 
+/**
+ * The network the worker is on, beside Home's name: amber on devnet — play money, worth
+ * noticing — and quiet on mainnet. From /me, never decided here.
+ */
+@Composable
+fun NetworkBadge(badge: xyz.heylana.app.wallet.ClusterBadge) {
+    val palette = LocalHeylana.current
+    val words = if (badge.amber) palette.warn else palette.inkSecondary
+    FlatSurface(
+        Modifier.border(1.dp, if (badge.amber) words else palette.borderSolid, RoundedCornerShape(10.dp)),
+        radius = 10.dp,
+        fill = if (badge.amber) palette.warnSoft else palette.surfaceHigh
+    ) {
+        Text(
+            badge.label,
+            style = HeylanaType.tiny,
+            color = words,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+        )
+    }
+}
+
 /** A suggestion chip: a flat pill in the chip fill with a solid 1dp edge, white words. */
 @Composable
 fun FlatChip(glyph: Glyph, label: String, onClick: () -> Unit) {

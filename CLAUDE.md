@@ -66,6 +66,7 @@ xyz.heylana.app
 │   ├── Profile              what the wallet is called, what to call its owner, cleanName
 │   ├── SendQuote            a send the worker checked, and the confirmation strip's words
 │   ├── SendFlow             a confirmed send: confirm, build and simulate, check, Seed Vault, then landed
+│   ├── TxState              the send's label (prepared, waiting, sent, not sent), the Devnet badge, every ending's line
 │   └── SendActivity         invisible; hosts SendFlow, since Seed Vault needs an activity to open from
 ├── brain/                   talking to the model
 │   ├── ProxyClient          POST /chat through the proxy; says quick or task, never a model
@@ -924,6 +925,36 @@ sent. Check your wallet before trying again."). Signature submission stays Seed 
 once; the worker counts a reference or a signature once. `scripts/stub-proxy.py` answers
 `/send/build` with a preview only (`--sim-fail` for a failed one), so the wallet never
 opens from the stub.
+
+**Every send says where it stands (`wallet/TxState`).** The user never has to guess whether
+Heylana is describing, preparing or waiting on a signature. From the moment a send's
+simulation passes, the strip is a card whose first line is its label and the network's badge
+— "Prepared, not signed · Devnet" — then what leaves the wallet, what arrives and the fee
+(`TxSummary.of`, from the worker's own preview; nothing is recomputed), with what the bytes
+do under it. One line is spoken: "I've prepared it on devnet. Nothing moves until you approve
+in your wallet." (no "on devnet" on mainnet; if the over-a-quarter question comes first, it
+opens "On devnet:"). Confirm leaves it prepared while it is checked once more; Seed Vault
+opening makes it "Waiting for your wallet"; a signature, "Signed, confirming" (none, "Checking
+the network"); then "Sent" — "Done. 0.01 USDC went to 7c2y…SxSv." with the short signature on
+a chip that opens Explorer on the send's network (`/send/confirm` now also returns
+`full_signature`, never logged) — or "Not sent": "Cancelled. Nothing left your wallet." for a
+rejection or Cancel, and for a failure the worker's plain reason, one next step
+(`TxText.nextStep`: "You need about 0.001 SOL more for fees.", "The network was busy, try
+again."…) and "Nothing left your wallet." A send the wallet may have sent but the network has
+not confirmed is "Not confirmed yet", never "Not sent", and says it may have left the wallet.
+Nothing is ever retried by itself. `TxMachine` decides which label follows which (a late event
+never moves an ended send; nothing is "Sent" that the wallet was never asked to sign); the chip
+stays out of the way while a card is up, and says "waiting for your wallet" in the same words.
+The trace says `tx: <label> -> <label> cluster=…`. `TxStateTest`, `SendFlowTest`.
+
+**The network is on Home's header.** A small badge beside the name: "Devnet" in amber
+(`warnSoft` fill) or "Mainnet" in quiet grey, from the worker's CLUSTER on `/me`, asked on
+Home start and kept (`HeylanaSettings.clusterId`); with nothing heard yet, no badge rather than
+a guess (`ClusterBadge.of`, `app: cluster badge=…`).
+
+**Facts and estimates.** `SolanaCore.RULES` says prices, fees and yields are estimates
+("about"), with their age when over a minute old (`get_price` returns `as_of`), and that a
+balance `get_balances` just read is a fact.
 
 **Trust in Seed Vault, said honestly.** Seed Vault can be told to trust an app, and then
 it signs without asking. Until the user has confirmed a send on this phone

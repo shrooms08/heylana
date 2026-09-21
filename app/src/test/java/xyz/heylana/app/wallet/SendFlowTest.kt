@@ -21,12 +21,15 @@ class SendFlowTest {
     )
 
     private val request = SendFlow.Request.of(quote("devnet"))
+
+    /** The worker's answer when it sees the send land; it finds the whole signature only when it looked itself. */
+    private fun landed(short: String, full: String? = null) = Landed(short, full)
     private val passes: suspend (String, Cluster) -> Answer<BuiltTransfer> = { _, _ -> Answer.Ok(BuiltFixtures.built(BuiltFixtures.TOKEN)) }
 
     private fun flow(
         build: suspend (String, Cluster) -> Answer<BuiltTransfer> = passes,
         wallet: suspend (ByteArray, Cluster) -> SeedVault.Trip<SeedVault.Signed> = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
-        confirm: suspend (String, String?) -> Answer<String> = { _, _ -> Answer.Ok("5555…5555") },
+        confirm: suspend (String, String?) -> Answer<Landed> = { _, _ -> Answer.Ok(landed("5555…5555")) },
         log: (String) -> Unit = {},
         clock: LongArray = longArrayOf(0L),
         stages: MutableList<SendStage> = mutableListOf()
@@ -45,7 +48,8 @@ class SendFlowTest {
             stages = stages
         ).run(request, PAYER)
 
-        assertEquals(SendResult.Sent("5555…5555"), result)
+        // The wallet's own signature, whole, for the Explorer link under "Done".
+        assertEquals(SendResult.Sent("5555…5555", fullSignature = "signature"), result)
         assertEquals(listOf("build:send-1:devnet", "wallet:devnet"), asked)
         assertTrue(handed.single().contentEquals(BuiltFixtures.TOKEN))
         assertEquals(listOf(SendStage.SIMULATING, SendStage.APPROVE_IN_WALLET, SendStage.CHECKING), stages)
@@ -62,7 +66,8 @@ class SendFlowTest {
         ).run(request, PAYER)
         assertFalse(walletAsked)
         assertEquals(
-            SendResult.Stopped("I did not open the wallet because the simulation failed. Not enough USDC. You have 0.03."),
+            // The worker's plain reason and its one word: the next step is chosen from the word.
+            SendResult.Stopped("Not enough USDC. You have 0.03.", StopKind.FAILED, "not_enough_token"),
             result
         )
     }
@@ -76,7 +81,7 @@ class SendFlowTest {
             wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) }
         ).run(request, PAYER)
         assertFalse(walletAsked)
-        assertEquals(SendResult.Stopped(line), result)
+        assertEquals(SendResult.Stopped(line, StopKind.FAILED, "wrong_cluster"), result)
     }
 
     @Test
@@ -88,7 +93,7 @@ class SendFlowTest {
             wallet = { _, _ -> walletAsked = true; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) }
         ).run(request, PAYER)
         assertFalse(walletAsked)
-        assertEquals(SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED), result)
+        assertEquals(SendResult.Stopped(BuildText.NOT_WHAT_WAS_CONFIRMED, StopKind.FAILED, "not_what_was_confirmed"), result)
     }
 
     @Test
@@ -97,9 +102,9 @@ class SendFlowTest {
         var walletTimes = 0
         val result = flow(
             wallet = { _, _ -> walletTimes++; SeedVault.Trip.Stopped(WalletProblem.CANCELLED) },
-            confirm = { _, _ -> searched = true; Answer.Ok("s") }
+            confirm = { _, _ -> searched = true; Answer.Ok(landed("s")) }
         ).run(request, PAYER)
-        assertEquals(SendResult.Stopped(BuildText.REJECTED), result)
+        assertEquals(SendResult.Stopped(BuildText.REJECTED, StopKind.CANCELLED), result)
         assertEquals("The wallet rejected the request. No transaction was submitted.", BuildText.REJECTED)
         assertFalse(searched)
         assertEquals(1, walletTimes)
@@ -112,7 +117,7 @@ class SendFlowTest {
             wallet = { _, _ -> walletTimes++; SeedVault.Trip.Stopped(WalletProblem.TOOK_TOO_LONG) },
             confirm = { _, _ -> Answer.Refused(410, "expired") }
         ).run(request, PAYER)
-        assertEquals(SendResult.Stopped(BuildText.EXPIRED), result)
+        assertEquals(SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED), result)
         assertEquals(1, walletTimes)
     }
 
@@ -120,11 +125,15 @@ class SendFlowTest {
     fun `unknown then found by its reference is Sent`() = runBlocking {
         val asked = mutableListOf<String?>()
         var looks = 0
+        val stages = mutableListOf<SendStage>()
         val result = flow(
             wallet = { _, _ -> SeedVault.Trip.Stopped(WalletProblem.UNKNOWN) },
-            confirm = { _, signature -> asked += signature; if (++looks < 3) Answer.Refused(409, "not_confirmed") else Answer.Ok("4444…4444") }
+            confirm = { _, signature -> asked += signature; if (++looks < 3) Answer.Refused(409, "not_confirmed") else Answer.Ok(landed("4444…4444", "4444full")) },
+            stages = stages
         ).run(request, PAYER)
-        assertEquals(SendResult.Sent("4444…4444"), result)
+        // No signature from the wallet: the worker found it, and hands the whole one back.
+        assertEquals(SendResult.Sent("4444…4444", fullSignature = "4444full"), result)
+        assertEquals(SendStage.LOOKING, stages.last())
         assertEquals(listOf<String?>(null, null, null), asked)
     }
 
@@ -136,19 +145,20 @@ class SendFlowTest {
             confirm = { _, _ -> Answer.Refused(409, "not_confirmed") },
             clock = clock
         ).run(request, PAYER)
-        assertEquals(SendResult.Stopped(BuildText.NOT_FOUND), withoutSignature)
+        assertEquals(SendResult.Stopped(BuildText.NOT_FOUND, StopKind.NOT_FOUND), withoutSignature)
         assertEquals(SendFlow.LAND_TIMEOUT_MS, clock[0])
         assertFalse(BuildText.NOT_FOUND.contains("try again", ignoreCase = true) && !BuildText.NOT_FOUND.contains("before trying again"))
 
         val signed = flow(confirm = { _, _ -> Answer.Refused(409, "not_confirmed") }).run(request, PAYER)
-        assertEquals(SendResult.Stopped(BuildText.UNKNOWN_SIGNED), signed)
+        assertEquals(SendResult.Stopped(BuildText.UNKNOWN_SIGNED, StopKind.UNSURE_SIGNED), signed)
         assertTrue(BuildText.UNKNOWN_SIGNED.contains("won't sign or submit a second copy"))
     }
 
     @Test
     fun `a transfer that is not this send ends the look at once`() = runBlocking {
         val result = flow(confirm = { _, _ -> Answer.Refused(402, "no_matching_transfer") }).run(request, PAYER)
-        assertEquals(SendResult.Stopped(SendFlow.DID_NOT_MATCH), result)
+        // Something landed that is not this send: it may have left the wallet, so it is never "not sent".
+        assertEquals(SendResult.Stopped(SendFlow.DID_NOT_MATCH, StopKind.UNSURE_SIGNED), result)
     }
 
     @Test
@@ -157,11 +167,11 @@ class SendFlowTest {
         val clock = longArrayOf(0L)
         var looks = 0
         val result = flow(
-            confirm = { _, _ -> if (++looks < 3) Answer.Refused(409, "not_confirmed") else Answer.Ok("5555…5555") },
+            confirm = { _, _ -> if (++looks < 3) Answer.Refused(409, "not_confirmed") else Answer.Ok(landed("5555…5555")) },
             log = { logged += it },
             clock = clock
         ).run(request, PAYER)
-        assertEquals(SendResult.Sent("5555…5555"), result)
+        assertEquals(SendResult.Sent("5555…5555", fullSignature = "signature"), result)
         assertEquals(5_000L, clock[0])
         assertEquals(3, logged.count { it.startsWith("send: check #") })
         assertTrue(logged.any { it.contains("check #1") && it.contains("result=409 not_confirmed") })
@@ -170,9 +180,9 @@ class SendFlowTest {
     @Test
     fun `a signature back within 1500ms of Seed Vault opening was signed automatically, and is said so`() = runBlocking {
         val fast = flow(wallet = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 400)) }).run(request, PAYER)
-        assertEquals(SendResult.Sent("5555…5555", autoSigned = true), fast)
+        assertEquals(SendResult.Sent("5555…5555", autoSigned = true, fullSignature = "signature"), fast)
         val read = flow(wallet = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 1_500)) }).run(request, PAYER)
-        assertEquals(SendResult.Sent("5555…5555", autoSigned = false), read)
+        assertEquals(SendResult.Sent("5555…5555", autoSigned = false, fullSignature = "signature"), read)
         assertTrue(BuildText.AUTO_SIGNED.startsWith("Seed Vault signed that automatically because Heylana is marked trusted there."))
     }
 }

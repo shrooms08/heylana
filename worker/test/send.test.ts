@@ -208,7 +208,8 @@ test('confirming: not yet, then landed, then idempotent', async () => {
   chain.tx = tokenTx(pubkey)
   const landed = await worker.fetch(req('/send/confirm', { id: quote.id, signature: SIG }, session), e)
   assert.equal(landed.status, 200)
-  assert.deepEqual(await landed.json(), { confirmed: true, signature: '5555…5555' })
+  // Short for the words, whole for the Explorer link under "Done".
+  assert.deepEqual(await landed.json(), { confirmed: true, signature: '5555…5555', full_signature: SIG })
 
   chain.tx = null
   const again = await (await worker.fetch(req('/send/confirm', { id: quote.id, signature: SIG }, session), e)).json()
@@ -247,7 +248,8 @@ test('with no signature from the wallet, the landed transfer is found on chain',
   chain.tx = tokenTx(pubkey)
   const res = await worker.fetch(req('/send/confirm', { id: quote.id }, session), e)
   assert.equal(res.status, 200)
-  assert.deepEqual(await res.json(), { confirmed: true, signature: '4444…4444' })
+  // Found by the worker itself: the whole signature comes back too, since the wallet gave none.
+  assert.deepEqual(await res.json(), { confirmed: true, signature: '4444…4444', full_signature: SIG2 })
 })
 
 test('nothing new on chain is not confirmed, and an older transfer does not count', async () => {

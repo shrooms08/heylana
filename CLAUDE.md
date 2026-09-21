@@ -844,6 +844,35 @@ themselves. Because none of it asks a model anything, nothing on the page can ta
 "ignore this warning" and a token named SAFE are tested on both sides. Every warning says
 what was found and "Check the address bar", and none of them ever says safe.
 
+**A listed domain catches its subdomains (`ScamWatch.blockedBy`).** A host is on the list if it,
+or any parent down to the registrable domain, is listed: claim.evil.com is caught by a listed
+evil.com. A public suffix (com, io, co.uk…) or a shared hosting parent (`SHARED_PARENTS`:
+vercel.app, netlify.app, pages.dev, github.io, web.app, firebaseapp.com, herokuapp.com,
+onrender.com, workers.dev, gitbook.io, notion.site, webflow.io, framer.website, wixsite.com,
+blogspot.com) is never a match, so a listed bad.vercel.app catches itself and x.bad.vercel.app
+but never vercel.app; a real Solana domain is never reported. The list is named in the app and
+PRODUCT.md as "a scam watchlist built from ScamSniffer's feed and Phantom's blocklist" (the
+Phantom part a snapshot). Debug: `--es test_scam <domain>` adds a made-up domain on this phone
+only (`''` clears it). Checked on the Seeker on Sept 21: Chrome on claim.heylana-test-scam.example
+with heylana-test-scam.example listed — shown in 162ms, spoken in 993ms the first time the new
+line was ever said (cached after).
+
+**A Solana app's own confirm (`overlay/InAppConfirm`).** Jupiter signs with its own wallet behind
+Android's fingerprint prompt, not Seed Vault, so the signing lookout was silent. A System UI
+window that is not the shade, volume, power, recents, a toast, the screenshot or the keyguard
+(the Seeker's prompt carries no fingerprint words in its class or title) over a known app's form
+makes Heylana read the app's window — never System UI's — and say "Jupiter wants you to
+confirm: 0.0009 SOL for about 0.1071 USDC." (the opening prefetched when Jupiter comes up and
+played from the phone, the amounts after it), plus "Check the token: X is not Y." or "That is
+most / almost all of the SOL in this wallet." Never "safe". If Android lists only the prompt's
+window and the app's swap form was seen in the last minute, "Jupiter wants you to confirm a swap.
+Check the amounts before you touch the sensor." — never an older amount. An unlock has no form
+under it and stays silent (seen on the Seeker). Apps that draw their own sheet (Phantom,
+Solflare, Backpack) are an `InAppConfirm.App` entry with `Prompt.OWN_SHEET`, their pay/get labels
+and button words, added once walked. `glance: in-app confirm app=… window_event_ms=0 read_ms=…
+spoke_asked_ms=…`. **Not yet proved on the Seeker**: the test account had too little SOL for
+Jupiter to put up its swap prompt. `InAppConfirmTest`.
+
 **The phishing list goes to the phone, not the other way.** `/lookout` hands over the whole
 list once a day (`?have=<version>` gets a few bytes back when it is already the newest), and
 every check happens on the phone: no address bar, no domain and no page anyone visited is
@@ -851,8 +880,12 @@ ever sent anywhere. The worker builds it from `scamsniffer/scam-database` (GPL-3
 to daily, the feed Phantom's product uses — read a day at a time from `blacklist/archive/`,
 a kilobyte or two, because the whole file is nine megabytes and their open feed runs a week
 behind) and `phantom/blocklist` as a frozen seed (about 2,300 Solana domains, unchanged
-since January 2025). Only the Solana-relevant slice is kept (`worthKeeping`), capped at
-`LOOKOUT_CAP` 8,000 — live on Sept 20: 1,239 domains, a 26 KB download. A source that will
+since January 2025). **Every listed domain is kept** (polish-11: the Solana-words filter kept 24
+of a day's 77 and 1,220 of Phantom's 2,241, and every one is a known scam), newest first with
+Phantom's snapshot last, capped at `LOOKOUT_CAP` 8,000 with a `cap_truncated` warning logged if it
+ever cuts; a list built with the filter (no `format: 2`) is rebuilt at once and the snapshot
+folded in again (`lookout:seed:v2`). Live on Sept 21: 1,261 domains before, 2,335 after.
+`ARCHIVE_LAG_DAYS` is 8: upstream is 7 days delayed, 8 gives a day's margin. A source that will
 not answer leaves yesterday's list standing. `test/lookout.test.ts`.
 
 **What a transaction actually does (`worker/src/instructions.ts`).** Every send and Pro

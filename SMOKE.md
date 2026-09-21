@@ -1,71 +1,57 @@
-# Smoke test — polish-8-eval
+# Smoke test — polish-8-eval (counters, and how-Solana-works answers)
 
-For Minos. This one is about developer answers: Heylana now looks the answer up in her own
-Solana library **before** she thinks, so the answer comes with the page it came from, and a
-source chip under it. The server is deployed already. Install the app, then run
+For Minos. Two things changed. The server no longer falls over when it cannot save its
+counters (that was Sunday afternoon's errors), and it saves them about a tenth as often. And
+any question about how Solana works now gets a looked-up answer with its page under it, not
+only questions shaped like code. The server is deployed already. Install the app, then run
 `./scripts/a11y.sh` once.
 
-**Live calls this test spends: 5 chat, 5 spoken answers.** Nothing is sent, nothing is
-signed, no wallet opens. Devnet.
+**Live calls this test spends: 4 chat, 4 spoken answers.** Nothing is sent, nothing is
+signed, no wallet opens.
 
 ---
 
-## 1. A developer's question, with its page under it (2 chat)
+## 1. How Solana works, answered from the library (2 chat)
 
 1. Open Heylana. You are on Home.
-2. Tap the **Message** box and type: `What does the Anchor init constraint do`. Tap the
-   blue arrow.
-3. Within about five seconds she speaks, and the strip under the orb shows the answer —
-   three or four lines — with **a chip under it** saying something like
-   **"Anchor docs: Anchor account…"**.
-4. **Tap the chip.** The browser opens on that page. Come back to Heylana.
-5. Type: `How do I derive a PDA in Anchor`. Same again: an answer, and a chip under it.
+2. Tap the **Message** box, type `How long is a Solana epoch`, tap the blue arrow.
+3. She says **about 36 hours** (a day and a half), and **"as of September 2026"**. Under the
+   words there is **a chip** naming the page it came from. There is **no code** above the words.
+   - Wrong: "two days", or "two to three days". That is the old number.
+4. Type `What is Agave`. Same shape: a few spoken sentences, a chip, no code.
 
-**What is new:** before this, most answers like these came back with no chip at all —
-Heylana answered from memory and there was nothing to check her against. Every one should
-now carry a chip. If an answer has no chip, that is worth telling me.
+**What is new:** before this, both of these were treated as ordinary questions — no lookup, no
+chip, and sometimes a stale number from memory.
 
 ---
 
-## 2. The answer beats the week's card (no live calls)
+## 2. Code only when you ask for code (1 chat)
 
-The card that says "What I caught this week" sits in the same place as the answer.
-
-1. If the card is showing on Home, leave it there — **do not** tap Dismiss.
-2. Ask anything at all (you can reuse an answer already on screen from step 1: just look).
-3. The **answer** is what you see under the orb, not the card. Before this fix the card
-   stayed and the answer was invisible — you only heard it.
-4. Close Heylana and open it again without asking anything: the card is back.
+1. Type `How do I add a priority fee to a transaction`.
+2. This time a few lines of **code** sit above the words, with the library named on the first
+   line. The words say the trap in one sentence. A chip is underneath.
 
 ---
 
-## 3. The four facts that had moved on (2 chat)
+## 3. Your own money still goes the old way (1 chat)
 
-Heylana was repeating numbers that stopped being true this year.
-
-1. Type: `How long is a Solana slot`. She should say **300 milliseconds** — *not* 400.
-2. Type: `How long is a Solana epoch`. She should say **about 36 hours**, or a day and a
-   half — *not* two days.
-
-If either of those comes back as the old number, tell me: it means something is still
-quoting a stale page.
+1. Type `How much SOL do I have`.
+2. She answers with your balance, as she always has — **not** a lesson about SOL, and no
+   "as of September 2026".
 
 ---
 
-## 4. A lesson still teaches (1 chat)
+## 4. Nothing to check for the counters
 
-1. On Home tap **Learn Solana**, then **Validators, leaders, slots and epochs**.
-2. Heylana starts the lesson in the strip ("Lesson · validators and slots, 1 of 5") and
-   speaks the first chunk. It should say a slot is 300 milliseconds.
-3. Answer her check question however you like, or say **stop** to end it. Nothing else
-   needs checking here — this step is only to be sure lessons still work at all.
+The fix for Sunday's errors cannot be shown by tapping: it only matters on the day the server
+runs out of saves. If you ever see "Something went wrong on my side." on every question for
+a whole afternoon again, tell me — that is what this was.
 
 ---
 
 ## What I would want to hear about
 
-- An answer with no chip under it.
-- A chip that opens the wrong page, or a page that does not exist.
-- Anything read out that sounds like a list, a heading or a web address — answers should
-  still be one to three plain spoken sentences.
-- "400 milliseconds", "two days", or anything about Firedancer not being live yet.
+- An answer about how Solana works with no chip under it.
+- Code appearing when you did not ask for it.
+- "400 milliseconds", "two days", or anything saying Firedancer is not live yet.
+- A balance, a send or "what am I signing" answered like a lesson.

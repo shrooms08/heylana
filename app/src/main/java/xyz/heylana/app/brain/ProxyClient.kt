@@ -155,12 +155,18 @@ class ProxyClient(private val settings: HeylanaSettings) {
         } else {
             HeylanaPrompt.userMessage(screenText, question, history, if (route.allowsGreeting) greeting else null, teaching, walkThrough, lens)
         }
-        // A developer's question gets the developer's shape: the code, the trap, the source,
-        // and the date when the answer depends on which release they are on.
-        val asked = if (route.solana != null && DevQuestion.isDev(question)) {
+        // A question about how Solana works gets the knowledge base's answer: the lookup, the
+        // source, the trap, and the date when the answer depends on which release it is. Code
+        // leads only when the question asks for code. Never on a signing screen, a send or a
+        // quick action, which have their own shapes.
+        val mechanics = route.solana != null && !quickAction && route.why != Routing.Why.SEND_QUESTION &&
+            !route.explainsSigning && DevQuestion.isMechanics(question)
+        val asked = if (mechanics) {
+            val code = DevQuestion.wantsCode(question)
             val dated = DevQuestion.movesWithVersion(question)
-            HeylanaLog.state("brain: developer question dated=$dated")
-            message + "\n\n" + HeylanaPrompt.DEV_LINE + if (dated) HeylanaPrompt.DEV_VERSION_LINE else ""
+            HeylanaLog.state("brain: solana mechanics code=$code dated=$dated")
+            message + "\n\n" + (if (code) HeylanaPrompt.DEV_LINE else HeylanaPrompt.MECHANICS_LINE) +
+                if (dated) HeylanaPrompt.DEV_VERSION_LINE else ""
         } else {
             message
         }

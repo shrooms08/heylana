@@ -67,15 +67,116 @@ object DevQuestion {
         return ASKING.containsMatchIn(text)
     }
 
+    // ------------------------------------------------------------ how Solana works
+
+    /**
+     * What Solana is made of. Broad on purpose — "fees", "blocks", "clients" — because this
+     * is only ever asked once the question has already loaded Solana (a Solana word, a Solana
+     * app in front): here "fees" can only mean Solana's.
+     */
+    private val SUBJECT = Regex(
+        "(?<![\\p{L}])(" +
+            "solana|epochs?|slots?|validators?|leaders?|leader schedule|blocks?|blockhash|finality|" +
+            "finali[sz]ed|confirmations?|forks?|" +
+            "fees?|priority fees?|compute units?|compute budget|rent|rent[- ]exempt\\w*|lamports?|" +
+            "accounts?|account model|programs?|instructions?|transactions?|signatures?|signers?|" +
+            "versioned|lookup tables?|" +
+            "tokens?|spl|token-2022|token2022|mints?|associated token|atas?|nfts?|" +
+            "rpc|geyser|snapshots?|ledger|accounts ?db|" +
+            "clients?|agave|firedancer|frankendancer|jito|" +
+            "stak(e|es|ing|ed)|stake accounts?|delegat\\w*|rewards?|inflation|votes?|voting|" +
+            "mempool|turbine|gulf stream|proof of history|poh|tower bft|sealevel|parallel|" +
+            "write locks?|locks?|local fee markets?|" +
+            "seed vault|mobile wallet adapter|mwa|dapp store|seeker|saga|solana mobile|" +
+            "pdas?|program derived|cpi|anchor|sysvars?|bpf|sbf|loader|upgrade authority" +
+            ")(?![\\p{L}])",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Asking how something is, rather than telling Heylana to do something. */
+    private val ASKS_HOW_IT_WORKS = Regex(
+        "(^\\s*(what|how|why|when|which|who|where|does|do|did|is|are|was|were|can|could|will|would|" +
+            "should|has|have)(?![\\p{L}])|\\?\\s*$|explain|tell me about|difference between|" +
+            "what'?s|how'?s|meaning of)",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * The user's own money, a decision, the screen in front, or something to do: Heylana's other
+     * paths answer those — the balance, the send, the signing explanation, the button.
+     */
+    private val SOMETHING_ELSE = Regex(
+        "(?<![\\p{L}])(" +
+            "my (sol|balance|wallet|tokens?|funds|money|nfts?|portfolio|stake|coins?)|" +
+            "how much (do i|have i|is my|is sol|am i)|how much (sol|usdc|skr) (do i|have i|is in|in my)|worth|" +
+            "(sol|token|coin|usdc|skr|bonk|jup)'?s? price|price of|" +
+            "should i (buy|sell|stake|unstake|swap|send|hold|invest|trust|approve|sign)|is it safe|safe to|scam|" +
+            "(send|swap|buy|sell|pay|transfer) (\\d|all|everything|it|them|sol|usdc|skr|to|my)|" +
+            "signing|sign this|approve this|" +
+            "this|here|on (the )?screen|button|tap|click" +
+            ")(?![\\p{L}])",
+        RegexOption.IGNORE_CASE
+    )
+
+    private val ORDER = Regex("^\\s*(please\\s+)?(send|swap|buy|sell|pay|transfer|stake|unstake|approve|sign)(?![\\p{L}])", RegexOption.IGNORE_CASE)
+
+    /** A quoted message is the thing asked about, not the asking: "What does 'This transaction…' mean?" */
+    private val QUOTED = Regex("'[^']{3,}'|\"[^\"]{3,}\"|‘[^’]{3,}’|“[^”]{3,}”")
+
+    /**
+     * Whether [question] is about how Solana works — epochs, slots, validators, fees,
+     * accounts, programs, tokens, RPC, clients, staking, the mobile stack — whether or not
+     * it is shaped like code.
+     *
+     * The dev eval found the narrow test above leaving most of these out: "What is Agave?"
+     * and "How long is a Solana epoch?" were a user's questions to it, so they got no
+     * lookup, no source and no date — and a stale number from memory. Every one of them now
+     * gets the same treatment as a developer's: the knowledge base first, its page as a chip,
+     * the month when the fact moves, and the trap where there is one. Code comes first only
+     * when the question asks for it ([wantsCode]).
+     *
+     * Only ever asked of a question that already loaded Solana.
+     */
+    fun isMechanics(question: String): Boolean {
+        val text = question.trim()
+        if (text.isEmpty()) return false
+        if (isDev(text)) return true
+        // An error Heylana knows by name is a question about how Solana behaves.
+        if (ErrorTable.find(text) != null) return true
+        val unquoted = QUOTED.replace(text, " ")
+        // A sentence that opens with an order is a thing to do: "Send 2 SOL…", "Swap it…".
+        if (ORDER.containsMatchIn(unquoted)) return false
+        if (SOMETHING_ELSE.containsMatchIn(unquoted)) return false
+        return SUBJECT.containsMatchIn(text) && ASKS_HOW_IT_WORKS.containsMatchIn(text)
+    }
+
+    /** Asking for code, or for how to do a thing that is done in code. */
+    private val CODE_ASK = Regex(
+        "(?<![\\p{L}])(" +
+            "code|snippet|sample|example code|write (me )?(a|an|some)|" +
+            "how do i|how can i|how would i|how should i|how to|" +
+            "web3\\.js|@solana|solana/kit|cli|command|terminal" +
+            ")(?![\\p{L}])",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Whether the answer should lead with code: a mechanics question that asks for it. */
+    fun wantsCode(question: String): Boolean =
+        // "Error Code: ConstraintSeeds" is the error's name, not a request for code.
+        isMechanics(question) && CODE_ASK.containsMatchIn(ERROR_CODE.replace(question, " "))
+
+    private val ERROR_CODE = Regex("error code", RegexOption.IGNORE_CASE)
+
     /**
      * Whether the answer to [question] depends on which release you are on, and so has to
      * say which month it is talking about. Anything with a moving number in it: what a
      * transaction may weigh, what a slot lasts, which client is running, what a library
-     * calls its functions this year.
+     * calls its functions this year, whether a rule still holds.
      */
     private val MOVES = Regex(
         "(version|release|latest|current|now|today|anchor|agave|firedancer|token-2022|token2022|" +
-            "slot time|epoch|transaction size|compute unit|priority fee|web3\\.js|@solana|deprecat)",
+            "slots?|epochs?|size|maximum|max |limit|default|still|mainnet|clients?|" +
+            "compute unit|priority fee|web3\\.js|@solana|deprecat)",
         RegexOption.IGNORE_CASE
     )
 

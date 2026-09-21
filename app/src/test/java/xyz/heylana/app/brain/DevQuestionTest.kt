@@ -101,6 +101,82 @@ class DevQuestionTest {
         assertEquals(words, Sources.shown("   ", words))
     }
 
+    // ------------------------------------------------------------ how Solana works
+
+    @Test
+    fun `how Solana works gets the knowledge base's answer, code-shaped or not`() {
+        for (question in listOf(
+            "What is Agave?",
+            "How long is a Solana epoch?",
+            "How long is a Solana slot and how many does one leader get in a row?",
+            "Does Solana have a mempool?",
+            "What is a snapshot used for on Solana?",
+            "How do staking rewards actually reach a delegator?",
+            "Why do validators need SOL just to keep running?",
+            "What is a local fee market on Solana?",
+            "Is rent still collected from accounts on Solana?",
+            "How much SOL does a token account need to be rent exempt?",
+            "What does signAndSendTransactions do in Mobile Wallet Adapter?",
+            "What causes 'Signature verification failed' when I send a transaction?",
+            "What does 'This transaction has already been processed' mean?",
+            "What does AccountOwnedByWrongProgram (3007) tell me?",
+            "When should I avoid init_if_needed in Anchor?",
+        )) {
+            assertTrue(question, DevQuestion.isMechanics(question))
+        }
+    }
+
+    @Test
+    fun `the user's own money, a decision, a send or the screen are someone else's question`() {
+        for (question in listOf(
+            "How much SOL do I have?",
+            "Is my SOL safe?",
+            "How much is SOL worth?",
+            "What is the SOL price today?",
+            "Should I stake my SOL?",
+            "Send 0.05 USDC to Ada",
+            "Send 2 SOL to ada.skr",
+            "Swap it all to USDC",
+            "What am I signing?",
+            "What does this button do?",
+            "What is on the screen here?",
+            "Is it safe to approve this?",
+            "Tell me a joke",
+        )) {
+            assertFalse(question, DevQuestion.isMechanics(question))
+        }
+    }
+
+    @Test
+    fun `code leads only when the question asks for it`() {
+        assertTrue(DevQuestion.wantsCode("How do I add a priority fee to a transaction?"))
+        assertTrue(DevQuestion.wantsCode("How do I call another program from inside an Anchor instruction?"))
+        assertTrue(DevQuestion.wantsCode("Show me the code to derive a PDA"))
+        // Asking what a thing is, or why an error happens, wants words.
+        assertFalse(DevQuestion.wantsCode("How long is a Solana epoch?"))
+        assertFalse(DevQuestion.wantsCode("What do the seeds and bump constraints check in Anchor?"))
+        assertFalse(DevQuestion.wantsCode("Why can two transactions that write the same account not run at once?"))
+        // "Error Code" is the error's name.
+        assertFalse(DevQuestion.wantsCode("My Anchor program failed with Error Code: ConstraintSeeds, Error Number: 2006. What does it mean?"))
+    }
+
+    @Test
+    fun `the words line asks for the lookup, the trap and the source, and no code`() {
+        val line = HeylanaPrompt.MECHANICS_LINE
+        assertTrue(line, line.contains("knowledge base"))
+        assertTrue(line, line.contains("trap"))
+        assertTrue(line, line.contains("cite"))
+        assertFalse("no code unless asked", line.contains("\"code\""))
+    }
+
+    @Test
+    fun `a slot or an epoch is dated, since both moved this year`() {
+        assertTrue(DevQuestion.movesWithVersion("How long is a Solana slot?"))
+        assertTrue(DevQuestion.movesWithVersion("How long is a Solana epoch?"))
+        assertTrue(DevQuestion.movesWithVersion("What is the maximum size of a Solana transaction?"))
+        assertTrue(DevQuestion.movesWithVersion("Is rent still collected from accounts on Solana?"))
+    }
+
     @Test
     fun `a reply with no code is unchanged`() {
         assertNull(null as String?)

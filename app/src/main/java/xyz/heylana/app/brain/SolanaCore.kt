@@ -56,6 +56,10 @@ object SolanaCore {
         "Mobile Wallet Adapter", "validator", "validators", "epoch", "blockhash", "lamports", "lamport",
         "rent-exempt", "rent exempt", "Firedancer", "Agave", "Turbine", "Gulf Stream", "Sealevel",
         "Proof of History", "Tower BFT", "Geyser", "SPL", "devnet", "mainnet",
+        // How Solana works, in the words people ask it with: the dev eval's sixty questions
+        // held these to it, since a question with none of them never reaches the lookups.
+        "transactions", "staking", "staked", "delegator", "delegators", "stake account",
+        "leader schedule", "mempool", "account data", "account's data", "CU", "CUs",
     )
 
     private val WORDS: List<Regex> = (Keyterms.ALWAYS + EXTRA_WORDS).distinct().map { word ->
@@ -69,7 +73,9 @@ object SolanaCore {
 
     fun mentionsSolana(question: String): Boolean =
         ADDRESS.containsMatchIn(question) || NAME.containsMatchIn(question) ||
-            WORDS.any { it.containsMatchIn(question) }
+            WORDS.any { it.containsMatchIn(question) } ||
+            // An Anchor, SPL, runtime, MWA or Seed Vault error by name is a Solana question.
+            ErrorTable.find(question) != null
 
     /** Why to load the block for this question in this app, or null to leave it out. */
     fun whyLoad(packageName: String?, question: String): Load? = when {

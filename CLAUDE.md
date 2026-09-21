@@ -655,6 +655,22 @@ markdown comes off, the first fenced block becomes `code`, the first whole sente
 60 words become `say`, and the chat log says `prose_wrapped`. Over the 60: 0 prose, 0
 wrapped, 0 unreadable. `test/kb.test.ts`.
 
+**How Solana works gets the knowledge base's answer (`brain/DevQuestion`).** Any question
+about how Solana works — epochs, slots, validators, fees, accounts, programs, tokens, RPC,
+clients, staking, the mobile stack — is `isMechanics`, code-shaped or not: "What is Agave?"
+and "How long is a Solana epoch?" used to be a user's questions and got no lookup, no
+source and a stale number. It needs Solana loaded (the phone's Solana words now include
+plurals and the ways people ask — transactions, staking, delegator, mempool, CUs — and any
+error `ErrorTable` knows by name), a subject and a question's shape, and never the user's
+own money, a decision, a send, a signing question or the screen in front ("how much SOL do
+I have", "should I stake", "send 2 SOL", "what does this button do"). It carries
+`HeylanaPrompt.MECHANICS_LINE` (the pages handed over, one to three sentences, the trap or
+out-of-date belief in one sentence, the url in `cite`), or `DEV_LINE` — code first — only
+when `wantsCode` (how do I, how to, code, snippet, a CLI; "Error Code: …" is a name, not a
+request), and `DEV_VERSION_LINE` when `movesWithVersion` (slots, epochs, sizes, limits,
+defaults, clients, "still"…). Never on a signing explanation, a send or a quick action.
+`brain: solana mechanics code=… dated=…`. `DevQuestionTest`.
+
 **Explain this error (`brain/ErrorTable`).** An error in the user's words — an Anchor
 "Error Code: … Error Number: …" line, a bare name like AccountDidNotDeserialize, "custom
 program error: 0x…", a runtime message like "Blockhash not found", an MWA `ERROR_…` or a Seed
@@ -1105,10 +1121,10 @@ correct answer must make, a source chip where one is due, no invented API (a den
 nine names that sound real and are not), and a date on a fact that moves with a release.
 One /chat each, on its own throwaway wallet (`--state`), and `--rescore` scores saved runs
 again for nothing. The request is `scripts/eval/dev_request.json`, written by
-`DevRequestTest` from `HeylanaPrompt`; the developer's lines the phone adds per question go
-on per `scripts/eval/dev_verdicts.json`, which the same test fills in with
-`DevQuestion`'s own verdict — of the sixty, the phone calls eighteen a developer's
-question. Sept 20: 24 of 60, then 30 with the notes in `scripts/kb/notes/`, then **39 of
+`DevRequestTest` from `HeylanaPrompt`; the lines the phone adds per question go on per
+`scripts/eval/dev_verdicts.json`, which the same test fills in with `DevQuestion`'s own
+verdicts, and it fails unless every one of the sixty loads Solana on the phone and gets the
+mechanics treatment. Sept 20: 24 of 60, then 30 with the notes in `scripts/kb/notes/`, then **39 of
 60** (stackexchange 12, errors 13, infrastructure 14) once the knowledge base was read
 rather than offered and the answer's shape forced.
 

@@ -99,7 +99,8 @@ VERDICTS = os.path.join(HERE, "dev_verdicts.json")
 
 def load_verdicts():
     """
-    Which questions the phone would give the developer's shape to, and which it would date.
+    Which questions the phone treats as how-Solana-works, which of those ask for code, and
+    which it would date.
 
     `ProxyClient.ask` adds those lines itself, per question, so they are not in the fixed
     prefix. `DevRequestTest` runs the phone's own classifier over the set and writes the
@@ -115,8 +116,10 @@ def body_for(request, case, verdicts):
     question = case["q"]
     verdict = verdicts.get(case["id"], {})
     asked = request["user_prefix"] + question + request["user_suffix"]
-    if verdict.get("dev"):
-        asked += "\n\n" + request["dev_line"]
+    # What ProxyClient.ask adds: the code-first line when code was asked for, else the
+    # words line for a question about how Solana works; the date when the fact moves.
+    if verdict.get("mechanics"):
+        asked += "\n\n" + (request["dev_line"] if verdict.get("code") else request["mechanics_line"])
         if verdict.get("dated"):
             asked += request["dev_version_line"]
     return {
@@ -235,6 +238,8 @@ def main():
             "id": case["id"], "group": case["group"], "passed": all(p for _, p, _ in checks),
             "words": len(say_text(obj).split()), "ms": ms, "checks": checks,
             "say": say_text(obj), "sources": obj.get("sources") or [],
+            # Kept so a re-score reads what the live score read: the code counts too.
+            "code": obj.get("code") if isinstance(obj.get("code"), str) else None,
         })
         print(".", end="", flush=True)
     print()
@@ -280,7 +285,7 @@ def rescore(paths, by_id, worst):
                 if not row.get("say"):
                     rows.append({**row, "checks": [("reply", False, "unreadable")], "passed": False})
                     continue
-                obj = {"say": row["say"], "sources": row.get("sources") or []}
+                obj = {"say": row["say"], "sources": row.get("sources") or [], "code": row.get("code")}
                 checks = score(case, obj, answer_text(obj))
                 rows.append({**row, "checks": checks, "passed": all(p for _, p, _ in checks)})
     table(rows)

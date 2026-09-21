@@ -303,10 +303,21 @@ object HeylanaPrompt {
             "missing flag, the check that is not what it looks like — and nothing else. Put the url you used in " +
             "\"cite\". "
 
+    /**
+     * A question about how Solana works that does not ask for code: the same lookup, source
+     * and trap as a developer's, in words. "How long is an epoch" wants a sentence with the
+     * number and the month it is true for, not a snippet.
+     */
+    const val MECHANICS_LINE: String =
+        "This is a question about how Solana works. Answer from the Solana knowledge base pages given with it " +
+            "(search it if they do not cover it), not from memory: numbers here have changed. Say it in one to " +
+            "three short sentences. If there is a common trap or a belief that is out of date, name it in one " +
+            "short sentence. Put the url you used in \"cite\". "
+
     /** Said when the answer depends on which release the reader is on. */
     const val DEV_VERSION_LINE: String =
-        "This fact depends on the version: say \"as of September 2026\" in the answer, and name the release the " +
-            "code is for. "
+        "This fact depends on the version: say \"as of September 2026\" in the answer, and if there is code, " +
+            "name the release it is for. "
 
     /** Explanations walk the screen: a piece per sentence, pointing as it goes. */
     const val SEGMENTS_LINE: String =

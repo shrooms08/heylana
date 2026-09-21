@@ -5,6 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import xyz.heylana.app.brain.DevQuestion
 import xyz.heylana.app.brain.HeylanaPrompt
+import xyz.heylana.app.brain.SolanaCore
 import java.io.File
 
 /**
@@ -48,6 +49,7 @@ class DevRequestTest {
             // developer's one. The eval was sending the question without it, so it was
             // measuring an answer the phone never asks for.
             "dev_line" to HeylanaPrompt.DEV_LINE,
+            "mechanics_line" to HeylanaPrompt.MECHANICS_LINE,
             "dev_version_line" to HeylanaPrompt.DEV_VERSION_LINE,
         )
         out.writeText(json(request) + "\n")
@@ -75,11 +77,19 @@ class DevRequestTest {
         val verdicts = set.associate { line ->
             val question = field(line, "q")
             field(line, "id") to mapOf(
-                "dev" to DevQuestion.isDev(question),
+                "mechanics" to DevQuestion.isMechanics(question),
+                "code" to DevQuestion.wantsCode(question),
                 "dated" to DevQuestion.movesWithVersion(question),
             )
         }
         assertEquals(60, verdicts.size)
+
+        // Every one of the sixty is about how Solana works, so on the phone every one must
+        // load Solana (which is what sends the lookups) and get the mechanics treatment.
+        val noSolana = set.filter { !SolanaCore.mentionsSolana(field(it, "q")) }.map { field(it, "id") }
+        assertTrue("these would not load Solana on the phone: $noSolana", noSolana.isEmpty())
+        val notMechanics = verdicts.filterValues { it["mechanics"] != true }.keys
+        assertTrue("these would not get the mechanics treatment: $notMechanics", notMechanics.isEmpty())
         File(repo, "scripts/eval/dev_verdicts.json").writeText(json(verdicts) + "\n")
     }
 

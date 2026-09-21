@@ -32,6 +32,9 @@ class BalanceNetworkTest {
             appInFront = BalanceNetwork.appName("com.solanamobile.wallet")
         )
         assertEquals("You've got 17.65 USDC on devnet. That's your devnet balance; the Wallet shows mainnet.", line)
+        // As the Seeker's answer came back on 2026-09-21: it said so itself, so nothing is added.
+        val saidSo = "You have 17.65 USDC, but that's on devnet, not the mainnet wallet shown on your screen."
+        assertEquals(saidSo, BalanceNetwork.said(saidSo, devnet = true, balancesRead = true, appInFront = "the Wallet"))
         assertEquals("Jupiter", BalanceNetwork.appName("ag.jup.jupiter.android"))
         assertNull(BalanceNetwork.appName("com.android.chrome"))
     }

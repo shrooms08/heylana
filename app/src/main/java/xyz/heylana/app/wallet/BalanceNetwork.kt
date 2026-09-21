@@ -47,7 +47,8 @@ object BalanceNetwork {
     }
 
     private fun withWalletLine(text: String, appInFront: String?): String {
-        if (appInFront == null || text.contains("shows mainnet", ignoreCase = true)) return text
+        // The model often says it already ("not the mainnet wallet shown"): once is enough.
+        if (appInFront == null || text.contains("mainnet", ignoreCase = true)) return text
         return text.trimEnd() + " That's your devnet balance; $appInFront shows mainnet."
     }
 

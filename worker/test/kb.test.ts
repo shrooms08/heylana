@@ -285,7 +285,7 @@ test('who is a user asking how, and which pages are for developers', () => {
   for (const q of ['how do I install an app', 'How do I swap SOL to USDC?', 'how can I earn on my USDC', 'teach me to swap', 'how do I send 1 SOL to my friend', 'where do I stake SOL', 'help me deposit into Earn']) {
     assert.ok(isUserHowTo(q), q)
   }
-  for (const q of ['how much SOL is in this Jupiter account? say the exact number shown', 'what is my balance', 'how much USDC do I have']) {
+  for (const q of ['how much SOL is in this Jupiter account? say the exact number shown', 'what is my balance', 'how much USDC do I have', 'whats my USDC balance']) {
     assert.ok(isUserHowTo(q), q)
   }
   for (const q of ['how do I publish my app', 'how do I send a transaction with web3.js', 'How do I derive a PDA in Anchor?', 'how do I deploy a program', 'what is an epoch', 'install the Solana CLI', 'how do I install the Anchor CLI', 'why did my swap fail with error 0x1']) {

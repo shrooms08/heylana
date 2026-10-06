@@ -31,6 +31,7 @@ object HomeChips {
 
     val SECOND_ROW = listOf(
         HomeChip("Learn Solana", Glyph.BOOK, ChipAction.Learn),
+        HomeChip("What's new on Solana", Glyph.DOC, ChipAction.Send("What's new on Solana right now?")),
         HomeChip("Set a timer", Glyph.TIMER, ChipAction.Send("Set a timer")),
         HomeChip("Play a song", Glyph.PLAY, ChipAction.Send("Play a song"))
     )

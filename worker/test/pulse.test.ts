@@ -231,3 +231,34 @@ test('a cache that cannot be written still answers the question', async () => {
   assert.equal(res.status, 200)
   assert.ok(((await res.json()) as any).items.length > 0)
 })
+
+test('a pulse answer writes nothing to memory: the cache is not a fact about anyone', async () => {
+  // The model asks for the pulse and answers; what comes back is dated items, never a record.
+  const rounds: any[] = [
+    {
+      stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 5 },
+      content: [{ type: 'tool_use', id: 't1', name: 'solana_pulse', input: { category: 'hackathon' } }],
+    },
+    {
+      stop_reason: 'end_turn', usage: { input_tokens: 12, output_tokens: 8 },
+      content: [{ type: 'text', text: JSON.stringify({ say: 'One bounty closes on 13 October.', point_at: null, task: null }) }],
+    },
+  ]
+  const feeds = globalThis.fetch
+  globalThis.fetch = (async (input: any, init: any) => {
+    const url = typeof input === 'string' ? input : input.url
+    if (url.startsWith('https://api.anthropic.com')) return new Response(JSON.stringify(rounds.shift()))
+    return await (feeds as any)(input, init)
+  }) as typeof fetch
+
+  const res = await worker.fetch(new Request('https://proxy.heylana.xyz/chat', {
+    method: 'POST', headers: { 'X-Heylana-Device': DEVICE },
+    body: JSON.stringify({
+      mode: 'quick', system: 'S', tools: true, tool_names: ['solana_pulse'],
+      said: 'what hackathon is going on on Solana right now?',
+      messages: [{ role: 'user', content: 'User asks: what hackathon is going on on Solana right now?' }],
+    }),
+  }), env)
+  assert.equal(res.status, 200)
+  assert.equal([...kv.values.keys()].some((key) => key.startsWith('memory')), false)
+})

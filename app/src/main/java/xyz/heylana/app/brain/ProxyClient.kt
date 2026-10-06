@@ -169,9 +169,19 @@ class ProxyClient(private val settings: HeylanaSettings) {
         // source, the trap, and the date when the answer depends on which release it is. Code
         // leads only when the question asks for code. Never on a signing screen, a send or a
         // quick action, which have their own shapes.
-        val mechanics = route.solana != null && !quickAction && route.why != Routing.Why.SEND_QUESTION &&
+        // What is happening now is looked up, never remembered: the pulse tool alone, no knowledge
+        // base (its pages have no dates), and the rules for saying how old each item is.
+        val pulse = tools && !quickAction && route.why != Routing.Why.SEND_QUESTION && !route.explainsSigning &&
+            PulseQuestion.isTimeSensitive(question)
+        if (pulse) {
+            extra.put("tool_names", JSONArray(listOf(SOLANA_PULSE)))
+            HeylanaLog.state("brain: solana pulse category=${PulseQuestion.categoryOf(question) ?: "all"}")
+        }
+        val mechanics = !pulse && route.solana != null && !quickAction && route.why != Routing.Why.SEND_QUESTION &&
             !route.explainsSigning && DevQuestion.isMechanics(question)
-        val asked = if (mechanics) {
+        val asked = if (pulse) {
+            message + "\n\n" + HeylanaPrompt.PULSE_LINE
+        } else if (mechanics) {
             val code = DevQuestion.wantsCode(question)
             val dated = DevQuestion.movesWithVersion(question)
             HeylanaLog.state("brain: solana mechanics code=$code dated=$dated")
@@ -785,6 +795,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
         private const val RECENT_ACTIVITY = "recent_activity"
         /** Heylana's Solana knowledge base: docs, Stack Exchange answers, release notes. */
         const val SEARCH_KB = "search_solana_kb"
+
+        /** What is happening on Solana now: hackathons, releases and news, with their dates. */
+        const val SOLANA_PULSE = "solana_pulse"
 
         /** What the app is allowed to say about the work. The proxy picks the model. */
         const val MODE_QUICK = "quick"

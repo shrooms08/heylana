@@ -224,6 +224,17 @@ object HeylanaPrompt {
         "Reply with a task (goal set, done false) even if it takes a single tap: say is that one step as one sentence, " +
             "point_at is its element."
 
+    /**
+     * A question about what is happening now: the answer comes from `solana_pulse`, with dates,
+     * and never from memory. Every rule here is about not pretending to know more than the cache.
+     */
+    const val PULSE_LINE: String =
+        "This is about what is happening now, so use solana_pulse and answer only from what it returns. " +
+            "Say the date of each item you name (\"on 3 October\"), and if an item is more than a week old say how " +
+            "old it is. Say a hackathon or bounty is open, or closed, only where the item says so, and give a " +
+            "deadline only where the item has one. If the answer says it is stale or has nothing, say you could " +
+            "not refresh, give what is there with its age, and offer to open the page. Put the links you used in cite."
+
     /** Goes with the first question of a teaching task and with every one of its steps. */
     const val TEACH_LINE: String =
         "Teach as you go: say starts with one short reason, then the step, under 25 words in all. " +

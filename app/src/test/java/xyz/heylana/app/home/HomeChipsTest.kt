@@ -11,7 +11,7 @@ class HomeChipsTest {
         assertEquals(
             listOf(
                 "What am I signing?", "Check my balance", "Explain this screen",
-                "Learn Solana", "Set a timer", "Play a song",
+                "Learn Solana", "What's new on Solana", "Set a timer", "Play a song",
             ),
             HomeChips.ALL.map { it.label }
         )
@@ -24,7 +24,7 @@ class HomeChipsTest {
         for (chip in HomeChips.ALL.filter { it.action is ChipAction.Send }) {
             HomeChips.tap(chip, { sent += it }, { started++ })
         }
-        assertEquals(listOf("Check my balance", "Set a timer", "Play a song"), sent)
+        assertEquals(listOf("Check my balance", "What's new on Solana right now?", "Set a timer", "Play a song"), sent)
         assertEquals(0, started)
     }
 

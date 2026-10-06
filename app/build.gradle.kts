@@ -19,6 +19,22 @@ val proxyUrl: String = Properties().apply {
 }.getProperty("heylana.proxyUrl").orEmpty().trim().trimEnd('/')
 
 /**
+ * Who the app says it is when it opens the wallet (Mobile Wallet Adapter's identity
+ * address). The Wallet's own scanner blocks every mainnet transaction from a
+ * workers.dev host — "Scam site detected. We blocked the transaction." — so the
+ * identity is Heylana's own domain, which serves /.well-known/assetlinks.json and
+ * heylana-mark.png:
+ *
+ *     heylana.identityUrl=https://heylana.app
+ *
+ * Unset, it falls back to the proxy address, which is what it always was.
+ */
+val identityUrl: String = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}.getProperty("heylana.identityUrl").orEmpty().trim().trimEnd('/').ifEmpty { proxyUrl }
+
+/**
  * Debug builds only: a stand-in for Deepgram's listening socket, so a refused or
  * silent socket can be tested without calling Deepgram. Empty means Deepgram.
  *
@@ -82,12 +98,13 @@ android {
         applicationId = "xyz.heylana.app"
         minSdk = 31
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "PROXY_URL", "\"$proxyUrl\"")
+        buildConfigField("String", "IDENTITY_URL", "\"$identityUrl\"")
         buildConfigField("String", "LISTEN_URL", "\"$listenUrl\"")
         buildConfigField("String", "SKILLS_INDEX_URL", "\"$skillsIndexUrl\"")
         buildConfigField("String", "SENTRY_DSN", "\"$sentryDsn\"")

@@ -508,6 +508,17 @@ worker's secrets, then on the phone:
 - [ ] Test: pay one real 5 USDC (Plan shows **Pro until** a date 30 days away), or
       enter the judge code (Plan shows **Judge until Nov 9, 2026**)
 
+**The wallet's scanner blocks a workers.dev identity.** On mainnet the Solana Wallet scans
+every transaction and blocks one whose asking app is a `*.workers.dev` host: "Scam site
+detected. We blocked the transaction to protect your assets.", with only a Close button
+(seen on the Seeker, 6 October 2026; devnet never runs that scan, which is why months of
+devnet sends never showed it). The app says who it is with Mobile Wallet Adapter's identity
+address, which is `heylana.identityUrl` in local.properties, else the proxy address. So a
+build that is going to send on mainnet must carry a real domain there — one that also serves
+`/.well-known/assetlinks.json` and `heylana-mark.png`, which the worker already answers on
+any host it is reachable at. Attaching the worker to that domain (a Workers custom domain in
+the same Cloudflare account) and pointing `heylana.proxyUrl` at it does both at once.
+
 **Pointing a local build back at devnet** (for testing with play money; it never changes
 what ships). In `worker/wrangler.toml` set `CLUSTER = "devnet"` and
 `USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"`, put a devnet endpoint in the

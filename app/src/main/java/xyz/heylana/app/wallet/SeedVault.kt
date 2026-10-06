@@ -33,7 +33,7 @@ class SeedVault(activity: ComponentActivity) {
 
     private val adapter = MobileWalletAdapter(
         connectionIdentity = ConnectionIdentity(
-            identityUri = Uri.parse(BuildConfig.PROXY_URL.trimEnd('/').ifEmpty { FALLBACK_IDENTITY_URI }),
+            identityUri = Uri.parse(BuildConfig.IDENTITY_URL.trimEnd('/').ifEmpty { FALLBACK_IDENTITY_URI }),
             iconUri = Uri.parse(ICON_PATH),
             identityName = IDENTITY_NAME
         ),
@@ -145,9 +145,11 @@ class SeedVault(activity: ComponentActivity) {
 
     private companion object {
         /**
-         * Seed Vault shows who is asking and fetches the icon from this address.
-         * heylana.xyz does not exist yet, so it is Heylana's worker, which serves
-         * the mark; this is only used if a build has no worker address at all.
+         * Seed Vault shows who is asking, fetches the icon from this address and
+         * checks /.well-known/assetlinks.json there. It is heylana.identityUrl,
+         * else the worker; this is only used if a build has neither. It must not be
+         * a workers.dev host: the Wallet's scanner blocks mainnet transactions from
+         * one ("Scam site detected"), seen on the Seeker on 6 October 2026.
          */
         const val FALLBACK_IDENTITY_URI = "https://heylana.xyz"
 

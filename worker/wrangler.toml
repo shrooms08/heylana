@@ -7,6 +7,9 @@ name = "heylana-proxy"
 main = "src/index.ts"
 compatibility_date = "2026-09-10"
 
+# The address the phone knows. Kept explicit since a deploy without it turns it off.
+workers_dev = true
+
 [vars]
 # Who speaks the answers: "deepgram" (Aura-2, Hera and Aries), "gemini" (Sulafat and
 # Achird) or "cartesia". Unset means "gemini". /me tells the phone which, for its privacy

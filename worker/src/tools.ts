@@ -11,6 +11,10 @@ import { decimalToUnits, mintInfo } from './pay.ts'
 import { resolveName } from './names.ts'
 import { LOOKUP_TOOLS } from './registry.ts'
 import { searchTool, type Kb, type KbResult } from './kb.ts'
+import type { pulseBody } from './pulse.ts'
+
+/** What [pulseBody] hands back: the items, their sources and how old the cache is. */
+export type PulseAnswer = ReturnType<typeof pulseBody>
 import type { Rpc } from './rpc.ts'
 import {
   BPF_UPGRADEABLE_LOADER,
@@ -44,6 +48,8 @@ export interface ToolContext {
   now: () => number
   /** The knowledge base, when this worker has one bound. */
   kb?: Kb
+  /** What is happening on Solana, from the worker's own six-hourly cache. */
+  pulse?: () => Promise<PulseAnswer>
   /**
    * Has this wallet dealt with an address before? Answered from the salted-hash record
    * the worker keeps per wallet, and only there while memory is on; absent means the
@@ -83,6 +89,21 @@ export async function runTool(name: string, input: any, context: ToolContext): P
         return await resolveName(String(input?.name ?? ''), context)
       case 'prepare_send':
         return await prepareSend(input, context)
+      case 'solana_pulse': {
+        if (!context.pulse) return { error: 'no_pulse' }
+        const answer = await context.pulse()
+        const wanted = typeof input?.category === 'string' ? input.category : null
+        const items = wanted ? answer.items.filter((item) => item.category === wanted) : answer.items
+        // Each item's page is a chip the user can open, so the link it cites is one it was handed.
+        if (context.stats) {
+          for (const item of items) {
+            context.stats.found?.set(item.url, {
+              title: item.title, url: item.url, source: item.source, licence: '', excerpt: '', score: 1, pulse: true,
+            })
+          }
+        }
+        return { ...answer, items }
+      }
       case 'search_solana_kb': {
         let found: unknown
         try {

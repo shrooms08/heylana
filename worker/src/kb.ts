@@ -58,6 +58,8 @@ export interface KbResult {
   licence: string
   excerpt: string
   score: number
+  /** A page from the pulse cache, not the knowledge base: never dropped as a developer page. */
+  pulse?: boolean
 }
 
 /** What gets embedded for a chunk: its title leads, so a chunk far into a page still says what it is about. */
@@ -132,7 +134,9 @@ const DEVELOPER_WORDS =
 const DEVELOPER_SOURCES = /^(solana stack exchange|solana\.com docs|solana docs|solana cookbook|anchor|agave|anza|solana mobile docs)/i
 const DEVELOPER_PAGE = /(publish|submit|developer|\bsdk\b|\bapi\b|program|anchor|\brust\b|\bcli\b|\brpc\b|deploy|integrat|react.native|kotlin|changelog|release|\/docs\/)/i
 
-export function isDeveloperPage(result: Pick<KbResult, 'title' | 'url' | 'source'>): boolean {
+export function isDeveloperPage(result: Pick<KbResult, 'title' | 'url' | 'source' | 'pulse'>): boolean {
+  // A hackathon or a release note from the pulse cache is what was asked for, whatever its url.
+  if (result.pulse) return false
   return DEVELOPER_SOURCES.test(result.source) || DEVELOPER_PAGE.test(result.title) || DEVELOPER_PAGE.test(result.url)
 }
 

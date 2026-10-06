@@ -24,6 +24,10 @@ import { MARK_PATH, markResponse } from './mark.ts'
 import { ASSETLINKS_PATH, assetLinksResponse } from './assetlinks.ts'
 import { rpcClusterMismatch } from './cluster.ts'
 import { makeRpc, type Rpc } from './rpc.ts'
+import {
+  PULSE_KEEP_SECONDS, PULSE_KEY, PULSE_SOURCES, buildPulse, needsRebuild, pulseBody,
+  type Pulse, type PulseSource,
+} from './pulse.ts'
 import { SYSTEM_PROGRAM } from './instructions.ts'
 import {
   LOOKOUT_FORMAT, LOOKOUT_KEEP_SECONDS, LOOKOUT_KEY, LOOKOUT_SEED_KEY, PHANTOM_SEED, archiveFor, dayOf as lookoutDay, fold,
@@ -185,6 +189,7 @@ const DAILY_CAPS: Record<string, number> = {
   memory: 300,
   'memory/delete': 200,
   lookout: 20,
+  pulse: 40,
   'memory/wipe': 20,
   'memory/consent': 20,
 }
@@ -223,6 +228,7 @@ const ROUTES: Record<string, readonly string[]> = {
   memory: ['GET', 'POST'],
   'memory/delete': ['POST'],
   lookout: ['GET'],
+  pulse: ['GET'],
   'memory/wipe': ['POST'],
   'memory/consent': ['POST'],
 }
@@ -370,6 +376,7 @@ export default {
       if (route === 'confirm') return await confirm(request, env, who)
       if (route === 'week') return await week(env, who)
       if (route === 'lookout') return await lookout(request, env, started, context)
+      if (route === 'pulse') return await pulseRoute(request, env, started, context)
       if (route === 'memory' || route.startsWith('memory/')) return await memory(route, request, env, who)
       return await me(env, who)
     } catch (error) {
@@ -775,6 +782,58 @@ async function lookout(request: Request, env: Env, started: number, context?: Wa
   })
   if (have && have === list.version) return json(200, { version: list.version, unchanged: true })
   return json(200, list)
+}
+
+/**
+ * What is happening on Solana, from feeds with dates rather than the model's memory.
+ *
+ * One KV record for the lot, rebuilt at most every six hours (four writes a day, whatever the
+ * traffic). Every read and write goes through the accounting wrapper: a cache that cannot be
+ * written is logged and the question still gets its answer. A source that is down keeps its
+ * last good items, marked with their age, so one feed never empties the lot.
+ */
+export async function currentPulse(env: Env, context?: WaitUntil): Promise<Pulse | null> {
+  const now = clock.now()
+  const stored = await safely('pulse_read', log, async () => {
+    const text = await env.CAPS.get(PULSE_KEY)
+    return text ? JSON.parse(text) as Pulse : null
+  }, null)
+  if (!needsRebuild(stored, now)) return stored
+  const built = await buildPulse(stored, now, fetchSource)
+  if (built.sources.length === 0) return stored
+  const write = safely('pulse_write', log, async () => {
+    await env.CAPS.put(PULSE_KEY, JSON.stringify(built), { expirationTtl: PULSE_KEEP_SECONDS })
+  }, undefined)
+  if (context?.waitUntil) context.waitUntil(write)
+  else await write
+  return built
+}
+
+/** One feed, read with a short deadline; a big one only as far as it is needed. */
+async function fetchSource(source: PulseSource): Promise<string> {
+  const res = await fetch(source.url, {
+    headers: {
+      'user-agent': 'heylana-pulse/1',
+      accept: 'application/json, application/rss+xml, application/atom+xml, text/xml;q=0.9, */*;q=0.5',
+      ...(source.bytes ? { range: `bytes=0-${source.bytes}` } : {}),
+    },
+    signal: AbortSignal.timeout(5000),
+  })
+  if (!res.ok && res.status !== 206) throw new Error(String(res.status))
+  return await res.text()
+}
+
+/** `GET /pulse`: the cache as the phone and the tool read it. */
+async function pulseRoute(request: Request, env: Env, started: number, context?: WaitUntil): Promise<Response> {
+  const pulse = await currentPulse(env, context)
+  const body = pulseBody(pulse, clock.now())
+  const category = new URL(request.url).searchParams.get('category')
+  const items = category ? body.items.filter((item) => item.category === category) : body.items
+  log({
+    route: 'pulse', ms: clock.now() - started, items: items.length,
+    sources: body.sources.length, age_hours: body.age_hours, stale: body.stale,
+  })
+  return json(200, { ...body, items })
 }
 
 async function readLookout(env: Env): Promise<Lookout | null> {
@@ -2197,6 +2256,8 @@ function toolContext(env: Env, who: Who, rpc: Rpc) {
     wallet: who.wallet,
     treasury: env.TREASURY_ADDRESS,
     now: clock.now,
+    // The six-hourly cache, read as the route reads it; never rebuilt inside a model round.
+    pulse: async () => pulseBody(await currentPulse(env), clock.now()),
   }
 }
 

@@ -98,6 +98,21 @@ export const REGISTRY: Entry[] = [
     },
   },
   {
+    name: 'solana_pulse', version: '1', risk: 'R0', kind: 'tool',
+    description: 'What is happening on Solana right now, from dated sources: hackathons and bounties with their ' +
+      'deadlines, releases, and ecosystem news. Use it for anything time-sensitive — right now, this week, latest, ' +
+      "upcoming, any hackathons, what's new. Every item carries the day it was published and its link: say the date, " +
+      'and put the links you used in cite. Never say something is open or closed unless the item says so.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['hackathon', 'release', 'news'], description: 'Only this kind of item.' },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'search_solana_kb', version: '1', risk: 'R0', kind: 'tool',
     description: "Search Heylana's Solana knowledge base: the Solana, Anchor and Solana Mobile docs, the Solana Cookbook, " +
       'top Solana Stack Exchange answers, and Agave and Anchor release notes. Use it for how things work, how to build ' +
@@ -243,7 +258,7 @@ export function definition(name: string): { name: string; description: string; i
 }
 
 /** The lookups offered with Solana questions, in the order they have always been offered. */
-export const LOOKUP_TOOLS = ['get_balances', 'get_price', 'explain_address', 'recent_activity', 'resolve_name', 'prepare_send', 'search_solana_kb'].map(definition)
+export const LOOKUP_TOOLS = ['get_balances', 'get_price', 'explain_address', 'recent_activity', 'resolve_name', 'prepare_send', 'search_solana_kb', 'solana_pulse'].map(definition)
 
 export type Decision =
   | { decision: 'allowed'; tool: string; class: Risk }

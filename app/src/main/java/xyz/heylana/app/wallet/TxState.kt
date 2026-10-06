@@ -128,7 +128,11 @@ object TxMachine {
                 // The blockhash ran out with nothing on chain: it never went.
                 TxEvent.Expired -> TxState.NotSent(TxEnding.EXPIRED)
                 // Signed, but not found or not as prepared: say so, never "not sent".
-                TxEvent.Failed, TxEvent.Unconfirmed -> TxState.Unsure
+                // With no signature there is nothing that can confirm later, so "not
+                // confirmed yet" would send the user off to wait for an answer that is
+                // never coming: that one is simply not sent.
+                TxEvent.Failed, TxEvent.Unconfirmed ->
+                    if (state.signed) TxState.Unsure else TxState.NotSent(TxEnding.FAILED)
                 else -> state
             }
             // Ended: only a new build starts again.

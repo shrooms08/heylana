@@ -69,6 +69,24 @@ class TxStateTest {
     }
 
     @Test
+    fun `never signed and not found is not sent - there is nothing left to confirm`() {
+        // The wallet gave no signature, so nothing can land later and nothing is pending.
+        assertEquals(
+            TxState.NotSent(TxEnding.FAILED),
+            TxMachine.next(TxState.Confirming(signed = false), TxEvent.Unconfirmed)
+        )
+        assertEquals(
+            TxState.NotSent(TxEnding.FAILED),
+            TxMachine.next(TxState.Confirming(signed = false), TxEvent.Failed)
+        )
+        assertEquals("Not sent", TxState.NotSent(TxEnding.FAILED).label)
+        // And what she says about it is unchanged: still the wallet's silence, hedged.
+        val silent = SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, "wallet_no_answer")
+        assertEquals(TxText.NO_ANSWER, TxText.ending(silent).line)
+        assertTrue(TxText.NO_ANSWER.startsWith("Your wallet didn't come back"))
+    }
+
+    @Test
     fun `the wallet ending without a signature is looked for, and can still be sent`() {
         assertEquals(
             listOf("Prepared, not signed", "Waiting for your wallet", "Checking the network", "Sent"),

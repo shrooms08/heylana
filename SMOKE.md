@@ -91,10 +91,11 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
    a warning with only a Close button), leave it and watch Heylana.
    - **Expect:** after about two minutes she looks for it on the network, and then the card
      ends by itself. If it did go, **Sent** with the signature chip. If it did not,
-     **Not confirmed yet** — "Your wallet didn't come back, and I couldn't find it on the
-     network, so it most likely didn't leave your wallet. Check your wallet app before
-     asking again." She never waits for ever, never says nothing went without looking,
-     never blames expiry for a wallet that went quiet, and never sends anything again.
+     **Not sent** — "Your wallet didn't come back, and I couldn't find it on the network,
+     so it most likely didn't leave your wallet. Check your wallet app before asking
+     again." She never waits for ever, never says nothing went without looking, never
+     blames expiry for a wallet that went quiet, never leaves you waiting on a signature
+     that was never given, and never sends anything again.
 
 ## 7. What is happening on Solana now
 

@@ -1249,9 +1249,11 @@ true about the money, wrong about the cause. Now a dead blockhash with **no sign
 wallet that was asked** ends as `TxText.NO_CAUSE`: "Not sent. Nothing left your wallet. If
 you meant to send it, try again." Nothing can land once the blockhash is gone, so "nothing
 left your wallet" is certain; why it was never signed is the wallet's to say, and Heylana
-does not guess. A clean decline still says "Cancelled. Nothing left your wallet.", and a
-send the wallet **signed** before the blockhash died still says it expired, because there
-it really did. `SendFlowTest`.
+does not guess. A wallet that never came back keeps its own line
+("Your wallet didn't come back, and I couldn't find it on the network…") whether the look
+times out or the blockhash dies under it — leaving Seed Vault without deciding is silence,
+not expiry. A clean decline still says "Cancelled. Nothing left your wallet.", and a send
+the wallet **signed** before the blockhash died still says it expired. `SendFlowTest`.
 
 **A wallet that never comes back ends the send anyway (polish-15).** Mobile Wallet
 Adapter's three minutes only run while the wallet is answering: on mainnet the Wallet put

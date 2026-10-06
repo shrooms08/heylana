@@ -198,10 +198,12 @@ class SendFlow(
                     // Why it was never signed is the wallet's business: a rejection comes
                     // back unsure on the Seeker, and blaming the blockhash for it told the
                     // user their send had expired when they had just rejected it.
-                    GONE -> return if (signature == null && !walletSilent) {
-                        SendResult.Stopped(TxText.NO_CAUSE, StopKind.NO_CAUSE, code = NO_CAUSE)
-                    } else {
-                        SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED)
+                    GONE -> return when {
+                        // Signed, and then the blockhash died with nothing on chain.
+                        signature != null -> SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED)
+                        // The wallet never came back at all: say that, not "it expired".
+                        walletSilent -> SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, code = NO_ANSWER)
+                        else -> SendResult.Stopped(TxText.NO_CAUSE, StopKind.NO_CAUSE, code = NO_CAUSE)
                     }
                 }
                 is Answer.Unreachable -> Unit

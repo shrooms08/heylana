@@ -233,6 +233,17 @@ class SendFlowTest {
     }
 
     @Test
+    fun `a wallet that never comes back says so, whether the look times out or the blockhash is dead`() = runBlocking {
+        // The blockhash dies while looking: still the wallet's silence, never "it expired".
+        val dead = flow(
+            confirm = { _, _ -> Answer.Refused(410, "expired") },
+            wait = { null }
+        ).run(request, PAYER)
+        assertEquals(SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, "wallet_no_answer"), dead)
+        assertFalse(TxText.ending(dead as SendResult.Stopped).line.contains("expired"))
+    }
+
+    @Test
     fun `a wallet that never comes back, with nothing on chain, says most likely rather than certainly`() = runBlocking {
         val clock = longArrayOf(0L)
         val result = flow(

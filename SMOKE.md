@@ -93,7 +93,8 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
      ends by itself. If it did go, **Sent** with the signature chip. If it did not,
      **Not sent** — "Your wallet didn't come back, and I couldn't find it on the network,
      so it most likely didn't leave your wallet." She never waits for ever, never says
-     nothing went without looking, and never sends anything again.
+     nothing went without looking, never blames expiry for a wallet that went quiet, and
+     never sends anything again.
 
 ## 7. What is happening on Solana now
 

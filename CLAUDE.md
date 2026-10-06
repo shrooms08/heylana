@@ -26,7 +26,7 @@ xyz.heylana.app
 │   ├── HeylanaApp           the screen state, glass mode, permission prompts
 │   ├── AppScreens           Home and everything it opens; the menu over it
 │   ├── HomeScreen           orb, greeting or answer strip, chips, message bar, mic
-│   ├── HomeChips            seven chips: five send a message, one starts the buddy, one opens Learn
+│   ├── HomeChips            seven chips: four send a message, two start the buddy, one opens Learn
 │   ├── AppChat              in-app conversation: chat or quick action, never a screen read
 │   ├── VoiceSession         the app's ears: the buddy's two, raced the same way
 │   ├── VoiceScreen          the aurora wave, timer, state, big mic, pause, close
@@ -80,6 +80,7 @@ xyz.heylana.app
 │   ├── SendGuard            recipient and amount from the user's own words; the 25% rule
 │   ├── AddressText          every address shortened to first4…last4 before it is shown or spoken
 │   ├── HeylanaPrompt        the system prompt and user messages, in one editable place
+│   ├── PulseQuestion        a question about now: hackathons, releases, news — never from memory
 │   ├── Source               Sources: the chips under an answer (title, page), and no URL ever spoken
 │   ├── PlainError           the five plain lines every failure becomes
 │   └── GuidanceSession      a task in progress: goal, steps given so far, stuck flag
@@ -737,6 +738,37 @@ chip. Overlay chips are glass pills under the answer (`ChatPanelView.showSources
 every close and every new question); the app's are flat chips in the answer strip. An answer
 with chips stays up `SOURCE_LINGER_MS` (10s) after it is said instead of 1s, and a teaching
 flight shows them with its last sentence and lingers before flying home. `SourcesTest`.
+
+**What is happening on Solana now (`/pulse`, `solana_pulse`).** A model's memory has no dates
+and does not know what closed last week, so "what hackathon is going on on Solana right now?"
+is answered from a cache of real feeds instead. `worker/src/pulse.ts` keeps one KV record
+(`pulse:v1`), rebuilt at most every `PULSE_TTL_SECONDS` (6 hours: **four writes a day**, whatever
+the traffic) through `safely`, so a cache that cannot be written never fails the question. Six
+sources, every one with a real feed, checked Oct 6 2026: Superteam Earn's listings (the only one
+that states a deadline and `status: OPEN`, both copied, never worked out), solana.com/news RSS,
+Colosseum's blog RSS, the Helius blog Atom (5.7MB, so read with a `range` header), and the Agave
+and solana-web3.js GitHub releases. **Dropped for having no feed**: hackathons.solana.com,
+colosseum.com itself, solanamobile.com and the Anza blog — they would need scraping.
+Every item is normalised to title, a one-line summary, url, published day, source and category
+(hackathon | release | news), newest first, capped at `PULSE_CAP` 25, with `fetched_at` per
+source; a source that fails keeps its last good items, marked `stale` with their age, so one
+feed down never empties the answer. `GET /pulse?category=` answers the same body.
+`solana_pulse` is an R0 read-only tool (no wallet, no writes) with an optional category; its
+pages go into the same `found` map as the knowledge base's, so each becomes a chip, and
+`isDeveloperPage` never drops one (a release note is what was asked for). On the phone,
+`brain/PulseQuestion.isTimeSensitive` decides from the words alone — right now, currently,
+latest, this week, upcoming, a deadline, any hackathons, what's new — and never for the user's
+own money, the screen in front, or how something works ("what is a PDA?" keeps the knowledge
+base). A pulse question offers that tool alone, carries `HeylanaPrompt.PULSE_LINE` (say each
+item's date, say how old anything over a week is, open or closed only where the item says so,
+and when the cache is stale say plainly that it could not be refreshed and offer the page) and
+asks for the answer's own shape, since several dated items do not fit 300 tokens.
+**Nothing from the pulse is ever remembered**: memory is for facts about the user, and
+`PulseQuestionTest` holds every pulse question to writing none. Home's second row has a
+"What's new on Solana" chip. `test/pulse.test.ts`, `PulseQuestionTest`. Checked on the Seeker on
+Oct 6: the hackathon question came back with three open bounties, their USDC and their deadlines,
+and a Superteam Earn chip; "what's new this week" with the Foundation's DvP launch (Oct 6) and
+web3.js v3.0.1 (Oct 5), two chips, 260 of 700 tokens; "what is a PDA?" never called it.
 
 **Long pages (`screen/PageExtent`).** A read notes `more_below` (`screen: … more_below=`) when
 the app in front's page carries on past the screen: a scrolling node at least 40% of the

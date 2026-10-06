@@ -312,6 +312,11 @@ the honest boundary of it.
   address" means it is in neither the record of addresses Heylana has sent to for this
   wallet nor the counterparties of its recent transactions. It is not a claim about your
   whole history, and it is only ever asked while memory is on.
+- **What is happening on Solana now.** Hackathons and bounties with the deadline the source
+  states, releases, and ecosystem news — from a cache of real feeds refreshed every six hours,
+  never from the model's memory. Every item is said with its date and a link you can open, and
+  nothing is called open or closed unless the listing says so. When the cache could not be
+  refreshed, Heylana says so and gives what it has with its age.
 - **A screen asking for your recovery phrase**, in any app, and **a domain that is a copy of
   a real one** (phanton.app, jup1.ag, rnagiceden.io), or one on a scam watchlist built from
   ScamSniffer's feed and Phantom's blocklist — the listed site itself or any page under it

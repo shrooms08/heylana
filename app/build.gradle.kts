@@ -98,8 +98,8 @@ android {
         applicationId = "xyz.heylana.app"
         minSdk = 31
         targetSdk = 37
-        versionCode = 7
-        versionName = "1.0.5"
+        versionCode = 8
+        versionName = "1.0.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

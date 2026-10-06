@@ -73,8 +73,11 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
    7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv**.
 2. Wait for **Prepared, not signed · Mainnet** and tap **Confirm**.
 3. When Seed Vault opens, tap **Reject** (or back out of it).
-   - **Expect:** the card reads **Not sent**, and she says "Cancelled. Nothing left your
-     wallet." Nothing is retried, and no second wallet screen appears.
+   - **Expect:** the card reads **Not sent**, and she says either "Cancelled. Nothing left
+     your wallet." or — when the wallet does not say plainly that you declined — "Not sent.
+     Nothing left your wallet. If you meant to send it, try again." Either way nothing left
+     your wallet, nothing is retried, and no second wallet screen appears. She must never
+     say it expired: you rejected it.
 
 ## 6. A wallet that goes quiet
 

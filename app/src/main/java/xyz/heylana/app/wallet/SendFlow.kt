@@ -27,10 +27,10 @@ sealed interface SendResult {
 }
 
 /**
- * How a send that did not land ended. The first four are certain that nothing left the
+ * How a send that did not land ended. The first five are certain that nothing left the
  * wallet; the last two are not, and never say it did not.
  */
-enum class StopKind { CANCELLED, FAILED, NO_ANSWER, EXPIRED, UNSURE_SIGNED, NOT_FOUND }
+enum class StopKind { CANCELLED, FAILED, NO_ANSWER, NO_CAUSE, EXPIRED, UNSURE_SIGNED, NOT_FOUND }
 
 /**
  * Where a confirmed send has got to, for the mode chip and the strip's label: the final
@@ -194,7 +194,15 @@ class SendFlow(
                 is Answer.Refused -> when (answer.code) {
                     // Something landed, but not this send as prepared: it may have left the wallet.
                     MISMATCH, NOT_YOURS -> return SendResult.Stopped(DID_NOT_MATCH, StopKind.UNSURE_SIGNED)
-                    GONE -> return SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED)
+                    // The blockhash is dead with nothing on chain, so nothing can land now.
+                    // Why it was never signed is the wallet's business: a rejection comes
+                    // back unsure on the Seeker, and blaming the blockhash for it told the
+                    // user their send had expired when they had just rejected it.
+                    GONE -> return if (signature == null && !walletSilent) {
+                        SendResult.Stopped(TxText.NO_CAUSE, StopKind.NO_CAUSE, code = NO_CAUSE)
+                    } else {
+                        SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED)
+                    }
                 }
                 is Answer.Unreachable -> Unit
             }
@@ -230,6 +238,7 @@ class SendFlow(
         private const val UNREACHABLE = "unreachable"
         private const val NOT_CONFIRMED = "not_what_was_confirmed"
         private const val NO_ANSWER = "wallet_no_answer"
+        private const val NO_CAUSE = "not_signed"
 
         /**
          * Runs [trip] and stops waiting after [WALLET_TIMEOUT_MS]. The trip is started on a

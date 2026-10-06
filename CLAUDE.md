@@ -1241,6 +1241,18 @@ client timeout is 180 seconds (the library default of 90 dropped a slow approval
 signed result). A timeout anywhere in the error chain is unsure, not a failure:
 a send is then looked for on chain, and a Pro payment by its reference.
 
+**Heylana never invents a reason a send was not signed (polish-16).** A rejection in Seed
+Vault comes back from the Seeker's wallet as *unsure* rather than a clean decline, so the
+send went looking, the worker answered `410 expired` (the blockhash dead, nothing on chain)
+and the card said "It expired before you signed it" to someone who had just rejected it —
+true about the money, wrong about the cause. Now a dead blockhash with **no signature and a
+wallet that was asked** ends as `TxText.NO_CAUSE`: "Not sent. Nothing left your wallet. If
+you meant to send it, try again." Nothing can land once the blockhash is gone, so "nothing
+left your wallet" is certain; why it was never signed is the wallet's to say, and Heylana
+does not guess. A clean decline still says "Cancelled. Nothing left your wallet.", and a
+send the wallet **signed** before the blockhash died still says it expired, because there
+it really did. `SendFlowTest`.
+
 **A wallet that never comes back ends the send anyway (polish-15).** Mobile Wallet
 Adapter's three minutes only run while the wallet is answering: on mainnet the Wallet put
 up its own blocking screen ("Scam site detected", one Close button), never returned, and

@@ -116,14 +116,38 @@ class SendFlowTest {
     }
 
     @Test
-    fun `an expired blockhash is said as expired, never retried with the same bytes`() = runBlocking {
+    fun `a wallet that never said why, with nothing on chain, blames nothing and never retries`() = runBlocking {
         var walletTimes = 0
         val result = flow(
+            // What a rejection looks like on the Seeker: unsure, not a clean decline.
             wallet = { _, _ -> walletTimes++; SeedVault.Trip.Stopped(WalletProblem.TOOK_TOO_LONG) },
             confirm = { _, _ -> Answer.Refused(410, "expired") }
         ).run(request, PAYER)
-        assertEquals(SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED), result)
+        assertEquals(SendResult.Stopped(TxText.NO_CAUSE, StopKind.NO_CAUSE, "not_signed"), result)
+        assertEquals("Not sent. Nothing left your wallet. If you meant to send it, try again.", TxText.NO_CAUSE)
+        // Not sent, and no reason invented for it.
+        val ending = TxText.ending(result as SendResult.Stopped)
+        assertEquals(TxEvent.Failed, ending.event)
+        assertEquals(TxState.NotSent(TxEnding.FAILED), TxMachine.next(TxState.Waiting, ending.event))
+        assertFalse(ending.line.contains("expired"))
         assertEquals(1, walletTimes)
+    }
+
+    @Test
+    fun `a wallet that declined still says cancelled, and a dead blockhash after signing still says expired`() = runBlocking {
+        val declined = flow(
+            wallet = { _, _ -> SeedVault.Trip.Stopped(WalletProblem.CANCELLED) },
+            confirm = { _, _ -> Answer.Refused(410, "expired") }
+        ).run(request, PAYER)
+        assertEquals(SendResult.Stopped(BuildText.REJECTED, StopKind.CANCELLED), declined)
+        assertEquals("Cancelled. Nothing left your wallet.", TxText.ending(declined as SendResult.Stopped).line)
+
+        // Signed, then the blockhash died with nothing on chain: that one really did expire.
+        val signedThenGone = flow(
+            wallet = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
+            confirm = { _, _ -> Answer.Refused(410, "expired") }
+        ).run(request, PAYER)
+        assertEquals(SendResult.Stopped(BuildText.EXPIRED, StopKind.EXPIRED), signedThenGone)
     }
 
     @Test

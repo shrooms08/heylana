@@ -281,6 +281,14 @@ object TxText {
         "It expired before you signed it. Ask again and I'll prepare a fresh one. $NOTHING_LEFT"
 
     /**
+     * The wallet never gave a clean answer and the blockhash has died with nothing on
+     * chain: nothing went, and nothing can now. Why it was never signed is the wallet's
+     * to say, so Heylana does not guess — on the Seeker a rejection comes back unsure, and
+     * blaming the blockhash told the user their send had expired when they had rejected it.
+     */
+    const val NO_CAUSE = "Not sent. $NOTHING_LEFT If you meant to send it, try again."
+
+    /**
      * The wallet was opened, never answered, **and** the network has no sign of the send.
      * Silence alone proves nothing — the Wallet holds the trip open behind its own
      * "Success" screen — so this is said only after the look, and even then it says most
@@ -324,6 +332,7 @@ object TxText {
         StopKind.CANCELLED -> Ending(TxEvent.Rejected, CANCELLED)
         StopKind.FAILED -> Ending(TxEvent.Failed, failed(stopped.line, stopped.code))
         StopKind.NO_ANSWER -> Ending(TxEvent.Failed, NO_ANSWER)
+        StopKind.NO_CAUSE -> Ending(TxEvent.Failed, NO_CAUSE)
         StopKind.EXPIRED -> Ending(TxEvent.Expired, EXPIRED)
         StopKind.UNSURE_SIGNED -> Ending(TxEvent.Unconfirmed, UNSURE_SIGNED)
         StopKind.NOT_FOUND -> Ending(TxEvent.Unconfirmed, NOT_FOUND)

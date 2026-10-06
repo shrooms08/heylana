@@ -1246,16 +1246,23 @@ Adapter's three minutes only run while the wallet is answering: on mainnet the W
 up its own blocking screen ("Scam site detected", one Close button), never returned, and
 the card sat on "Checking it once more, then opening your wallet" for twelve minutes. So
 the wait on the wallet has its own limit, `SendFlow.WALLET_TIMEOUT_MS` (120s): the trip runs
-on a scope of its own — a stuck wallet call cannot be cancelled, only abandoned — and when
-the time is up the send ends as **Not sent** with `TxText.NO_ANSWER`: "Your wallet didn't
-come back. Nothing left your wallet. Check your wallet app, and try again if it's clear."
-Nothing is retried, nothing is looked for on chain (nothing was signed), and an answer that
-arrives afterwards is dropped twice over: `SendActivity` delivers one ending only, and
-`TxMachine` moves no ended send. Backing out of Seed Vault normally is unchanged — the
+on a scope of its own — a stuck wallet call cannot be cancelled, only abandoned.
+
+**Silence is not proof that nothing went.** The Wallet holds the trip open behind its own
+"Success — your transaction is complete" sheet until it is closed, so a send that has
+already landed can run the wait out (seen on the Seeker on Oct 6: 0.01 USDC on chain,
+signature `Xoz5uDaFXsJA…ehfdJ7`, while the card said "Nothing left your wallet"). So when
+the wait ends the send goes to `LOOKING` and the network is asked for it — the same look a
+wallet that ends unsure already gets, capped by `LAND_TIMEOUT_MS` (60s). Found is **Sent**
+with its signature; nothing found is **Not sent** with `TxText.NO_ANSWER`: "Your wallet
+didn't come back, and I couldn't find it on the network, so it most likely didn't leave
+your wallet. Check your wallet app before asking again." Most likely, never certainly.
+Nothing is retried, and an answer that arrives afterwards is dropped twice over:
+`SendActivity` delivers one ending only, and `TxMachine` moves no ended send. Backing out of Seed Vault normally is unchanged — the
 wallet reports a cancellation and the card ends at once with "Cancelled. Nothing left your
-wallet." Two minutes rather than one, because the line says nothing left the wallet and at
-a minute someone still reading Seed Vault's screen could be told that with their approval
-moments away; two is still inside the wallet's own three. `SendFlowTest`. Proved on the
+wallet." Two minutes rather than one, so a slow approver is not given up on; two is still
+inside the wallet's own three, and the longest a send can now take to end is the wait plus
+the look. `SendFlowTest`. Proved on the
 Seeker on Oct 6, release build, mainnet, with the limit then at 60s: with the Wallet's
 blocking screen still on top and untouched, the card read "Waiting for your wallet" at
 60.0s after Confirm and "Not sent" with the line at 61.5s.

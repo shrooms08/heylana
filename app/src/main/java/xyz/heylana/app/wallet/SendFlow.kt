@@ -140,10 +140,12 @@ class SendFlow(
         log("send: simulation passed, opening Seed Vault cluster=${request.cluster.id}")
         val answer = waitForWallet { signAndSend(bytes, request.cluster) }
         if (answer == null) {
-            // The wallet never came back — on mainnet the Wallet's own blocking screen does
-            // this, and the card used to wait for ever. Nothing was signed, so nothing went.
-            log("send: the wallet never came back after ${WALLET_TIMEOUT_MS}ms, ending it")
-            return SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, code = NO_ANSWER)
+            // The wallet never came back: its own blocking screen, or a sheet left open —
+            // the Wallet holds the trip until its "Success" is closed, so silence is not
+            // proof that nothing went. The network is asked before anything is claimed.
+            log("send: the wallet never came back after ${WALLET_TIMEOUT_MS}ms, looking on chain")
+            stage(SendStage.LOOKING)
+            return awaitLanded(request.id, null, walletSilent = true)
         }
         val trip: SeedVault.Trip<SeedVault.Signed> = answer
         val signed = when (trip) {
@@ -175,7 +177,7 @@ class SendFlow(
      * expired; a transfer that is not this send, or not yours, ends it at once; anything
      * else is asked again. Every look is logged with its result.
      */
-    private suspend fun awaitLanded(id: String, signature: String?): SendResult {
+    private suspend fun awaitLanded(id: String, signature: String?, walletSilent: Boolean = false): SendResult {
         val waits = Backoff.delays(LAND_TIMEOUT_MS)
         val started = now()
         var attempt = 0
@@ -197,10 +199,11 @@ class SendFlow(
                 is Answer.Unreachable -> Unit
             }
             if (attempt > waits.size) {
-                return if (signature == null) {
-                    SendResult.Stopped(BuildText.NOT_FOUND, StopKind.NOT_FOUND)
-                } else {
-                    SendResult.Stopped(BuildText.UNKNOWN_SIGNED, StopKind.UNSURE_SIGNED)
+                return when {
+                    signature != null -> SendResult.Stopped(BuildText.UNKNOWN_SIGNED, StopKind.UNSURE_SIGNED)
+                    // The wallet said nothing and the network has nothing either.
+                    walletSilent -> SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, code = NO_ANSWER)
+                    else -> SendResult.Stopped(BuildText.NOT_FOUND, StopKind.NOT_FOUND)
                 }
             }
             sleep(waits[attempt - 1])

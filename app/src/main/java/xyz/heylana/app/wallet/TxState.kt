@@ -281,12 +281,14 @@ object TxText {
         "It expired before you signed it. Ask again and I'll prepare a fresh one. $NOTHING_LEFT"
 
     /**
-     * The wallet was opened and never answered — its own blocking screen, or it was left
-     * without deciding. Nothing was signed, so nothing went; Heylana never asks again by
-     * itself, and says to look in the wallet app before the user does.
+     * The wallet was opened, never answered, **and** the network has no sign of the send.
+     * Silence alone proves nothing — the Wallet holds the trip open behind its own
+     * "Success" screen — so this is said only after the look, and even then it says most
+     * likely rather than certainly. Heylana never asks again by itself.
      */
     const val NO_ANSWER =
-        "Your wallet didn't come back. $NOTHING_LEFT Check your wallet app, and try again if it's clear."
+        "Your wallet didn't come back, and I couldn't find it on the network, so it most " +
+            "likely didn't leave your wallet. Check your wallet app before asking again."
 
     /** Signed and not seen, or seen and not as prepared: the honest answer is not yet known. */
     const val UNSURE_SIGNED =

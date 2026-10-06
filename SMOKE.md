@@ -59,7 +59,8 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
    - **Expect:** **Waiting for your wallet**, then Seed Vault opens.
 4. Seed Vault may ask you to connect first (the app now identifies itself as
    heylana.xyz). Then check the amount and the address, leave **trust this app**
-   unticked, and approve.
+   unticked, and approve. When the Wallet shows its own **Success** screen, tap
+   **Close** — the wallet does not hand back until you do.
    - **Expect:** **Signed, confirming**, then **Sent** — "Done. 0.01 USDC went to
      7c2y…SxSv." with a small signature chip.
 5. Tap the signature chip.
@@ -85,9 +86,11 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
      "Cancelled. Nothing left your wallet."
 3. If instead the wallet ever puts up a screen of its own that you cannot answer (a block,
    a warning with only a Close button), leave it and watch Heylana.
-   - **Expect:** after about two minutes the card ends by itself — **Not sent**, "Your wallet
-     didn't come back. Nothing left your wallet. Check your wallet app, and try again if
-     it's clear." It never waits for ever, and never sends anything afterwards.
+   - **Expect:** after about two minutes she looks for it on the network, and then the card
+     ends by itself. If it did go, **Sent** with the signature chip. If it did not,
+     **Not sent** — "Your wallet didn't come back, and I couldn't find it on the network,
+     so it most likely didn't leave your wallet." She never waits for ever, never says
+     nothing went without looking, and never sends anything again.
 
 ## 7. What is happening on Solana now
 

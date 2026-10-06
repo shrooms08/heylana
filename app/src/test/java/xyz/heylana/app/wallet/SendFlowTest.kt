@@ -192,24 +192,36 @@ class SendFlowTest {
     }
 
     @Test
-    fun `a wallet that never comes back ends the send as not sent, and nothing is asked again`() = runBlocking {
+    fun `a wallet that never comes back is looked for on chain, and found means sent`() = runBlocking {
         val logged = mutableListOf<String>()
-        var looks = 0
         val stages = mutableListOf<SendStage>()
+        // The Wallet signed and sent it, then held the trip open behind its own "Success".
         val result = flow(
-            confirm = { _, _ -> looks++; Answer.Ok(landed("5555…5555")) },
+            confirm = { _, _ -> Answer.Ok(landed("Xoz5…hfdJ7", "XoziSignatureInFull")) },
             log = { logged += it },
             stages = stages,
-            // The wallet is opened and simply never answers: the wait is given up on.
+            wait = { null }
+        ).run(request, PAYER)
+
+        assertEquals(SendResult.Sent("Xoz5…hfdJ7", fullSignature = "XoziSignatureInFull"), result)
+        assertEquals(listOf(SendStage.SIMULATING, SendStage.APPROVE_IN_WALLET, SendStage.LOOKING), stages)
+        assertTrue(logged.any { it.contains("looking on chain") })
+    }
+
+    @Test
+    fun `a wallet that never comes back, with nothing on chain, says most likely rather than certainly`() = runBlocking {
+        val clock = longArrayOf(0L)
+        val result = flow(
+            confirm = { _, _ -> Answer.Refused(409, "not_confirmed") },
+            clock = clock,
             wait = { null }
         ).run(request, PAYER)
 
         assertEquals(SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, "wallet_no_answer"), result)
-        // Never looked on the network, never asked the wallet a second time.
-        assertEquals(0, looks)
-        assertEquals(listOf(SendStage.SIMULATING, SendStage.APPROVE_IN_WALLET), stages)
-        assertTrue(logged.any { it.contains("the wallet never came back") })
-        // Two minutes: long enough for a slow approver, short of the wallet's own three.
+        // Looked for the whole minute before saying anything, and never longer.
+        assertEquals(SendFlow.LAND_TIMEOUT_MS, clock[0])
+        assertTrue(TxText.NO_ANSWER.contains("most likely"))
+        assertFalse(TxText.NO_ANSWER.contains("Nothing left your wallet"))
         assertEquals(120_000L, SendFlow.WALLET_TIMEOUT_MS)
     }
 
@@ -219,8 +231,8 @@ class SendFlowTest {
         val ending = TxText.ending(stopped)
         assertEquals(TxEvent.Failed, ending.event)
         assertEquals(
-            "Your wallet didn't come back. Nothing left your wallet. " +
-                "Check your wallet app, and try again if it's clear.",
+            "Your wallet didn't come back, and I couldn't find it on the network, so it " +
+                "most likely didn't leave your wallet. Check your wallet app before asking again.",
             ending.line
         )
         val ended = TxMachine.next(TxState.Waiting, ending.event)
@@ -235,7 +247,8 @@ class SendFlowTest {
         var late: (suspend () -> SeedVault.Trip<SeedVault.Signed>)? = null
         val result = flow(
             wallet = { _, _ -> walletRuns++; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
-            confirm = { _, _ -> looks++; Answer.Ok(landed("5555…5555")) },
+            // Nothing on chain either, so the send ends with the honest line.
+            confirm = { _, _ -> looks++; Answer.Refused(409, "not_confirmed") },
             // The trip is kept, not run: the wallet is still thinking when the wait ends.
             wait = { trip -> late = trip; null }
         ).run(request, PAYER)
@@ -245,7 +258,10 @@ class SendFlowTest {
         val answered = late!!.invoke()
         assertTrue(answered is SeedVault.Trip.Done)
         assertEquals(1, walletRuns)
-        assertEquals(0, looks)
+        // The wallet is never asked twice, and its late answer starts no new look.
+        val looksAtTheEnd = looks
+
+        assertEquals(looksAtTheEnd, looks)
 
         // And the card it belonged to has ended: no event moves it again.
         val ended = TxState.NotSent(TxEnding.FAILED)

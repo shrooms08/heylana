@@ -209,7 +209,8 @@ class SendFlowTest {
         assertEquals(0, looks)
         assertEquals(listOf(SendStage.SIMULATING, SendStage.APPROVE_IN_WALLET), stages)
         assertTrue(logged.any { it.contains("the wallet never came back") })
-        assertEquals(60_000L, SendFlow.WALLET_TIMEOUT_MS)
+        // Two minutes: long enough for a slow approver, short of the wallet's own three.
+        assertEquals(120_000L, SendFlow.WALLET_TIMEOUT_MS)
     }
 
     @Test

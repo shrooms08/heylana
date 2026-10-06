@@ -215,8 +215,12 @@ class SendFlow(
          * timeout is three minutes, but a wallet that puts up its own blocking screen and
          * never answers never trips it: the call simply does not return. So the wait is
          * given up on here instead, and the send ends rather than hanging.
+         *
+         * Two minutes, not one: the wait ends by saying nothing left the wallet, and at a
+         * minute someone still reading Seed Vault's screen could be told that while their
+         * approval was moments away. Two still comes in under the wallet's own three.
          */
-        const val WALLET_TIMEOUT_MS = 60_000L
+        const val WALLET_TIMEOUT_MS = 120_000L
         private const val MISMATCH = 402
         private const val NOT_YOURS = 403
         private const val GONE = 410

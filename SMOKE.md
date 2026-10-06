@@ -85,7 +85,7 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
      "Cancelled. Nothing left your wallet."
 3. If instead the wallet ever puts up a screen of its own that you cannot answer (a block,
    a warning with only a Close button), leave it and watch Heylana.
-   - **Expect:** after about a minute the card ends by itself — **Not sent**, "Your wallet
+   - **Expect:** after about two minutes the card ends by itself — **Not sent**, "Your wallet
      didn't come back. Nothing left your wallet. Check your wallet app, and try again if
      it's clear." It never waits for ever, and never sends anything afterwards.
 

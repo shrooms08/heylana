@@ -79,4 +79,11 @@ class PulseQuestionTest {
         val action = chip.action as xyz.heylana.app.home.ChipAction.Send
         assertTrue(PulseQuestion.isTimeSensitive(action.message))
     }
+
+    @Test
+    fun `a pulse question asks for the answer's own shape, so a list of items is never cut off`() {
+        // On the Seeker "what's new on Solana this week?" ran into the phone's 300 tokens and
+        // came back cut off mid-deadline; the shaped answer has 700.
+        assertEquals("answer", ProxyClient.SHAPE_ANSWER)
+    }
 }

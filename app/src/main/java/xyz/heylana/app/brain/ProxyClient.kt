@@ -175,6 +175,9 @@ class ProxyClient(private val settings: HeylanaSettings) {
             PulseQuestion.isTimeSensitive(question)
         if (pulse) {
             extra.put("tool_names", JSONArray(listOf(SOLANA_PULSE)))
+            // Several dated items do not fit the phone's 300 tokens: the answer's own shape,
+            // with the room a list of them needs, rather than a line cut off mid-deadline.
+            extra.put("shape", SHAPE_ANSWER)
             HeylanaLog.state("brain: solana pulse category=${PulseQuestion.categoryOf(question) ?: "all"}")
         }
         val mechanics = !pulse && route.solana != null && !quickAction && route.why != Routing.Why.SEND_QUESTION &&

@@ -1,7 +1,11 @@
 # Smoke test — the release build on mainnet
 
-This is the signed release APK, version **1.0.0**, with the worker on **mainnet**. Real
+This is the signed release APK, version **1.0.2**, with the worker on **mainnet**. Real
 money moves if you approve a send, so read every screen before you touch anything.
+
+The app talks to **api.heylana.xyz** and tells the wallet it is **heylana.xyz**. Both are
+the same worker. It must not go back to a workers.dev address: the Wallet blocks every
+mainnet transaction from one with "Scam site detected".
 
 **Expected live API calls: 7 `/chat`** (one a question, plus the send's own), the voice
 on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
@@ -11,7 +15,7 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
 - The Wallet app on the phone is on **mainnet** (not devnet).
 - The wallet you sign in with holds at least **0.02 USDC** and about **0.01 SOL** for fees.
 - The debug build is gone. Install the release one with
-  `adb install -r dist/heylana-1.0.0.apk`, or let Claude do it.
+  `adb install -r dist/heylana-1.0.2.apk`, or let Claude do it.
 - After installing, run `./scripts/a11y.sh` so screen reading is on.
 
 ---
@@ -53,8 +57,9 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
    - and she says she has prepared it, with **no** "on devnet".
 3. Tap **Confirm**. The card goes small and stays out of the way.
    - **Expect:** **Waiting for your wallet**, then Seed Vault opens.
-4. In Seed Vault, check the amount and the address, leave **trust this app** unticked, and
-   approve.
+4. Seed Vault may ask you to connect first (the app now identifies itself as
+   heylana.xyz). Then check the amount and the address, leave **trust this app**
+   unticked, and approve.
    - **Expect:** **Signed, confirming**, then **Sent** — "Done. 0.01 USDC went to
      7c2y…SxSv." with a small signature chip.
 5. Tap the signature chip.
@@ -96,5 +101,7 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
   `./scripts/a11y.sh`, then close and reopen Heylana.
 - **"Something went wrong on my side."**: that is the server, not the phone. Say what you
   asked and when.
+- **"Scam site detected", only a Close button:** the build is pointing at a workers.dev
+  address again. Check `heylana.identityUrl` in local.properties and rebuild.
 - **A send stops at "Not confirmed yet":** leave it. It may still have left the wallet;
   check the Wallet app in a minute. Heylana never sends a second copy.

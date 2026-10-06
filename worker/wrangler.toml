@@ -10,6 +10,15 @@ compatibility_date = "2026-09-10"
 # The address the phone knows. Kept explicit since a deploy without it turns it off.
 workers_dev = true
 
+# Heylana's own domain. The phone talks to api.heylana.xyz and tells the wallet it is
+# heylana.xyz; both are this worker, so both serve /.well-known/assetlinks.json and the
+# mark. It must not be a workers.dev host: the Wallet's scanner blocks a mainnet
+# transaction asked for by one ("Scam site detected", seen on the Seeker 6 Oct 2026).
+routes = [
+  { pattern = "heylana.xyz", zone_name = "heylana.xyz", custom_domain = true },
+  { pattern = "api.heylana.xyz", zone_name = "heylana.xyz", custom_domain = true },
+]
+
 [vars]
 # Who speaks the answers: "deepgram" (Aura-2, Hera and Aries), "gemini" (Sulafat and
 # Achird) or "cartesia". Unset means "gemini". /me tells the phone which, for its privacy

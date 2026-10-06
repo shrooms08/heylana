@@ -586,11 +586,23 @@ answer with their name."; once an answer lands, no later question carries the
 name at all — the surest way the model will not use it again, and one line fewer
 to pay for. A failed first question keeps the greeting for the next.
 
-**The mark is served by the worker** until heylana.xyz exists. `GET
-/heylana-mark.png` returns the 256px mark embedded in `worker/src/mark.ts`,
-answered before any device check or cap, because Seed Vault fetches it with no
-headers. The Mobile Wallet Adapter identity is the built-in worker address with
-icon path `heylana-mark.png` (relative, no leading slash, as the spec asks).
+**The mark is served by the worker.** `GET /heylana-mark.png` returns the 256px mark
+embedded in `worker/src/mark.ts`, answered before any device check or cap, because Seed
+Vault fetches it with no headers. The Mobile Wallet Adapter identity is
+`heylana.identityUrl` in `local.properties` (`BuildConfig.IDENTITY_URL`), else the proxy
+address, with icon path `heylana-mark.png` (relative, no leading slash, as the spec asks).
+
+**The identity must be Heylana's own domain, never workers.dev.** On mainnet the Wallet
+scans every transaction and blocks one asked for by a `*.workers.dev` host outright —
+"Scam site detected. We blocked the transaction to protect your assets.", with only a
+Close button (the Seeker, 6 October 2026; devnet runs no such scan, which is why no
+devnet send ever saw it). So the worker answers on `heylana.xyz` and `api.heylana.xyz`
+as well (Workers custom domains, `routes` in `wrangler.toml`): the phone talks to
+`api.heylana.xyz` and tells the wallet it is `heylana.xyz`, which serves the same
+`/.well-known/assetlinks.json` and mark because it is the same worker. The release that
+sends on mainnet was proved this way: 0.01 USDC landed, finalized, on Explorer's mainnet.
+`workers_dev = true` is in `wrangler.toml` because a deploy without it turns the old
+address off.
 
 **The worker vouches for the app.** Seed Vault fetches `GET
 /.well-known/assetlinks.json` from the identity address (the worker) to check the

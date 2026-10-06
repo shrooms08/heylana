@@ -1252,7 +1252,9 @@ left your wallet" is certain; why it was never signed is the wallet's to say, an
 does not guess. A wallet that never came back keeps its own line
 ("Your wallet didn't come back, and I couldn't find it on the network…") whether the look
 times out or the blockhash dies under it — leaving Seed Vault without deciding is silence,
-not expiry. A clean decline still says "Cancelled. Nothing left your wallet.", and a send
+not expiry. That ending lands on **Not confirmed yet** rather than Not sent, because the
+look itself moves the card through checking, and the line hedges to match: nothing was ever
+signed, so it most likely did not leave the wallet, and Heylana says exactly that. A clean decline still says "Cancelled. Nothing left your wallet.", and a send
 the wallet **signed** before the blockhash died still says it expired. `SendFlowTest`.
 
 **A wallet that never comes back ends the send anyway (polish-15).** Mobile Wallet

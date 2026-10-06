@@ -25,8 +25,9 @@ DEEPGRAM_PROJECT_ID = "d65fab1f-f014-4150-9c80-3a192941040e"
 # associated token account for each token, created by the payer if missing.
 TREASURY_ADDRESS = "7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv"
 
-# Circle's USDC on Solana mainnet.
-USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+# Circle's USDC on Solana mainnet. Devnet's test USDC is 4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU:
+# swap it in (with CLUSTER and a devnet RPC_URL) to test with play money.
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 # Copy the SKR mint from Solscan. Do not guess it: until this is a real
 # address, SKR quotes answer "not set up" and USDC still works.
@@ -55,8 +56,9 @@ RPC_PRIMARY = "rpcfast"
 PRICES = """{"models":{"claude-haiku-4-5-20251001":{"in":1,"out":5},"claude-sonnet-5":{"in":3,"out":15}},"tts":{"deepgram":30,"gemini":30,"cartesia":65},"ears":{"deepgram":0.0077,"assemblyai":0.0025},"rpc":{"rpcfast":0,"helius":0,"devnet":0},"ears_session_seconds":8}"""
 
 # Which Solana payments are taken on: "mainnet-beta", or "devnet" to test with
-# play money (then RPC_URL and USDC_MINT must be devnet too). See README.md.
-CLUSTER = "devnet"
+# play money (then RPC_URL and USDC_MINT must be devnet too). PRODUCT.md,
+# "Mainnet switch before submission", has the steps; the phone needs no change.
+CLUSTER = "mainnet-beta"
 
 # Signing certificate SHA-256 fingerprints of the app, comma-separated, served at
 # /.well-known/assetlinks.json so Seed Vault can verify the app. Not secret. The first

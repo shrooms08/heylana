@@ -491,14 +491,28 @@ Counters are written once per request, so two requests landing together can lose
 
 ## Mainnet switch before submission
 
-In `worker/wrangler.toml` and the worker's secrets, then on the phone:
+Done on the `release-mainnet` branch, 6 October 2026. In `worker/wrangler.toml` and the
+worker's secrets, then on the phone:
 
-- [ ] `CLUSTER = "mainnet-beta"`
-- [ ] `USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"` (Circle's mainnet USDC)
-- [ ] `PRICE_USD = "15"`
-- [ ] `RPC_URL` secret is a **mainnet** endpoint (`npx wrangler secret put RPC_URL`)
-- [ ] `SKR_MINT` and `TREASURY_ADDRESS` are the real mainnet addresses
-- [ ] Wallet app on the phone switched to mainnet
-- [ ] Redeploy: `npx wrangler deploy` in `worker/`
-- [ ] Test: pay one real 15 USDC (Plan shows **Pro until** a date 30 days away), or
+- [x] `CLUSTER = "mainnet-beta"`
+- [x] `USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"` (Circle's mainnet USDC)
+- [x] `PRICE_USD = "5"` (Pro $5 a month, `PRICE_YEAR_USD = "40"` a year)
+- [x] `RPC_PRIMARY = "rpcfast"`: RPC Fast first, Helius (`MAINNET_RPC_URL`) as the fallback
+- [x] `RPC_URL` secret is a **mainnet** endpoint (`npx wrangler secret put RPC_URL`)
+- [x] `SKR_MINT` and `TREASURY_ADDRESS` are the real mainnet addresses
+- [x] `JUDGE_UNTIL = "2026-11-09"`, so the judge code keeps working to the deadline
+- [x] Wallet app on the phone switched to mainnet
+- [x] Redeploy: `npx wrangler deploy` in `worker/`
+- [x] `/me` answers `cluster: mainnet-beta`, so the phone's badge reads **Mainnet** and no
+      line says "on devnet" any more
+- [ ] Test: pay one real 5 USDC (Plan shows **Pro until** a date 30 days away), or
       enter the judge code (Plan shows **Judge until Nov 9, 2026**)
+
+**Pointing a local build back at devnet** (for testing with play money; it never changes
+what ships). In `worker/wrangler.toml` set `CLUSTER = "devnet"` and
+`USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"`, put a devnet endpoint in the
+`RPC_URL` secret, and deploy. The phone needs no change at all: it asks `/me` for the
+cluster and follows it — the badge, the spoken "on devnet", the Explorer link and what
+Mobile Wallet Adapter is asked to authorize all come from that one answer. Switch the
+Wallet app on the phone to devnet too, and remember there is no SKR on devnet, so the Go
+Pro sheet greys it out.

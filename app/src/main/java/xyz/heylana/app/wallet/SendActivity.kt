@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +24,9 @@ class SendActivity : ComponentActivity() {
 
     private lateinit var seedVault: SeedVault
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** One send, one ending. A wallet that answers after it was given up on is dropped here. */
+    private val delivered = AtomicBoolean(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +53,7 @@ class SendActivity : ComponentActivity() {
     }
 
     private fun deliverAndFinish(result: SendResult) {
+        if (!delivered.compareAndSet(false, true)) return
         SendRelay.listener?.invoke(result)
         finish()
     }

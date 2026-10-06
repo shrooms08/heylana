@@ -1,13 +1,13 @@
 # Smoke test — the release build on mainnet
 
-This is the signed release APK, version **1.0.2**, with the worker on **mainnet**. Real
+This is the signed release APK, version **1.0.3**, with the worker on **mainnet**. Real
 money moves if you approve a send, so read every screen before you touch anything.
 
 The app talks to **api.heylana.xyz** and tells the wallet it is **heylana.xyz**. Both are
 the same worker. It must not go back to a workers.dev address: the Wallet blocks every
 mainnet transaction from one with "Scam site detected".
 
-**Expected live API calls: 7 `/chat`** (one a question, plus the send's own), the voice
+**Expected live API calls: 8 `/chat`** (one a question, plus the send's own), the voice
 on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
 
 **Before you start**
@@ -15,7 +15,7 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
 - The Wallet app on the phone is on **mainnet** (not devnet).
 - The wallet you sign in with holds at least **0.02 USDC** and about **0.01 SOL** for fees.
 - The debug build is gone. Install the release one with
-  `adb install -r dist/heylana-1.0.2.apk`, or let Claude do it.
+  `adb install -r dist/heylana-1.0.3.apk`, or let Claude do it.
 - After installing, run `./scripts/a11y.sh` so screen reading is on.
 
 ---
@@ -75,7 +75,21 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
    - **Expect:** the card reads **Not sent**, and she says "Cancelled. Nothing left your
      wallet." Nothing is retried, and no second wallet screen appears.
 
-## 6. What is happening on Solana now
+## 6. A wallet that goes quiet
+
+1. Tap the disc. Send **send 0.01 USDC to 7c2y8xXRFYVamzNJ11hX3sicHexPHNuDwpiJ6sEnSxSv**
+   again and wait for **Prepared, not signed · Mainnet**.
+2. Tap **Confirm**, and when Seed Vault opens, **leave it without deciding** — press Back,
+   or go Home and stay there.
+   - **Expect:** within a few seconds of leaving, the card reads **Not sent** and she says
+     "Cancelled. Nothing left your wallet."
+3. If instead the wallet ever puts up a screen of its own that you cannot answer (a block,
+   a warning with only a Close button), leave it and watch Heylana.
+   - **Expect:** after about a minute the card ends by itself — **Not sent**, "Your wallet
+     didn't come back. Nothing left your wallet. Check your wallet app, and try again if
+     it's clear." It never waits for ever, and never sends anything afterwards.
+
+## 7. What is happening on Solana now
 
 1. Tap the disc. Type **what hackathon is going on on Solana right now** and send it.
    - **Expect:** one to three sentences naming real things with dates — a hackathon or a
@@ -84,7 +98,7 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
 2. Tap a chip.
    - **Expect:** the page opens in the browser.
 
-## 7. A timer
+## 8. A timer
 
 1. Tap the disc. Type **set a timer for 5 minutes** and send it.
    - **Expect:** the Clock app comes to the front with a 5-minute timer, Heylana says

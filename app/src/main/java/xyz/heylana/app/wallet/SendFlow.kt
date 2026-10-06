@@ -1,6 +1,13 @@
 package xyz.heylana.app.wallet
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import xyz.heylana.app.HeylanaLog
 
 /** How a confirmed send ended, told back to the buddy. */
@@ -20,10 +27,10 @@ sealed interface SendResult {
 }
 
 /**
- * How a send that did not land ended. The first three are certain that nothing left the
+ * How a send that did not land ended. The first four are certain that nothing left the
  * wallet; the last two are not, and never say it did not.
  */
-enum class StopKind { CANCELLED, FAILED, EXPIRED, UNSURE_SIGNED, NOT_FOUND }
+enum class StopKind { CANCELLED, FAILED, NO_ANSWER, EXPIRED, UNSURE_SIGNED, NOT_FOUND }
 
 /**
  * Where a confirmed send has got to, for the mode chip and the strip's label: the final
@@ -63,6 +70,12 @@ class SendFlow(
     private val log: (String) -> Unit = { HeylanaLog.state(it) },
     private val now: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
+    /**
+     * Waits on the trip to the wallet and gives up after [WALLET_TIMEOUT_MS] with null. It is
+     * injected because the default cannot be run off a phone, and the test needs the clock.
+     */
+    private val waitForWallet: suspend (suspend () -> SeedVault.Trip<SeedVault.Signed>) -> SeedVault.Trip<SeedVault.Signed>? =
+        { trip -> awaitWallet(trip) },
     private val stage: (SendStage) -> Unit = {}
 ) {
 
@@ -125,7 +138,15 @@ class SendFlow(
 
         stage(SendStage.APPROVE_IN_WALLET)
         log("send: simulation passed, opening Seed Vault cluster=${request.cluster.id}")
-        val signed = when (val trip = signAndSend(bytes, request.cluster)) {
+        val answer = waitForWallet { signAndSend(bytes, request.cluster) }
+        if (answer == null) {
+            // The wallet never came back — on mainnet the Wallet's own blocking screen does
+            // this, and the card used to wait for ever. Nothing was signed, so nothing went.
+            log("send: the wallet never came back after ${WALLET_TIMEOUT_MS}ms, ending it")
+            return SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, code = NO_ANSWER)
+        }
+        val trip: SeedVault.Trip<SeedVault.Signed> = answer
+        val signed = when (trip) {
             is SeedVault.Trip.Done -> trip.value
             SeedVault.Trip.NoWallet -> return SendResult.Stopped(WalletProblem.NO_WALLET.words, code = "no_wallet")
             is SeedVault.Trip.Stopped -> {
@@ -188,11 +209,42 @@ class SendFlow(
 
     companion object {
         const val LAND_TIMEOUT_MS = 60_000L
+
+        /**
+         * How long the wallet gets to come back at all. Mobile Wallet Adapter's own client
+         * timeout is three minutes, but a wallet that puts up its own blocking screen and
+         * never answers never trips it: the call simply does not return. So the wait is
+         * given up on here instead, and the send ends rather than hanging.
+         */
+        const val WALLET_TIMEOUT_MS = 60_000L
         private const val MISMATCH = 402
         private const val NOT_YOURS = 403
         private const val GONE = 410
         private const val UNREACHABLE = "unreachable"
         private const val NOT_CONFIRMED = "not_what_was_confirmed"
+        private const val NO_ANSWER = "wallet_no_answer"
+
+        /**
+         * Runs [trip] and stops waiting after [WALLET_TIMEOUT_MS]. The trip is started on a
+         * scope of its own, not a child of the caller's, because a wallet call that is stuck
+         * cannot be cancelled — only abandoned. Whatever it answers afterwards is dropped:
+         * the send has already ended, and [TxMachine] lets nothing move an ended send.
+         */
+        suspend fun awaitWallet(
+            trip: suspend () -> SeedVault.Trip<SeedVault.Signed>
+        ): SeedVault.Trip<SeedVault.Signed>? {
+            val answered = CompletableDeferred<SeedVault.Trip<SeedVault.Signed>>()
+            val waiting = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+            waiting.launch {
+                try {
+                    answered.complete(trip())
+                } catch (t: Throwable) {
+                    answered.completeExceptionally(t)
+                }
+            }
+            return withTimeoutOrNull(WALLET_TIMEOUT_MS) { answered.await() }
+                .also { if (it != null) waiting.cancel() }
+        }
 
         /** What the wallet can end with even after a send went out, a timeout among them. */
         private val UNSURE = setOf(WalletProblem.UNKNOWN, WalletProblem.TOOK_TOO_LONG)

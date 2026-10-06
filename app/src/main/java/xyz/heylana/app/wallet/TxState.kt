@@ -280,6 +280,14 @@ object TxText {
     const val EXPIRED =
         "It expired before you signed it. Ask again and I'll prepare a fresh one. $NOTHING_LEFT"
 
+    /**
+     * The wallet was opened and never answered — its own blocking screen, or it was left
+     * without deciding. Nothing was signed, so nothing went; Heylana never asks again by
+     * itself, and says to look in the wallet app before the user does.
+     */
+    const val NO_ANSWER =
+        "Your wallet didn't come back. $NOTHING_LEFT Check your wallet app, and try again if it's clear."
+
     /** Signed and not seen, or seen and not as prepared: the honest answer is not yet known. */
     const val UNSURE_SIGNED =
         "The network hasn't confirmed it yet, so it may have left your wallet. " +
@@ -313,6 +321,7 @@ object TxText {
     fun ending(stopped: SendResult.Stopped): Ending = when (stopped.kind) {
         StopKind.CANCELLED -> Ending(TxEvent.Rejected, CANCELLED)
         StopKind.FAILED -> Ending(TxEvent.Failed, failed(stopped.line, stopped.code))
+        StopKind.NO_ANSWER -> Ending(TxEvent.Failed, NO_ANSWER)
         StopKind.EXPIRED -> Ending(TxEvent.Expired, EXPIRED)
         StopKind.UNSURE_SIGNED -> Ending(TxEvent.Unconfirmed, UNSURE_SIGNED)
         StopKind.NOT_FOUND -> Ending(TxEvent.Unconfirmed, NOT_FOUND)

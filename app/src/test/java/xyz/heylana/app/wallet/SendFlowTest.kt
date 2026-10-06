@@ -32,8 +32,13 @@ class SendFlowTest {
         confirm: suspend (String, String?) -> Answer<Landed> = { _, _ -> Answer.Ok(landed("5555…5555")) },
         log: (String) -> Unit = {},
         clock: LongArray = longArrayOf(0L),
-        stages: MutableList<SendStage> = mutableListOf()
-    ) = SendFlow(build, wallet, confirm, log, now = { clock[0] }, sleep = { clock[0] += it }, stage = { stages += it })
+        stages: MutableList<SendStage> = mutableListOf(),
+        /** The wait on the wallet: by default it answers, as a wallet that comes back does. */
+        wait: suspend (suspend () -> SeedVault.Trip<SeedVault.Signed>) -> SeedVault.Trip<SeedVault.Signed>? = { it() }
+    ) = SendFlow(
+        build, wallet, confirm, log,
+        now = { clock[0] }, sleep = { clock[0] += it }, waitForWallet = wait, stage = { stages += it }
+    )
 
     @Test
     fun `a passing simulation opens the wallet with exactly the simulated bytes, on the send's cluster`() = runBlocking {
@@ -184,5 +189,66 @@ class SendFlowTest {
         val read = flow(wallet = { _, _ -> SeedVault.Trip.Done(SeedVault.Signed("signature", 1_500)) }).run(request, PAYER)
         assertEquals(SendResult.Sent("5555…5555", autoSigned = false, fullSignature = "signature"), read)
         assertTrue(BuildText.AUTO_SIGNED.startsWith("Seed Vault signed that automatically because Heylana is marked trusted there."))
+    }
+
+    @Test
+    fun `a wallet that never comes back ends the send as not sent, and nothing is asked again`() = runBlocking {
+        val logged = mutableListOf<String>()
+        var looks = 0
+        val stages = mutableListOf<SendStage>()
+        val result = flow(
+            confirm = { _, _ -> looks++; Answer.Ok(landed("5555…5555")) },
+            log = { logged += it },
+            stages = stages,
+            // The wallet is opened and simply never answers: the wait is given up on.
+            wait = { null }
+        ).run(request, PAYER)
+
+        assertEquals(SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, "wallet_no_answer"), result)
+        // Never looked on the network, never asked the wallet a second time.
+        assertEquals(0, looks)
+        assertEquals(listOf(SendStage.SIMULATING, SendStage.APPROVE_IN_WALLET), stages)
+        assertTrue(logged.any { it.contains("the wallet never came back") })
+        assertEquals(60_000L, SendFlow.WALLET_TIMEOUT_MS)
+    }
+
+    @Test
+    fun `the card ends as not sent, in the words the user hears`() {
+        val stopped = SendResult.Stopped(TxText.NO_ANSWER, StopKind.NO_ANSWER, "wallet_no_answer")
+        val ending = TxText.ending(stopped)
+        assertEquals(TxEvent.Failed, ending.event)
+        assertEquals(
+            "Your wallet didn't come back. Nothing left your wallet. " +
+                "Check your wallet app, and try again if it's clear.",
+            ending.line
+        )
+        val ended = TxMachine.next(TxState.Waiting, ending.event)
+        assertEquals(TxState.NotSent(TxEnding.FAILED), ended)
+        assertEquals("Not sent", (ended as TxState.NotSent).label)
+    }
+
+    @Test
+    fun `a wallet answer that arrives after it was given up on neither revives the card nor sends again`() = runBlocking {
+        var looks = 0
+        var walletRuns = 0
+        var late: (suspend () -> SeedVault.Trip<SeedVault.Signed>)? = null
+        val result = flow(
+            wallet = { _, _ -> walletRuns++; SeedVault.Trip.Done(SeedVault.Signed("signature", 5_000)) },
+            confirm = { _, _ -> looks++; Answer.Ok(landed("5555…5555")) },
+            // The trip is kept, not run: the wallet is still thinking when the wait ends.
+            wait = { trip -> late = trip; null }
+        ).run(request, PAYER)
+        assertEquals(StopKind.NO_ANSWER, (result as SendResult.Stopped).kind)
+
+        // The wallet finally answers, signed and all. Nothing follows from it.
+        val answered = late!!.invoke()
+        assertTrue(answered is SeedVault.Trip.Done)
+        assertEquals(1, walletRuns)
+        assertEquals(0, looks)
+
+        // And the card it belonged to has ended: no event moves it again.
+        val ended = TxState.NotSent(TxEnding.FAILED)
+        assertEquals(ended, TxMachine.next(ended, TxEvent.Landed("5555…5555", "https://explorer.solana.com/tx/5")))
+        assertEquals(ended, TxMachine.next(ended, TxEvent.Checking(signed = true)))
     }
 }

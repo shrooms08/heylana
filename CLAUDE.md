@@ -1241,6 +1241,22 @@ client timeout is 180 seconds (the library default of 90 dropped a slow approval
 signed result). A timeout anywhere in the error chain is unsure, not a failure:
 a send is then looked for on chain, and a Pro payment by its reference.
 
+**A wallet that never comes back ends the send anyway (polish-15).** Mobile Wallet
+Adapter's three minutes only run while the wallet is answering: on mainnet the Wallet put
+up its own blocking screen ("Scam site detected", one Close button), never returned, and
+the card sat on "Checking it once more, then opening your wallet" for twelve minutes. So
+the wait on the wallet has its own limit, `SendFlow.WALLET_TIMEOUT_MS` (60s): the trip runs
+on a scope of its own — a stuck wallet call cannot be cancelled, only abandoned — and when
+the time is up the send ends as **Not sent** with `TxText.NO_ANSWER`: "Your wallet didn't
+come back. Nothing left your wallet. Check your wallet app, and try again if it's clear."
+Nothing is retried, nothing is looked for on chain (nothing was signed), and an answer that
+arrives afterwards is dropped twice over: `SendActivity` delivers one ending only, and
+`TxMachine` moves no ended send. Backing out of Seed Vault normally is unchanged — the
+wallet reports a cancellation and the card ends at once with "Cancelled. Nothing left your
+wallet." `SendFlowTest`. Proved on the Seeker on Oct 6, release build, mainnet: with the
+Wallet's blocking screen still on top and untouched, the card read "Waiting for your wallet"
+at 60.0s after Confirm and "Not sent" with the line at 61.5s.
+
 **Checking the chain uses growing waits.** `wallet/Backoff` gives 2s, 3s, 5s, 8s,
 13s, 21s and whatever is left of the minute. Every look is logged as
 `send: check #n after=…ms signature=given|none result=…` (or `pay: check #n`). Only

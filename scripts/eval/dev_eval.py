@@ -164,6 +164,17 @@ def version_pinned(text):
     return any(mark in low for mark in VERSION_MARKS)
 
 
+# Openers her character block forbids outright. They are cheap to check and they are the
+# first thing anyone hears, so every answer is held to them, not just the ones with points.
+BANNED_OPENERS = ("certainly", "great question", "i'd be happy to", "i would be happy to", "absolutely!")
+
+
+def flattery(text):
+    """The banned openers found in an answer, anywhere in it."""
+    low = text.lower()
+    return [phrase for phrase in BANNED_OPENERS if phrase in low]
+
+
 def score(case, obj, text):
     """Every check this case asks for, as (name, passed, note)."""
     checks = []
@@ -173,6 +184,8 @@ def score(case, obj, text):
         checks.append(("chip", has_chip(obj), "" if has_chip(obj) else "no source"))
     made_up = invented_names(text)
     checks.append(("real-api", not made_up, ", ".join(f"{n} (real: {INVENTED[n]})" for n in made_up)))
+    gushing = flattery(text)
+    checks.append(("plain", not gushing, ", ".join(gushing)))
     if case.get("version"):
         pinned = version_pinned(text)
         checks.append(("version", pinned, "" if pinned else "not dated"))

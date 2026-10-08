@@ -99,7 +99,7 @@ class HeylanaVoice(
      */
     fun speak(said: String, clock: AnswerClock? = null): Boolean {
         // A web address is never read aloud: whatever line comes here, its links are chips.
-        val text = xyz.heylana.app.brain.Sources.spoken(said)
+        val text = asSpoken(xyz.heylana.app.brain.Sources.spoken(said))
         if (text.isBlank()) return false
         if (!proxy.isConfigured) return false
         val length = lines.add(Line(text, settings.voice, clock = clock))
@@ -109,6 +109,14 @@ class HeylanaVoice(
     }
 
     /**
+     * The one place the spelling of a name and the sound of it part company: what the voice
+     * is given carries the respelling, what the screen shows never does. With no respelling
+     * set, the line is untouched.
+     */
+    private fun asSpoken(text: String): String =
+        xyz.heylana.app.brain.SpokenName.forSpeech(text, settings.callMe, settings.spokenName)
+
+    /**
      * A line Heylana says the same way every time — a warning — read out at once.
      *
      * The first time it is fetched like any other and kept; after that it plays from the
@@ -116,7 +124,7 @@ class HeylanaVoice(
      * before a thumb reaches Approve and one that does not.
      */
     fun speakFixed(said: String, clock: AnswerClock? = null): Boolean {
-        val text = xyz.heylana.app.brain.Sources.spoken(said)
+        val text = asSpoken(xyz.heylana.app.brain.Sources.spoken(said))
         if (text.isBlank()) return false
         val voice = settings.voice
         val ready = kept.ready(voice, text)

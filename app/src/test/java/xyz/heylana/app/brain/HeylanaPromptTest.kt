@@ -16,9 +16,12 @@ class HeylanaPromptTest {
 
     @Test
     fun `system prompt stays inside its character budget`() {
+        // The budget covers the rules; the identity and the character block are named
+        // separately so the guard still bites on everything else that might creep in.
+        val allowed = BUDGET + HeylanaPrompt.IDENTITY.length + HeylanaPrompt.CHARACTER.length
         assertTrue(
-            "system prompt is ${HeylanaPrompt.SYSTEM.length} chars, budget is $BUDGET plus the identity line",
-            HeylanaPrompt.SYSTEM.length <= BUDGET + HeylanaPrompt.IDENTITY.length
+            "system prompt is ${HeylanaPrompt.SYSTEM.length} chars, budget is $allowed",
+            HeylanaPrompt.SYSTEM.length <= allowed
         )
     }
 

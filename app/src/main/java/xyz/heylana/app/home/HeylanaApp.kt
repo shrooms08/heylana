@@ -43,7 +43,7 @@ fun HeylanaApp(activity: ComponentActivity, seedVault: SeedVault, forcedScreen: 
     var screen by rememberSaveable {
         mutableStateOf(
             forcedScreen?.let { name -> Screen.entries.firstOrNull { it.name.equals(name, ignoreCase = true) && AppRoute.reachable(it) } }
-                ?: AppRoute.start(settings.firstRunDone, settings.callMe.isNotBlank())
+                ?: AppRoute.start(settings.firstRunDone)
         )
     }
 
@@ -81,7 +81,17 @@ fun HeylanaApp(activity: ComponentActivity, seedVault: SeedVault, forcedScreen: 
 
     HeylanaTheme(mode) {
         when (screen) {
-            Screen.SIGN_IN -> SignInScreen(settings, seedVault) { screen = AppRoute.afterName() }
+            Screen.ONBOARDING -> OnboardingScreen(
+                settings = settings,
+                seedVault = seedVault,
+                permissions = permissionState,
+                onPermissionRow = { target -> openPermission(activity, target, permissionState) { askPermission.launch(it) } },
+                onDone = {
+                    settings.firstRunDone = true
+                    screen = AppRoute.afterOnboarding()
+                }
+            )
+            Screen.SIGN_IN -> SignInScreen(settings, seedVault) { screen = AppRoute.afterPermissions() }
             Screen.PERMISSIONS -> PermissionsScreen(
                 PermissionsModel.rowsFor(permissionState),
                 permissions.required,

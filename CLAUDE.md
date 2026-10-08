@@ -1354,17 +1354,24 @@ mechanics treatment. Sept 20: 24 of 60, then 30 with the notes in `scripts/kb/no
 (stackexchange 12, errors 13, infrastructure 14) once the knowledge base was read rather
 than offered and the answer's shape forced.
 
-**The baseline is 56 of 60**, run on 21 September 2026 at 08:10 and 08:12 UTC against
-`7a4f67c` ("brain: widen dev classification", 09:07 +0100 — three minutes before):
-stackexchange 18 of 20, errors 20 of 20, infrastructure 18 of 20, and **60 of 60 carried a
-source**. The 39 of 60 above is the run before that commit (20 September, 17:47 and 17:49
-UTC, 59 of 60 sourced) and is what this file used to quote. The evidence is the saved runs
-`scripts/eval/runs/run4-first30.json` and `run4-second30.json`, which `--rescore` reads
-without spending anything; that folder is git-ignored, so they live on the operator's Mac
-rather than in the repo. Scored again on 8 October against the set as it stands now, the
-same answers come to 55 of 60: one case (`se-priority-fee`) gained a required keyword
-afterwards. None of the sixty answers contains a banned opener, which the `plain` check
-counts from polish-16 on.
+**The number to quote is 55 of 60**, because that is what re-running the scorer produces
+today, against the question set as it now stands, and **60 of 60 carried a source**. The
+answers are the run of 21 September 2026, 08:10 and 08:12 UTC, against `7a4f67c` ("brain:
+widen dev classification", 09:07 +0100 — three minutes before); that run **scored 56 of 60
+on the day** (stackexchange 18 of 20, errors 20 of 20, infrastructure 18 of 20), and one
+case, `se-priority-fee`, has since gained a required keyword, which is the whole of the
+difference. The 39 of 60 above is the run before that commit (20 September, 17:47 and 17:49
+UTC, 59 of 60 sourced) and is what this file used to quote.
+
+The answers are committed, so the figure can be checked by anyone:
+`scripts/eval/runs/run4-first30.json` and `run4-second30.json`, re-scored for nothing with
+
+```
+python3 scripts/eval/dev_eval.py --rescore scripts/eval/runs/run4-first30.json scripts/eval/runs/run4-second30.json
+```
+
+The rest of `scripts/eval/runs/` stays git-ignored. None of the sixty answers contains a
+banned opener, which the `plain` check counts from polish-16 on.
 
 **Walk-through steps never truncate (polish-10).** On the Seeker two steps ran into the phone's
 300 output tokens with no `say` at all, and Heylana said "I didn't catch that" — the ears' line,

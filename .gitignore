@@ -29,7 +29,11 @@ dist/
 # The eval's throwaway wallet key and device id
 scripts/eval/.state.json
 scripts/eval/.state_*.json
-scripts/eval/runs/
+# Eval runs are local, except the two that are the published baseline: a directory
+# cannot be re-included once ignored, so the contents are ignored and those two let back in.
+scripts/eval/runs/*
+!scripts/eval/runs/run4-first30.json
+!scripts/eval/runs/run4-second30.json
 
 # The knowledge base: fetched text (other people's, rebuilt by scripts/kb/build.sh) and the admin secret
 scripts/kb/data/

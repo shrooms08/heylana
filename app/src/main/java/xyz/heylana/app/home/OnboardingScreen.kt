@@ -53,6 +53,7 @@ import xyz.heylana.app.wallet.SeedVault
 import xyz.heylana.app.wallet.SignIn
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.cleanName
+import xyz.heylana.app.overlay.BuddyOverlayService
 
 /**
  * The first run she speaks. [OnboardingFlow] holds the order and the words; this draws them
@@ -102,9 +103,15 @@ fun OnboardingScreen(
     }
 
     // Granted while the rows are up: screen reading, then the overlay — the orb's moment.
+    // "That's me" is said as the buddy is started, so there is really an orb on the edge
+    // of the screen to mean; starting it needs the permission that has just been given.
     LaunchedEffect(permissions) {
         if (step == OnboardingStep.PERMISSIONS) {
             OnboardingFlow.granted(seen, permissions).forEach { moment ->
+                if (moment == Moment.ORB) {
+                    runCatching { BuddyOverlayService.start(context) }
+                        .onFailure { HeylanaLog.state("onboarding: buddy would not start yet") }
+                }
                 OnboardingFlow.line(moment)?.let { say(it) }
             }
         }

@@ -1,6 +1,6 @@
 # Smoke test — the release build on mainnet
 
-This is the signed release APK, version **1.0.3**, with the worker on **mainnet**. Real
+This is the signed release APK, version **1.1.0**, with the worker on **mainnet**. Real
 money moves if you approve a send, so read every screen before you touch anything.
 
 The app talks to **api.heylana.xyz** and tells the wallet it is **heylana.xyz**. Both are
@@ -15,10 +15,32 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
 - The Wallet app on the phone is on **mainnet** (not devnet).
 - The wallet you sign in with holds at least **0.02 USDC** and about **0.01 SOL** for fees.
 - The debug build is gone. Install the release one with
-  `adb install -r dist/heylana-1.0.3.apk`, or let Claude do it.
+  `adb install -r dist/heylana-1.1.0.apk`, or let Claude do it.
 - After installing, run `./scripts/a11y.sh` so screen reading is on.
 
 ---
+
+## 0. She introduces herself (a clean install only)
+
+1. Uninstall Heylana, install the APK, open it.
+   - **Expect:** within a couple of seconds she speaks — "Hey. I'm Heylana. I'm your Seeker
+     buddy…" — with the same words on screen, a **Let's go** button and **Skip** under it.
+     With no network she says nothing and the words are still there.
+2. Tap **Let's go**, then allow **Screen reading** and **Show over other apps** from the rows.
+   - **Expect:** she says "Got it. I can see your screen now…" as screen reading goes on, and
+     "That's me. Hold me any time and ask." as the orb appears on the edge of the screen.
+3. Tap **Continue**, then **Sign in with wallet** and approve in Seed Vault.
+   - **Expect:** "Connected. I can read your wallet, but I can never move anything…"
+4. Type your name. She asks "Your Seeker says you're <name>. Did I say that right?"
+   - Tap **Yes** if she got it. If not, tap **Not quite**, type how it sounds
+     (Og-heh-neh-roo-KEV-weh), tap **Say it back** to hear it, then **Keep it**.
+   - **Expect:** the name on screen never changes; only the way she says it does.
+5. **Expect:** "Last thing, and it's the important one…" about speaking up before a signature,
+   then "That's it. Open any app, hold me, and ask what you're looking at." Tap through to Home.
+
+Tapping anything stops her mid-sentence. **Skip**, at any step, goes straight to Home and
+leaves a working app. Settings → **Replay the welcome** runs it again and asks for nothing
+already allowed; Settings → **Your name** shows both spellings with a **Say my name** button.
 
 ## 1. It says Mainnet, and never devnet
 

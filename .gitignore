@@ -39,3 +39,6 @@ scripts/kb/.admin_secret
 worker/.admin_secret
 # Screenshots pulled from the phone for writing skills: the owner's device, never in git.
 design/refs/skills/
+
+# Python bytecode from the eval scripts
+scripts/eval/__pycache__/

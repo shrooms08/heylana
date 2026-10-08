@@ -54,6 +54,9 @@ import xyz.heylana.app.wallet.SignIn
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.cleanName
 import xyz.heylana.app.overlay.BuddyOverlayService
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 
 /**
  * The first run she speaks. [OnboardingFlow] holds the order and the words; this draws them
@@ -92,9 +95,11 @@ fun OnboardingScreen(
     fun go(next: OnboardingStep) {
         step = next
         HeylanaLog.state("onboarding: step=${next.name.lowercase()}")
-        OnboardingFlow.arrivingAt(next)?.let { moment ->
-            OnboardingFlow.line(moment)?.let { say(it) }
-        }
+        val moment = OnboardingFlow.arrivingAt(next)
+        val line = moment?.let { OnboardingFlow.line(it) }
+        // A step that says nothing on arrival clears what she said last, rather than
+        // leaving the welcome sitting over the permission rows until the next line lands.
+        if (line != null) say(line) else shown = ""
     }
 
     LaunchedEffect(Unit) {
@@ -138,10 +143,12 @@ fun OnboardingScreen(
             Spacer(Modifier.height(44.dp))
             LibraryOrb(if (step == OnboardingStep.WELCOME) OrbMode.SPEAKING else OrbMode.IDLE, diameter = 120.dp)
             Spacer(Modifier.height(26.dp))
-            Text(
-                shown, style = HeylanaType.bodyLight, color = palette.ink,
-                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
-            )
+            AnimatedVisibility(shown.isNotBlank(), enter = fadeIn(), exit = fadeOut()) {
+                Text(
+                    shown, style = HeylanaType.bodyLight, color = palette.ink,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                )
+            }
             Spacer(Modifier.height(26.dp))
 
             when (step) {

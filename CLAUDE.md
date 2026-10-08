@@ -841,8 +841,14 @@ different request speaks again. Muted means the line on the strip is the whole o
 spoken line is deliberately **one of a fixed few** (`Lookout.SPOKEN_LINES`): the amount and
 the address live on the strip, where they can be read, because a sentence that changes with
 the amount is a sentence the voice has to make from scratch — 800ms on the Seeker, which is
-the whole budget. `voice/SpokenCache` keeps a fixed line's audio (keyed by voice and words,
-a dozen at most, a cut-off stream never kept) and `HeylanaVoice.prefetch` fetches the
+the whole budget. `voice/SpokenCache` keeps a fixed line's audio in the app's private `files/spoken/`, one
+`.pcm` named from the first ten bytes of `SHA-256("<key>|<text>")` (a dozen at most, a
+cut-off stream never kept). The key is the slot **and the voice that slot currently is**
+(`"skylar/Hera"`, `HeylanaVoice.voiceKey`, from the name `/me` last gave): the slot alone
+would let a voice swapped on the worker keep answering to the same key and play in the old
+voice, since the slot name never changes. With the voice in it a swap simply misses, and
+the line is fetched again in the new one; the worker is still asked for the slot, never the
+key. `SpokenCache.clear()` exists for a wipe but nothing calls it, and nothing needs to. and `HeylanaVoice.prefetch` fetches the
 missing ones when a wallet or a browser comes up, so by the time a confirm sheet is in front
 the words for it are already on the phone. Measured on the Seeker: **918ms the first time a
 sentence is ever said, 90–135ms every time after.** `SpokenCacheTest`.
@@ -1344,9 +1350,21 @@ again for nothing. The request is `scripts/eval/dev_request.json`, written by
 `DevRequestTest` from `HeylanaPrompt`; the lines the phone adds per question go on per
 `scripts/eval/dev_verdicts.json`, which the same test fills in with `DevQuestion`'s own
 verdicts, and it fails unless every one of the sixty loads Solana on the phone and gets the
-mechanics treatment. Sept 20: 24 of 60, then 30 with the notes in `scripts/kb/notes/`, then **39 of
-60** (stackexchange 12, errors 13, infrastructure 14) once the knowledge base was read
-rather than offered and the answer's shape forced.
+mechanics treatment. Sept 20: 24 of 60, then 30 with the notes in `scripts/kb/notes/`, then 39 of 60
+(stackexchange 12, errors 13, infrastructure 14) once the knowledge base was read rather
+than offered and the answer's shape forced.
+
+**The baseline is 56 of 60**, run on 21 September 2026 at 08:10 and 08:12 UTC against
+`7a4f67c` ("brain: widen dev classification", 09:07 +0100 — three minutes before):
+stackexchange 18 of 20, errors 20 of 20, infrastructure 18 of 20, and **60 of 60 carried a
+source**. The 39 of 60 above is the run before that commit (20 September, 17:47 and 17:49
+UTC, 59 of 60 sourced) and is what this file used to quote. The evidence is the saved runs
+`scripts/eval/runs/run4-first30.json` and `run4-second30.json`, which `--rescore` reads
+without spending anything; that folder is git-ignored, so they live on the operator's Mac
+rather than in the repo. Scored again on 8 October against the set as it stands now, the
+same answers come to 55 of 60: one case (`se-priority-fee`) gained a required keyword
+afterwards. None of the sixty answers contains a banned opener, which the `plain` check
+counts from polish-16 on.
 
 **Walk-through steps never truncate (polish-10).** On the Seeker two steps ran into the phone's
 300 output tokens with no `say` at all, and Heylana said "I didn't catch that" — the ears' line,

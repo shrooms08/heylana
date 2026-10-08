@@ -1,0 +1,1010 @@
+{
+ "at": "2026-09-21T08:12:00Z",
+ "rows": [
+  {
+   "id": "err-spl-owner",
+   "group": "errors",
+   "passed": true,
+   "words": 42,
+   "ms": 3683,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "OwnerMismatch means the signer is not the owner or delegate of the token account. You tried to move tokens from an account that does not belong to you. Check you are signing with the right wallet, or that you have delegation permission.",
+   "sources": [
+    {
+     "title": "SPL Token and associated token accounts, as of 2026-09",
+     "source": "Solana docs",
+     "url": "https://solana.com/docs/tokens"
+    }
+   ]
+  },
+  {
+   "id": "err-spl-mint",
+   "group": "errors",
+   "passed": true,
+   "words": 40,
+   "ms": 3427,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "MintMismatch happens when you're using TransferChecked and the mint account you pass doesn't match the one associated with the token account. The checked variant validates that the mint address is correct, whereas the unchecked Transfer instruction skips this safety check.",
+   "sources": [
+    {
+     "title": "What is the difference between Transfer and TransferChecked instruction from the SPL Token Program?",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/382"
+    }
+   ]
+  },
+  {
+   "id": "err-spl-nonnative",
+   "group": "errors",
+   "passed": true,
+   "words": 41,
+   "ms": 6413,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "NonNativeHasBalance means you tried to close a token account for a non-wrapped token that still has a balance; the token balance must be zero before closing. Wrapped SOL is the exception\u2014you can close a wSOL account even with SOL in it.",
+   "sources": [
+    {
+     "title": "Close Token Account",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/tokens/basics/close-account"
+    }
+   ]
+  },
+  {
+   "id": "err-blockhash",
+   "group": "errors",
+   "passed": true,
+   "words": 44,
+   "ms": 2257,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A blockhash becomes too old if enough time passes between fetching it and submitting your transaction, or if your RPC node is lagging behind the network. Use finalized blockhashes and submit quickly, or retry with a fresh blockhash if the network has moved on.",
+   "sources": [
+    {
+     "title": "Transaction simulation failed: Blockhash not found",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/308"
+    },
+    {
+     "title": "Blockhash not found when using solana CLI",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/18210"
+    }
+   ]
+  },
+  {
+   "id": "err-already-processed",
+   "group": "errors",
+   "passed": true,
+   "words": 45,
+   "ms": 5345,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "The Solana transaction pipeline says this error means the network already processed and cached your transaction \u2014 it went through once, so the network rejects it again to protect you from double-spending. Don't resend the exact same transaction; if you retry, use a fresh blockhash.",
+   "sources": [
+    {
+     "title": "Transaction Pipeline",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/transactions/transaction-pipeline"
+    }
+   ]
+  },
+  {
+   "id": "err-insufficient-lamports",
+   "group": "errors",
+   "passed": true,
+   "words": 60,
+   "ms": 3039,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Your account needs SOL not just for the transfer amount, but also for the network fee \u2014 check your balance covers both. If you're sending to a new account, that adds a one-time account setup fee of about 0.002 SOL. A common mistake: you have enough SOL in total, but not enough after accounting for rent-exempt minimums on existing accounts.",
+   "sources": [
+    {
+     "title": "Transaction simulation failed: failed to send transaction: Transaction simulation\u2026ocessing Instruction 0: custom program error: 0x1",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/1363"
+    },
+    {
+     "title": "Transaction Pipeline",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/transactions/transaction-pipeline"
+    }
+   ]
+  },
+  {
+   "id": "err-account-in-use",
+   "group": "errors",
+   "passed": true,
+   "words": 42,
+   "ms": 6323,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "The Transaction Pipeline docs say AccountInUse happens at the scheduling stage when an account is locked by another transaction that hasn't finished yet. If two transactions try to write to the same account at once, the second one fails with this error.",
+   "sources": [
+    {
+     "title": "Transaction Pipeline",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/transactions/transaction-pipeline"
+    }
+   ]
+  },
+  {
+   "id": "err-compute-exceeded",
+   "group": "errors",
+   "passed": true,
+   "words": 24,
+   "ms": 2921,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Your instruction uses more compute units than you allowed. Add setComputeUnitLimit as the first instruction and experiment with the units number until it works.",
+   "sources": [
+    {
+     "title": "failed: exceeded CUs meter at BPF instruction",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/7513"
+    }
+   ]
+  },
+  {
+   "id": "err-signature-verification",
+   "group": "errors",
+   "passed": true,
+   "words": 56,
+   "ms": 2912,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Signature verification fails when the transaction is missing a required signer's signature\u2014check that all accounts marked as signers are actually signed, and that signers are in the right position in the account list. A common trap: if you use a wallet's signTransaction method, make sure you use the returned signed transaction, not the original unsigned one.",
+   "sources": [
+    {
+     "title": "Transaction Error: Signature Verification Failed: Missing Signature For PublicKey",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/9216"
+    },
+    {
+     "title": "Signature verification failed with Anchor - Solana",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/8717"
+    }
+   ]
+  },
+  {
+   "id": "err-mwa-not-signed",
+   "group": "errors",
+   "passed": true,
+   "words": 43,
+   "ms": 7242,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "The Mobile Wallet Adapter specs do not define an ERROR_NOT_SIGNED code\u2014that error is likely from a third-party wallet or dApp implementation. Most commonly, it means the user declined to sign the transaction when prompted, or the signing operation failed on the wallet side.",
+   "sources": [
+    {
+     "title": "Mobile Wallet Adapter Typescript Reference",
+     "source": "Solana Mobile docs",
+     "url": "https://docs.solanamobile.com/reference/typescript/mobile-wallet-adapter"
+    }
+   ]
+  },
+  {
+   "id": "inf-slot",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 43,
+   "ms": 2371,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, a Solana slot is 300 milliseconds on mainnet, and a leader gets four consecutive slots, giving them 1.2 seconds per turn. Older answers saying 400 milliseconds are out of date after SIMD-0525 stepped it down in stages starting August.",
+   "sources": [
+    {
+     "title": "How long is a Solana slot, and how many slots does a leader get in a row? (as of 2026-09)",
+     "source": "Solana docs and SIMD-0525",
+     "url": "https://solana.com/upgrades/reduced-slot-times"
+    }
+   ]
+  },
+  {
+   "id": "inf-poh",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 61,
+   "ms": 6665,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Proof of History proves that an event happened before another event and that time actually passed: the next hash must be produced sequentially from the previous one and transaction IDs are hashed into the stream, creating an unforgeable chain of events. A common trap is thinking it proves ownership or validity of transactions\u2014it doesn't, it just establishes order and elapsed time.",
+   "sources": [
+    {
+     "title": "Confirmation & Expiration",
+     "source": "Solana Cookbook",
+     "url": "https://solana.com/developers/cookbook/transactions/confirmation"
+    }
+   ]
+  },
+  {
+   "id": "inf-turbine",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 48,
+   "ms": 2151,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Turbine spreads a block by cutting it into shreds, sending each shred to a small set of validators, and then those validators pass it on down a tree \u2014 so no one has to send the whole block to everyone. This way the network doesn't get bogged down.",
+   "sources": [
+    {
+     "title": "How the network runs \u2014 slots, consensus, clients, as of 2026-09",
+     "source": "Anza docs and the Solana Improvement Documents",
+     "url": "https://docs.anza.xyz/"
+    }
+   ]
+  },
+  {
+   "id": "inf-no-mempool",
+   "group": "infrastructure",
+   "passed": false,
+   "words": 59,
+   "ms": 4211,
+   "checks": [
+    [
+     "points",
+     false,
+     "leader/forward/gulf stream"
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Solana doesn't have a mempool like Ethereum does. Transactions are processed immediately by validators from a single network path, with no queue stage where users compete on gas fees \u2014 that's the old Ethereum belief. The transaction pipeline validates and executes sequentially, and priority fees are used only to influence which packets are selected when the network is congested.",
+   "sources": [
+    {
+     "title": "Transaction Pipeline",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/transactions/transaction-pipeline"
+    }
+   ]
+  },
+  {
+   "id": "inf-sealevel",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 71,
+   "ms": 2415,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Sealevel runs transactions in parallel by having each transaction declare which accounts it reads and writes up front, so the scheduler can run any two transactions that do not write the same account at the same time. Two transactions that both want to write to the same account run one after the other. A common belief that is out of date: that Solana runs all transactions in parallel with no limits.",
+   "sources": [
+    {
+     "title": "How the network runs \u2014 slots, consensus, clients, as of 2026-09",
+     "source": "Anza docs and the Solana Improvement Documents",
+     "url": "https://docs.anza.xyz/"
+    }
+   ]
+  },
+  {
+   "id": "inf-write-lock",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 76,
+   "ms": 3081,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Solana processes transactions that write to the same account sequentially, not in parallel, so only one can run at a time. This is because the validator needs to order them to avoid conflicts \u2014 if two tried to modify the same data at once, the results would be unpredictable. A common trap is thinking this is a bottleneck: good program design avoids write-locking a single account, spreading writes across accounts so transactions can run in parallel.",
+   "sources": [
+    {
+     "title": "JSON Reference",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/rpc/json-structures"
+    }
+   ]
+  },
+  {
+   "id": "inf-local-fees",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 63,
+   "ms": 2245,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "On Solana, priority fees are worked out per account, not across the whole chain \u2014 so competition to write one hot account raises fees only for that account, leaving unrelated transactions cheap. That is a local fee market: one busy mint does not make a plain transfer expensive, which is why Solana does not have a single network-wide gas price like other chains.",
+   "sources": [
+    {
+     "title": "Fees",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/fees"
+    }
+   ]
+  },
+  {
+   "id": "inf-geyser",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 56,
+   "ms": 2403,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A Geyser plugin is a shared library a validator loads to stream account writes, transactions, blocks and other data into a database or websocket feed \u2014 that's how indexers and RPC providers keep up without constantly polling. It has nothing to do with Minecraft; on Solana it's the validator's plugin interface defined by the agave-geyser-plugin-interface crate.",
+   "sources": [
+    {
+     "title": "What is a Geyser plugin for? (as of 2026-09)",
+     "source": "Anza docs",
+     "url": "https://docs.anza.xyz/validator/geyser"
+    }
+   ]
+  },
+  {
+   "id": "inf-snapshot",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 41,
+   "ms": 2265,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A snapshot is a compressed copy of all accounts on Solana at a specific slot, used by validators to start up quickly without replaying the whole blockchain from the beginning. Snapshots are also useful for analytics to load account data fast.",
+   "sources": [
+    {
+     "title": "What is a snapshot on a Solana validator? (as of 2026-09)",
+     "source": "Anza docs",
+     "url": "https://docs.anza.xyz/operations/setup-a-validator"
+    }
+   ]
+  },
+  {
+   "id": "inf-epoch",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 39,
+   "ms": 2005,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, a Solana epoch is 432,000 slots, which is about 36 hours at the current 300 millisecond slot time. If you heard an epoch is two days, that was the old slot time of 400 milliseconds.",
+   "sources": [
+    {
+     "title": "How long is a Solana slot, and how many slots does a leader get in a row? (as of 2026-09)",
+     "source": "Solana docs and SIMD-0525",
+     "url": "https://solana.com/upgrades/reduced-slot-times"
+    }
+   ]
+  },
+  {
+   "id": "inf-agave",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 38,
+   "ms": 4639,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     true,
+     ""
+    ]
+   ],
+   "say": "Agave is the validator client maintained by Anza, as of September 2026. It's the software that validators run to participate in the Solana network, a fork of the original Solana Labs validator whose repository was archived in 2025.",
+   "sources": [
+    {
+     "title": "How the network runs \u2014 slots, consensus, clients, as of 2026-09",
+     "source": "Anza docs and the Solana Improvement Documents",
+     "url": "https://docs.anza.xyz/"
+    }
+   ]
+  },
+  {
+   "id": "inf-firedancer",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 55,
+   "ms": 2586,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     true,
+     ""
+    ]
+   ],
+   "say": "Firedancer is an independent validator client written from scratch by Jump Crypto, as of September 2026. Full Firedancer went live on mainnet in December 2025 and now runs about 14% of the network's stake, alongside Frankendancer (a hybrid using Firedancer's networking with Agave's runtime) at about 26%. It was never testnet-only \u2014 that's stale documentation.",
+   "sources": [
+    {
+     "title": "What is Agave, and what is Firedancer? Which validator clients run Solana? (as of 2026-09)",
+     "source": "Anza docs and the Firedancer report",
+     "url": "https://docs.anza.xyz/"
+    }
+   ]
+  },
+  {
+   "id": "inf-stake-rewards",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 41,
+   "ms": 6508,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "The Solana validator earns rewards from network inflation based on its vote credits each epoch; at epoch end, those rewards are automatically deposited into delegators' stake accounts, minus the validator's commission. Rewards are calculated from the validator's performance, not claimed manually.",
+   "sources": [
+    {
+     "title": "How the network runs \u2014 slots, consensus, clients, as of 2026-09",
+     "source": "Anza docs and the Solana Improvement Documents",
+     "url": "https://docs.anza.xyz/"
+    }
+   ]
+  },
+  {
+   "id": "inf-vote-cost",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 57,
+   "ms": 2131,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A validator votes on every slot it agrees with, and each vote is a transaction that costs SOL in fees \u2014 roughly 1 SOL a day at current slot times. Stake rewards from the validator's vote credits are meant to cover this cost, but a validator with too little stake pays more in votes than it earns.",
+   "sources": [
+    {
+     "title": "Why do validators need SOL just to keep running? (as of 2026-09)",
+     "source": "Anza docs",
+     "url": "https://docs.anza.xyz/operations/validator-initialize"
+    }
+   ]
+  },
+  {
+   "id": "inf-token2022",
+   "group": "infrastructure",
+   "passed": false,
+   "words": 63,
+   "ms": 2716,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     false,
+     "not dated"
+    ]
+   ],
+   "say": "Token-2022 lets you add extensions to a token when you create it: transfer fees, transfer hooks that can block transfers, hidden balances with zero-knowledge proofs, interest-bearing balances, non-transferable tokens, or a permanent delegate who can move anyone's tokens. The original Token program has none of these. A trap: Token-2022 won't show in some tools yet, so check your wallet supports what you need.",
+   "sources": [
+    {
+     "title": "Token-2022 extensions and what each one does, as of 2026-09",
+     "source": "Solana docs",
+     "url": "https://solana.com/docs/tokens/extensions"
+    }
+   ]
+  },
+  {
+   "id": "inf-token2022-migrate",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 58,
+   "ms": 2214,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "No, you cannot upgrade an existing SPL Token mint to Token-2022 in place. As of September 2026, the two programs run side by side forever\u2014a mint is owned by one or the other for life. To move a token to Token-2022, you'd need to create a new mint and migrate holders, or wrap it with the token-wrap program.",
+   "sources": [
+    {
+     "title": "SPL Token and associated token accounts, as of 2026-09",
+     "source": "Solana docs",
+     "url": "https://solana.com/docs/tokens"
+    }
+   ]
+  },
+  {
+   "id": "inf-mwa-authorize",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 27,
+   "ms": 3489,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "authorize gives back an auth token to reuse next time, plus the authorized accounts with their addresses in base64, and optionally labels, display addresses, chains and features.",
+   "sources": [
+    {
+     "title": "Mobile Wallet Adapter, Seed Vault and the dApp Store, as of 2026-09",
+     "source": "Solana Mobile docs",
+     "url": "https://docs.solanamobile.com/mobile-wallet-adapter/mobile-apps"
+    }
+   ]
+  },
+  {
+   "id": "inf-mwa-signandsend",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 44,
+   "ms": 2501,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "signAndSendTransactions signs a transaction and sends it to the network in one call, returning a signature once it's submitted. It replaces the older signTransactions method, which only signed without sending. The wallet handles the submission to the chain, so your app doesn't have to.",
+   "sources": [
+    {
+     "title": "Using Mobile Wallet Adapter",
+     "source": "Solana Mobile docs",
+     "url": "https://docs.solanamobile.com/android-native/using_mobile_wallet_adapter"
+    }
+   ]
+  },
+  {
+   "id": "inf-seed-vault",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 80,
+   "ms": 3238,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Seed Vault is a secure system on the phone that keeps your private keys and secrets locked in the phone's most secure part\u2014its hardware security environment\u2014so they never leave that safe space. When you approve a transaction or sign a message, Seed Vault handles it there and shows you what you're signing, so apps never touch your keys directly. A common trap: you might think the app is signing things, but Seed Vault is the only thing that actually signs.",
+   "sources": [
+    {
+     "title": "Seed Vault",
+     "source": "Solana Mobile docs",
+     "url": "https://docs.solanamobile.com/developers/seed-vault"
+    }
+   ]
+  },
+  {
+   "id": "inf-dapp-store",
+   "group": "infrastructure",
+   "passed": true,
+   "words": 52,
+   "ms": 2599,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "You create NFTs describing your dApp on-chain, then submit your release to the Solana dApp Store publisher portal for review by the Solana Mobile team. Before publishing, make sure your app is a signed APK or PWA, you have app metadata ready, and your publisher wallet has about 0.2 SOL for fees.",
+   "sources": [
+    {
+     "title": "Publishing to the Solana dApp Store",
+     "source": "Solana Mobile docs",
+     "url": "https://docs.solanamobile.com/dapp-publishing/overview"
+    },
+    {
+     "title": "Submit a New App",
+     "source": "Solana Mobile docs",
+     "url": "https://docs.solanamobile.com/dapp-publishing/submit-new-app"
+    }
+   ]
+  }
+ ]
+}

@@ -58,6 +58,10 @@ import xyz.heylana.app.wallet.PlanText
 import xyz.heylana.app.wallet.Standing
 import xyz.heylana.app.wallet.WalletApi
 import xyz.heylana.app.wallet.WalletProblem
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import xyz.heylana.app.brain.SpokenName
+import xyz.heylana.app.ui.app.tap
 
 /** Every word on the Settings screen that is not a switch's own, away from Compose. */
 object SettingsText {
@@ -76,6 +80,13 @@ object SettingsText {
     const val DARKER = "Darker buddy glass"
     const val DARKER_DETAIL = "Adds a dark tint under the buddy's glass, for light apps."
     const val PERMISSIONS = "Permissions"
+    const val REPLAY = "Replay the welcome"
+    const val REPLAY_DETAIL = "Hear the introduction again. Nothing already allowed is asked for twice."
+    const val IDENTITY = "Your name"
+    const val IDENTITY_WRITTEN = "Written"
+    const val IDENTITY_SPOKEN = "Spoken"
+    const val IDENTITY_SAY = "Say my name"
+    const val IDENTITY_SAME = "Said as it is written"
     const val PERMISSIONS_DETAIL = "Over other apps, screen reading, notifications, microphone."
     const val JUDGE_HINT = "Judging Heylana? Enter your code."
     const val BAD_CODE = "That code isn't right."
@@ -179,6 +190,12 @@ fun AppSettingsScreen(
                 }
                 FlatRow(SettingsText.PERMISSIONS, subtitle = SettingsText.PERMISSIONS_DETAIL, glyph = Glyph.SHIELD,
                     onClick = { onScreen(Screen.PERMISSIONS) }) { Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp) }
+                FlatRow(SettingsText.REPLAY, subtitle = SettingsText.REPLAY_DETAIL, glyph = Glyph.STAR,
+                    onClick = { onScreen(Screen.ONBOARDING) }) { Icon(Glyph.CHEVRON, palette.inkTertiary, size = 16.dp) }
+
+                Spacer(Modifier.height(6.dp))
+                SectionHead(SettingsText.IDENTITY)
+                IdentityCard(settings, onSample)
 
                 Spacer(Modifier.height(6.dp))
                 SectionHead("Judge code")
@@ -225,6 +242,56 @@ fun AppSettingsScreen(
                 Spacer(Modifier.height(12.dp))
                 VersionLine()
                 Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+/**
+ * What is written and what is said, side by side. The written name is theirs and this never
+ * touches it; the spoken one is a respelling only the voice ever reads, so a name the Seeker
+ * gave her can be fixed without it looking wrong on screen.
+ */
+@Composable
+private fun IdentityCard(settings: HeylanaSettings, onSample: (String) -> Unit) {
+    val palette = LocalHeylana.current
+    val written = settings.callMe
+    var spoken by remember { mutableStateOf(settings.spokenName) }
+    var editing by remember { mutableStateOf(false) }
+
+    FlatSurface(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth()) {
+                Text(SettingsText.IDENTITY_WRITTEN, style = HeylanaType.small, color = palette.inkTertiary, modifier = Modifier.width(76.dp))
+                Text(written.ifBlank { "\u2014" }, style = HeylanaType.bodyMedium, color = palette.ink)
+            }
+            Row(Modifier.fillMaxWidth()) {
+                Text(SettingsText.IDENTITY_SPOKEN, style = HeylanaType.small, color = palette.inkTertiary, modifier = Modifier.width(76.dp))
+                Text(
+                    spoken.ifBlank { SettingsText.IDENTITY_SAME },
+                    style = HeylanaType.bodyMedium, color = if (spoken.isBlank()) palette.inkSecondary else palette.ink
+                )
+            }
+            if (editing) {
+                FlatField(spoken, { spoken = SpokenName.cleanRespelling(it) }, OnboardingText.RESPELL_HINT, onAction = {})
+                Text(OnboardingText.RESPELL_HOW, style = HeylanaType.small, color = palette.inkTertiary)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AccentButton(
+                    SettingsText.IDENTITY_SAY,
+                    { onSample(OnboardingText.readBack(spoken.ifBlank { written })) },
+                    Modifier.weight(1f), enabled = written.isNotBlank() || spoken.isNotBlank(), height = 48.dp
+                )
+                Box(Modifier.weight(1f)) {
+                    Text(
+                        if (editing) "Save" else "Edit",
+                        style = HeylanaType.bodyMedium, color = palette.accentText, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().tap {
+                            if (editing) settings.spokenName = spoken
+                            editing = !editing
+                        }.padding(12.dp)
+                    )
+                }
             }
         }
     }

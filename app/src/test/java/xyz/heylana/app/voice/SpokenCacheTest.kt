@@ -3,6 +3,7 @@ package xyz.heylana.app.voice
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -87,5 +88,18 @@ class SpokenCacheTest {
         val name = cache.fileFor("skylar", line).name
         assertTrue(name, name.matches(Regex("[0-9a-f]{20}\\.pcm")))
         assertFalse(name.contains("recovery"))
+    }
+
+    @Test
+    fun `the same words in a different voice are a different file`() {
+        val cache = cache()
+        write(cache, "skylar/Hera", "Careful.", 40_000)
+        // The slot did not change, the voice behind it did: the old clip must not answer.
+        assertNull(cache.ready("skylar/Sienna", "Careful."))
+        assertNotNull(cache.ready("skylar/Hera", "Careful."))
+        // And a swap back finds the old one again, since the key is the pair.
+        write(cache, "skylar/Sienna", "Careful.", 40_000)
+        assertNotNull(cache.ready("skylar/Sienna", "Careful."))
+        assertNotNull(cache.ready("skylar/Hera", "Careful."))
     }
 }

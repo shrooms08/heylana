@@ -34,7 +34,7 @@ class VoiceCopyTest {
 
     @Test
     fun `the picker names follow the provider when the worker has not said`() {
-        assertEquals("Hera", VoiceCopy.defaultName(VoiceCopy.DEEPGRAM, HeylanaSettings.VOICE_SKYLAR))
+        assertEquals("Callista", VoiceCopy.defaultName(VoiceCopy.DEEPGRAM, HeylanaSettings.VOICE_SKYLAR))
         assertEquals("Aries", VoiceCopy.defaultName(VoiceCopy.DEEPGRAM, HeylanaSettings.VOICE_ARCHIE))
         assertEquals("Sulafat", VoiceCopy.defaultName(VoiceCopy.GEMINI, HeylanaSettings.VOICE_SKYLAR))
         assertEquals("Achird", VoiceCopy.defaultName(VoiceCopy.GEMINI, HeylanaSettings.VOICE_ARCHIE))
@@ -45,7 +45,7 @@ class VoiceCopyTest {
     @Test
     fun `the app and the worker agree on the names`() {
         val worker = java.io.File(listOf("../worker/src/voice.ts", "worker/src/voice.ts").first { java.io.File(it).exists() }).readText()
-        assertTrue(worker.contains("deepgram: { skylar: 'Hera', archie: 'Aries' }"))
+        assertTrue(worker.contains("deepgram: { skylar: 'Callista', archie: 'Aries' }"))
         assertTrue(worker.contains("gemini: { skylar: 'Sulafat', archie: 'Achird' }"))
     }
 }

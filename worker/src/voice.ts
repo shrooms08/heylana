@@ -25,11 +25,16 @@ export function providerOf(setting: string | undefined): Provider {
 export const DEEPGRAM_SPEAK_URL = 'https://api.deepgram.com/v1/speak'
 
 /**
- * The picker's two slots, as Aura-2 English voices. Deepgram describes Hera (American,
- * feminine) as "Smooth, Warm, Professional" and Aries (American, masculine) as "Warm,
- * Energetic, Caring": the two warm American voices, one of each.
+ * The picker's two slots, as Aura-2 English voices. Deepgram describes Callista (American,
+ * feminine) as "Clear, Energetic, Professional, Smooth" and Aries (American, masculine) as
+ * "Warm, Energetic, Caring". Callista was picked by ear against Harmonia, Vesta and Helena:
+ * there is no Deepgram voice called Sienna, which is what was asked for first.
+ *
+ * The name below matters as much as the model: the phone keys its kept audio on the slot
+ * **and** this name, so changing one without the other would leave every warning it has
+ * already fetched playing in the old voice.
  */
-export const DEEPGRAM_VOICES = { skylar: 'aura-2-hera-en', archie: 'aura-2-aries-en' } as const
+export const DEEPGRAM_VOICES = { skylar: 'aura-2-callista-en', archie: 'aura-2-aries-en' } as const
 
 export function deepgramVoiceFor(slot: unknown): string {
   return slot === 'archie' ? DEEPGRAM_VOICES.archie : DEEPGRAM_VOICES.skylar
@@ -43,7 +48,7 @@ export function deepgramSpeakUrl(model: string): string {
 
 /** What each slot is called, per provider — what the picker shows, sent on /me. */
 export const VOICE_NAMES: Record<Provider, { skylar: string; archie: string }> = {
-  deepgram: { skylar: 'Hera', archie: 'Aries' },
+  deepgram: { skylar: 'Callista', archie: 'Aries' },
   gemini: { skylar: 'Sulafat', archie: 'Achird' },
   cartesia: { skylar: 'Skylar', archie: 'Archie' },
 }

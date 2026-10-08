@@ -162,7 +162,7 @@ test('Archie is Achird on Gemini, and each call logs its provider and voice', as
   assert.equal(end.bytes, 2)
 })
 
-test('VOICE_PROVIDER=deepgram speaks through Aura in Hera or Aries, with the Deepgram key, streamed as it comes', async () => {
+test('VOICE_PROVIDER=deepgram speaks through Aura in Callista or Aries, with the Deepgram key, streamed as it comes', async () => {
   const lines: string[] = []
   const original = console.log
   console.log = (line: string) => lines.push(line)
@@ -171,7 +171,7 @@ test('VOICE_PROVIDER=deepgram speaks through Aura in Hera or Aries, with the Dee
     const response = await worker.fetch(post('/tts', { text: 'The search bar is at the top.' }), { ...env(), VOICE_PROVIDER: 'deepgram' })
     const url = new URL(calls[0].url)
     assert.equal(url.origin + url.pathname, 'https://api.deepgram.com/v1/speak')
-    assert.equal(url.searchParams.get('model'), 'aura-2-hera-en')
+    assert.equal(url.searchParams.get('model'), 'aura-2-callista-en')
     assert.equal((calls[0].init.headers as any).authorization, `Token ${SECRETS.DEEPGRAM_API_KEY}`)
     assert.deepEqual(sentBody(calls[0]), { text: 'The search bar is at the top.' })
     assert.equal(response.headers.get('content-type'), 'audio/L16')
@@ -184,7 +184,7 @@ test('VOICE_PROVIDER=deepgram speaks through Aura in Hera or Aries, with the Dee
   }
   const logged = lines.filter((l) => l.includes('"route":"tts"')).map((l) => JSON.parse(l))
   assert.equal(logged[0].provider, 'deepgram')
-  assert.equal(logged[0].voice, 'aura-2-hera-en')
+  assert.equal(logged[0].voice, 'aura-2-callista-en')
   assert.ok(!lines.join('\n').includes('search bar'))
 })
 

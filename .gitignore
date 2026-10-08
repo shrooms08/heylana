@@ -29,7 +29,11 @@ dist/
 # The eval's throwaway wallet key and device id
 scripts/eval/.state.json
 scripts/eval/.state_*.json
-scripts/eval/runs/
+# Eval runs are local, except the two that are the published baseline: a directory
+# cannot be re-included once ignored, so the contents are ignored and those two let back in.
+scripts/eval/runs/*
+!scripts/eval/runs/run4-first30.json
+!scripts/eval/runs/run4-second30.json
 
 # The knowledge base: fetched text (other people's, rebuilt by scripts/kb/build.sh) and the admin secret
 scripts/kb/data/
@@ -39,3 +43,6 @@ scripts/kb/.admin_secret
 worker/.admin_secret
 # Screenshots pulled from the phone for writing skills: the owner's device, never in git.
 design/refs/skills/
+
+# Python bytecode from the eval scripts
+scripts/eval/__pycache__/

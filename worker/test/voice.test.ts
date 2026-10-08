@@ -101,15 +101,15 @@ test('deepgram is chosen by name, and gemini stays selectable', () => {
   assert.equal(providerOf(' Deepgram '), 'deepgram')
   assert.equal(providerOf('gemini'), 'gemini')
   assert.equal(providerOf(undefined), 'gemini')
-  assert.equal(deepgramVoiceFor('skylar'), 'aura-2-hera-en')
+  assert.equal(deepgramVoiceFor('skylar'), 'aura-2-callista-en')
   assert.equal(deepgramVoiceFor('archie'), 'aura-2-aries-en')
   assert.equal(deepgramVoiceFor('phone'), DEEPGRAM_VOICES.skylar)
 })
 
 test('Aura is asked for raw 16-bit 24 kHz audio, the format the phone already plays', () => {
-  const url = new URL(deepgramSpeakUrl('aura-2-hera-en'))
+  const url = new URL(deepgramSpeakUrl('aura-2-callista-en'))
   assert.equal(url.origin + url.pathname, 'https://api.deepgram.com/v1/speak')
-  assert.equal(url.searchParams.get('model'), 'aura-2-hera-en')
+  assert.equal(url.searchParams.get('model'), 'aura-2-callista-en')
   assert.equal(url.searchParams.get('encoding'), 'linear16')
   assert.equal(url.searchParams.get('sample_rate'), '24000')
   assert.equal(url.searchParams.get('container'), 'none')
@@ -133,6 +133,6 @@ test('a WAV header, even split across chunks, is taken off rather than played', 
 })
 
 test('/me names the provider and its two voices', () => {
-  assert.deepEqual(voiceInfo('deepgram'), { provider: 'deepgram', skylar: 'Hera', archie: 'Aries' })
+  assert.deepEqual(voiceInfo('deepgram'), { provider: 'deepgram', skylar: 'Callista', archie: 'Aries' })
   assert.deepEqual(voiceInfo(undefined), { provider: 'gemini', skylar: 'Sulafat', archie: 'Achird' })
 })

@@ -37,7 +37,7 @@ object VoiceCopy {
     fun defaultName(provider: String, slot: String): String {
         val archie = slot == HeylanaSettings.VOICE_ARCHIE
         return when (provider) {
-            DEEPGRAM -> if (archie) "Aries" else "Hera"
+            DEEPGRAM -> if (archie) "Aries" else "Callista"
             CARTESIA -> if (archie) "Archie" else "Skylar"
             else -> if (archie) "Achird" else "Sulafat"
         }

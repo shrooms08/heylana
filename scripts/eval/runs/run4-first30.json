@@ -1,0 +1,1015 @@
+{
+ "at": "2026-09-21T08:10:05Z",
+ "rows": [
+  {
+   "id": "se-pda-bump",
+   "group": "stackexchange",
+   "passed": false,
+   "words": 95,
+   "ms": 4011,
+   "checks": [
+    [
+     "points",
+     false,
+     "off the curve/off-curve/not on the curve/no private key/no secret key"
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A program derived address is a unique account address created deterministically from seeds and a program ID, so the same inputs always produce the same address. The bump is a small number added to the seeds to ensure the address falls off the Ed25519 curve and is a valid PDA \u2014 without it, the derived address might land on the curve and not be a valid account. A common trap is thinking the bump is random; it's actually deterministic and should be stored on the account to save compute costs if you need it again.",
+   "sources": [
+    {
+     "title": "Program Derived Address",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/basics/pda"
+    }
+   ]
+  },
+  {
+   "id": "se-pda-sign",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 50,
+   "ms": 2536,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A program signs for a PDA in a cross program invocation by passing the PDA's seeds and bump seed to invoke_signed() or with_signer() in a CpiContext. The runtime derives the PDA from those seeds and bump and uses it to sign the inner instruction without needing the actual private key.",
+   "sources": [
+    {
+     "title": "Cross Program Invocation",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/basics/cpi"
+    }
+   ]
+  },
+  {
+   "id": "se-tx-size",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 53,
+   "ms": 2794,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, a legacy or v0 transaction is capped at 1,232 bytes. The new v1 format, live since 15 September, raises that to 4,096 bytes and carries larger data over QUIC instead of UDP. A common trap: thinking the limit is 10,000 bytes \u2014 that's account data space, not transaction size.",
+   "sources": [
+    {
+     "title": "How big can a Solana transaction be? (as of 2026-09)",
+     "source": "Solana docs and SIMD-0296",
+     "url": "https://solana.com/docs/core/transactions"
+    }
+   ]
+  },
+  {
+   "id": "se-account-locks",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 51,
+   "ms": 2566,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A single transaction can lock up to 64 accounts, or 128 if a feature flag is activated \u2014 though the hard ceiling is 256. It's a common belief that you can lock as many as you want, but the runtime enforces a strict limit to prevent one transaction from blocking others.",
+   "sources": [
+    {
+     "title": "Constants Reference",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/constants-reference"
+    }
+   ]
+  },
+  {
+   "id": "se-v0-why",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 46,
+   "ms": 2442,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, versioned transactions let you use Address Lookup Tables to shrink transaction size, and version 1 raises the size limit from 1,232 to 4,096 bytes. A common misconception: versioned transactions don't cost less in fees, just fit more accounts into the same transaction.",
+   "sources": [
+    {
+     "title": "Versioned Transactions",
+     "source": "Solana Cookbook",
+     "url": "https://solana.com/developers/cookbook/transactions/versions"
+    }
+   ]
+  },
+  {
+   "id": "se-alt-how",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 51,
+   "ms": 2410,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "An address lookup table stores addresses onchain, so a transaction references them by their 1-byte index instead of repeating the full 32-byte address. That shrinks the transaction. This only works in v0 transactions, which cap at 1,232 bytes; the newer v1 format dropped lookup tables for a bigger 4,096-byte limit instead.",
+   "sources": [
+    {
+     "title": "Address Lookup Tables",
+     "source": "Solana Cookbook",
+     "url": "https://solana.com/developers/cookbook/transactions/lookup-tables"
+    },
+    {
+     "title": "Transaction size, versions, lookup tables and priority fees, as of 2026-09",
+     "source": "Solana docs",
+     "url": "https://solana.com/docs/core/transactions"
+    }
+   ]
+  },
+  {
+   "id": "se-priority-fee",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 31,
+   "ms": 4767,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "The trap is that v1 transactions set priority as a total in lamports, not a compute unit price like legacy transactions use. Check your transaction version to call the right setter.",
+   "sources": [
+    {
+     "title": "How to Add Priority Fees to a Transaction",
+     "source": "Solana Cookbook",
+     "url": "https://solana.com/developers/cookbook/transactions/add-priority-fees"
+    },
+    {
+     "title": "How do I add priority fees to a transaction using web3.js?",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/5119"
+    }
+   ]
+  },
+  {
+   "id": "se-cu-default",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 52,
+   "ms": 2730,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, each instruction gets a default of 200,000 compute units, and a transaction can ask for up to 1,400,000 CUs total. A common trap: if you don't explicitly set the limit early in your transaction, you'll hit the per-instruction default and fail before reaching later instructions that extend it.",
+   "sources": [
+    {
+     "title": "Compute Budget",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/fees/compute-budget"
+    }
+   ]
+  },
+  {
+   "id": "se-rent-exempt-ata",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 42,
+   "ms": 2127,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, rent is no longer collected from accounts, but a token account must still hold a minimum balance when created for rent exemption\u2014about 0.00203928 SOL for a standard token account. That balance comes back when you close the account.",
+   "sources": [
+    {
+     "title": "Is rent still collected on Solana? (as of 2026-09)",
+     "source": "Solana docs and SIMD-0084",
+     "url": "https://solana.com/docs/core/accounts"
+    }
+   ]
+  },
+  {
+   "id": "se-rent-collected",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 55,
+   "ms": 3204,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ],
+    [
+     "version",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, no rent is collected from accounts on Solana \u2014 SIMD-0084 turned collection off and the code has been removed. What remains is rent exemption: accounts must hold a minimum balance when created, but that comes back when closed. A common outdated belief is that ongoing rent payments drain balances over time.",
+   "sources": [
+    {
+     "title": "Is rent still collected on Solana? (as of 2026-09)",
+     "source": "Solana docs and SIMD-0084",
+     "url": "https://solana.com/docs/core/accounts"
+    }
+   ]
+  },
+  {
+   "id": "se-ata-why",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 60,
+   "ms": 2810,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "An associated token account is derived from your wallet address, so there's just one main account per token per person, making it easy for others to send you tokens without needing to know a custom account address. With a regular token account, you could have many of them for the same token, so senders wouldn't know which one to use.",
+   "sources": [
+    {
+     "title": "ATA VS TOKEN ACCOUNT",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/15463"
+    }
+   ]
+  },
+  {
+   "id": "se-mint-vs-account",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 49,
+   "ms": 2180,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "A mint account stores the general info about a token, like supply limits. A token account holds the actual tokens of that mint and has an owner who can transfer or burn them. Anyone can send tokens to a token account, but only the owner can send them out.",
+   "sources": [
+    {
+     "title": "Confusion between Token Account and Associated Token Account?",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/5496"
+    }
+   ]
+  },
+  {
+   "id": "se-anchor-init",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 60,
+   "ms": 2948,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, the init constraint creates a new account in the same instruction, paying for its rent exemption from a payer you name. Anchor writes an 8-byte discriminator to it, so your space parameter must include those 8 bytes. A common trap: init_if_needed looks simpler but opens a re-initialisation risk where someone pre-creates the address with malicious data.",
+   "sources": [
+    {
+     "title": "Anchor account constraints, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/references/account-constraints"
+    }
+   ]
+  },
+  {
+   "id": "se-anchor-discriminator",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 56,
+   "ms": 5457,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Anchor adds an 8-byte discriminator to the start of every account to identify its type, as the Anchor documentation explains. When you allocate space for an account, you must add 8 to your struct size in the space constraint. As of September 2026, this is still how Anchor ensures no account can be substituted for another.",
+   "sources": [
+    {
+     "title": "Account Space",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/references/space"
+    },
+    {
+     "title": "Program Structure",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/basics/program-structure"
+    }
+   ]
+  },
+  {
+   "id": "se-anchor-seeds",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 50,
+   "ms": 3984,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "The seeds constraint verifies the PDA is derived from the correct inputs, and the bump constraint ensures it falls off the Ed25519 curve with the canonical bump\u2014the lowest value that works, which prevents attackers substituting a different account. As of September 2026, both constraints must be used together in Anchor.",
+   "sources": [
+    {
+     "title": "Program Derived Address",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/basics/pda"
+    },
+    {
+     "title": "PDA Derivation",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/core/pda/pda-derivation"
+    }
+   ]
+  },
+  {
+   "id": "se-has-one",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 61,
+   "ms": 4106,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, has_one checks that a field named in the constraint matches an address or public key stored inside the account data, and fails the transaction if it does not. A common trap: it does not prevent the account itself from being forged \u2014 pair it with seeds or owner to verify the account is the one you expect.",
+   "sources": [
+    {
+     "title": "Account Constraints",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/references/account-constraints"
+    }
+   ]
+  },
+  {
+   "id": "se-cpi-anchor",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 31,
+   "ms": 4564,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Use CpiContext to build the instruction with your program ID and accounts, then call the Anchor helper function. The trap: signer seeds for PDAs must be passed to CpiContext with .with_signer_seeds().",
+   "sources": [
+    {
+     "title": "Cross Program Invocation",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/basics/cpi"
+    }
+   ]
+  },
+  {
+   "id": "se-realloc",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 23,
+   "ms": 2897,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Anchor's realloc constraint handles resizing, but watch out: you can only grow 10 KiB per instruction, and the payer must cover the cost.",
+   "sources": [
+    {
+     "title": "How can I increase an existing account size?",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/440"
+    },
+    {
+     "title": "Is there a way to resize an account's data field?",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/541"
+    }
+   ]
+  },
+  {
+   "id": "se-init-if-needed",
+   "group": "stackexchange",
+   "passed": false,
+   "words": 45,
+   "ms": 2710,
+   "checks": [
+    [
+     "points",
+     false,
+     "reinit/re-init/reinitialis/reinitializ/initialised again/initialized again, feature/flag"
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Avoid init_if_needed when an account's ownership could be reassigned, as of September 2026: the constraint can't spot if someone else now owns it, and you'd credit or debit the wrong person. Always check that the account owner is correct before using init_if_needed without that check.",
+   "sources": [
+    {
+     "title": "Vulnerabilities of the init_if_needed in anchor",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/5215"
+    }
+   ]
+  },
+  {
+   "id": "se-null-account",
+   "group": "stackexchange",
+   "passed": true,
+   "words": 32,
+   "ms": 3764,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "You're likely querying with finalized commitment and the account isn't finalized yet. Try a lower commitment level like confirmed, which checks faster. The account does exist\u2014it just hasn't reached that confirmation stage.",
+   "sources": [
+    {
+     "title": "getAccountInfo",
+     "source": "solana.com docs",
+     "url": "https://solana.com/docs/rpc/http/getaccountinfo"
+    }
+   ]
+  },
+  {
+   "id": "err-2006",
+   "group": "errors",
+   "passed": true,
+   "words": 47,
+   "ms": 2551,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Error 2006 means the address you passed doesn't match the PDA derived from the seeds constraint in your program. Check that instruction arguments are in the same order in your derive(Accounts) macro as in the function signature, and that you're passing the right values when calling it.",
+   "sources": [
+    {
+     "title": "Anchor error codes and what causes them, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/errors"
+    },
+    {
+     "title": "Error Code: ConstraintSeeds. Error Number: 2006. Error Message: A seeds constraint was violated",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/18259"
+    }
+   ]
+  },
+  {
+   "id": "err-3012",
+   "group": "errors",
+   "passed": true,
+   "words": 55,
+   "ms": 4685,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Error 3012, AccountNotInitialized, as of September 2026 occurs when you pass an account to an instruction that expects it to be initialized but Anchor finds it empty. Common case: you're trying to init a PDA through a CPI when the parent program itself needs to initialize it\u2014use an UncheckedAccount instead, not an initialized account type.",
+   "sources": [
+    {
+     "title": "How to pass an uninitialized PDA account to a CPI to initialize it without getting AccountNotInitialized error",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/5064"
+    }
+   ]
+  },
+  {
+   "id": "err-2001",
+   "group": "errors",
+   "passed": true,
+   "words": 48,
+   "ms": 2637,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Anchor error 2001, ConstraintHasOne, means a has_one check failed: the field stored on the account doesn't match the account that was passed in the instruction. As of September 2026, this usually happens when you're trying to link accounts together but the address doesn't match what the program expects.",
+   "sources": [
+    {
+     "title": "Anchor error codes and what causes them, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/errors"
+    }
+   ]
+  },
+  {
+   "id": "err-3007",
+   "group": "errors",
+   "passed": true,
+   "words": 44,
+   "ms": 7407,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "AccountOwnedByWrongProgram (3007) means the account passed to the instruction is owned by a different program than the instruction expected: the owner field on the account doesn't match the program trying to use it. This is an Anchor account constraint error, not a scam concern.",
+   "sources": [
+    {
+     "title": "Anchor error codes and what causes them, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/errors"
+    }
+   ]
+  },
+  {
+   "id": "err-102",
+   "group": "errors",
+   "passed": true,
+   "words": 44,
+   "ms": 2366,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, error 102 InstructionDidNotDeserialize means the arguments you sent don't match what the instruction expects\u2014usually a stale IDL or changed argument types. Check that your client is using the current IDL and your arguments are in the right order and type.",
+   "sources": [
+    {
+     "title": "Anchor error codes and what causes them, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/errors"
+    }
+   ]
+  },
+  {
+   "id": "err-2000",
+   "group": "errors",
+   "passed": true,
+   "words": 38,
+   "ms": 2880,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "ConstraintMut error 2000 means you tried to write to an account without marking it mutable in your instruction. Check that the account has `mut` in your Anchor struct, or your IDL is out of sync with your program.",
+   "sources": [
+    {
+     "title": "Anchor error codes and what causes them, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/errors"
+    },
+    {
+     "title": "Error Code: ConstraintMut. Error Number: 2000. Error Message: A mut constraint was violated.'",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/3530"
+    }
+   ]
+  },
+  {
+   "id": "err-2002",
+   "group": "errors",
+   "passed": true,
+   "words": 43,
+   "ms": 2720,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "Error 2002 ConstraintSigner, as of September 2026, means an account that was required to sign the transaction did not. Check that the signer's keypair was included in the transaction and that the account is marked with the signer constraint in your Anchor struct.",
+   "sources": [
+    {
+     "title": "Anchor error codes and what causes them, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/errors"
+    }
+   ]
+  },
+  {
+   "id": "err-2019",
+   "group": "errors",
+   "passed": true,
+   "words": 44,
+   "ms": 2628,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "As of September 2026, error 2019 is ConstraintSpace: your instruction has too many accounts and ran out of the 4096 bytes of stack space that the SVM allocates for deserialization and constraint checks. Use fewer accounts per instruction or split them across multiple instructions.",
+   "sources": [
+    {
+     "title": "Anchor error codes and what causes them, as of 2026-09",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/errors"
+    }
+   ]
+  },
+  {
+   "id": "err-custom-6000",
+   "group": "errors",
+   "passed": true,
+   "words": 46,
+   "ms": 7991,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "That's 6000 in decimal, so it's the first custom error (index 0) in that program's error enum. Custom program errors in Anchor start at 6000; the program developer defines what it means. Check the program's source code or docs for which error name matches that number.",
+   "sources": [
+    {
+     "title": "Custom Errors",
+     "source": "Anchor docs",
+     "url": "https://www.anchor-lang.com/docs/features/errors"
+    }
+   ]
+  },
+  {
+   "id": "err-spl-insufficient",
+   "group": "errors",
+   "passed": true,
+   "words": 52,
+   "ms": 6691,
+   "checks": [
+    [
+     "points",
+     true,
+     ""
+    ],
+    [
+     "chip",
+     true,
+     ""
+    ],
+    [
+     "real-api",
+     true,
+     ""
+    ]
+   ],
+   "say": "The sender probably lacks enough SOL to pay the transaction fee or to create the recipient's token account if it doesn't exist yet. A common wrong belief: \"I have plenty of the token, so I can send it\" \u2014 you still need a separate SOL balance for network fees and account rent.",
+   "sources": [
+    {
+     "title": "Do Empty System Accounts require initialization before receiving SOL?",
+     "source": "Solana Stack Exchange",
+     "url": "https://solana.stackexchange.com/a/5700"
+    }
+   ]
+  }
+ ]
+}

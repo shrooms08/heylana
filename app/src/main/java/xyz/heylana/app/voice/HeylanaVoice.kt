@@ -68,7 +68,10 @@ class HeylanaVoice(
     /** A line waiting its turn, and the voice it is to be said in. */
     private class Line(
         val text: String,
+        /** The slot the worker is asked for: "skylar" or "archie", and nothing else. */
         val voice: String,
+        /** What the cache keeps it under: the slot and the voice that slot currently is. */
+        val key: String = voice,
         val clock: AnswerClock? = null,
         /** Audio already on its way from the worker: nothing to ask for, just play it. */
         val ready: Playing? = null,
@@ -99,14 +102,30 @@ class HeylanaVoice(
      */
     fun speak(said: String, clock: AnswerClock? = null): Boolean {
         // A web address is never read aloud: whatever line comes here, its links are chips.
-        val text = xyz.heylana.app.brain.Sources.spoken(said)
+        val text = asSpoken(xyz.heylana.app.brain.Sources.spoken(said))
         if (text.isBlank()) return false
         if (!proxy.isConfigured) return false
-        val length = lines.add(Line(text, settings.voice, clock = clock))
+        val length = lines.add(Line(text, settings.voice, voiceKey(settings.voice), clock = clock))
         HeylanaLog.state("voice: queued length=$length")
         scope.launch(Dispatchers.IO) { drain() }
         return true
     }
+
+    /**
+     * The one place the spelling of a name and the sound of it part company: what the voice
+     * is given carries the respelling, what the screen shows never does. With no respelling
+     * set, the line is untouched.
+     */
+    /**
+     * What the cache keys on: the slot the user picked **and** the voice the worker last
+     * said that slot is. The slot alone is not enough — swapping which voice "skylar" means
+     * on the worker would leave every kept clip answering to the same key and playing in the
+     * old voice. With the name in it, a swap simply misses and the line is fetched again.
+     */
+    private fun voiceKey(slot: String): String = "$slot/${settings.voiceName(slot)}"
+
+    private fun asSpoken(text: String): String =
+        xyz.heylana.app.brain.SpokenName.forSpeech(text, settings.callMe, settings.spokenName)
 
     /**
      * A line Heylana says the same way every time — a warning — read out at once.
@@ -116,20 +135,21 @@ class HeylanaVoice(
      * before a thumb reaches Approve and one that does not.
      */
     fun speakFixed(said: String, clock: AnswerClock? = null): Boolean {
-        val text = xyz.heylana.app.brain.Sources.spoken(said)
+        val text = asSpoken(xyz.heylana.app.brain.Sources.spoken(said))
         if (text.isBlank()) return false
         val voice = settings.voice
-        val ready = kept.ready(voice, text)
+        val key = voiceKey(voice)
+        val ready = kept.ready(key, text)
         if (ready != null) {
             val length = lines.add(
-                Line(text, voice, clock = clock, ready = Playing(ready.inputStream(), DEFAULT_SAMPLE_RATE) {}, fixed = true)
+                Line(text, voice, key, clock = clock, ready = Playing(ready.inputStream(), DEFAULT_SAMPLE_RATE) {}, fixed = true)
             )
             HeylanaLog.state("voice: fixed line from the phone, no network queued=$length")
             scope.launch(Dispatchers.IO) { drain() }
             return true
         }
         if (!proxy.isConfigured) return false
-        val length = lines.add(Line(text, voice, clock = clock, fixed = true))
+        val length = lines.add(Line(text, voice, key, clock = clock, fixed = true))
         HeylanaLog.state("voice: fixed line asked for the first time queued=$length")
         scope.launch(Dispatchers.IO) { drain() }
         return true
@@ -146,7 +166,8 @@ class HeylanaVoice(
         val text = xyz.heylana.app.brain.Sources.spoken(said)
         if (text.isBlank() || !proxy.isConfigured) return@withContext false
         val voice = settings.voice
-        if (kept.ready(voice, text) != null) return@withContext false
+        val key = voiceKey(voice)
+        if (kept.ready(key, text) != null) return@withContext false
         when (val opened = open(text, voice)) {
             is Opened.Failed -> {
                 HeylanaLog.state("voice: could not fetch a fixed line ahead (${opened.reason})")
@@ -155,7 +176,7 @@ class HeylanaVoice(
             is Opened.Ok -> {
                 var written = 0L
                 runCatching {
-                    java.io.BufferedOutputStream(kept.writingTo(voice, text).outputStream()).use { out ->
+                    java.io.BufferedOutputStream(kept.writingTo(key, text).outputStream()).use { out ->
                         opened.playing.stream.use { input ->
                             val chunk = ByteArray(CHUNK_BYTES)
                             while (true) {
@@ -168,7 +189,7 @@ class HeylanaVoice(
                     }
                 }
                 opened.playing.close()
-                val stored = kept.keep(voice, text, written)
+                val stored = kept.keep(key, text, written)
                 HeylanaLog.state(
                     if (stored) "voice: fixed line fetched ahead ${written / 1024}KB"
                     else "voice: a fixed line came back too short to keep"
@@ -217,14 +238,14 @@ class HeylanaVoice(
                 HeylanaLog.state("voice=proxy voice=${line.voice} headers_ms=${SystemClock.uptimeMillis() - started} queued=${pending()}")
                 // A fetched fixed line is written down as it plays, so the next one is instant.
                 val saving = if (line.fixed && line.ready == null) {
-                    runCatching { java.io.BufferedOutputStream(kept.writingTo(line.voice, line.text).outputStream()) }.getOrNull()
+                    runCatching { java.io.BufferedOutputStream(kept.writingTo(line.key, line.text).outputStream()) }.getOrNull()
                 } else {
                     null
                 }
                 val outcome = play(opened.playing, line.gen, line.clock, saving)
                 if (saving != null) {
                     runCatching { saving.close() }
-                    val stored = kept.keep(line.voice, line.text, savedBytes)
+                    val stored = kept.keep(line.key, line.text, savedBytes)
                     HeylanaLog.state(
                         if (stored) "voice: kept a fixed line's audio ${savedBytes / 1024}KB"
                         else "voice: that fixed line was cut off, not kept"

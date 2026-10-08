@@ -199,6 +199,20 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
             }.apply()
         }
 
+    /**
+     * How their name is said, when the spelling and the sound differ: a respelling that only
+     * ever goes to the voice ("Og-heh-neh-roo-KEV-weh"). Empty means say it as it is written,
+     * which is exactly how it behaved before there was one.
+     */
+    var spokenName: String
+        get() = prefs.getString(KEY_SPOKEN_NAME, null).orEmpty()
+        set(value) {
+            val cleaned = xyz.heylana.app.brain.SpokenName.cleanRespelling(value)
+            prefs.edit().apply {
+                if (cleaned.isEmpty()) remove(KEY_SPOKEN_NAME) else putString(KEY_SPOKEN_NAME, cleaned)
+            }.apply()
+        }
+
     /** The skills the user has switched off. Everything else is on, including a new install. */
     var skillsOff: Set<String>
         get() = prefs.getStringSet(KEY_SKILLS_OFF, null)?.toSet().orEmpty()
@@ -357,6 +371,7 @@ class HeylanaSettings private constructor(private val prefs: SharedPreferences) 
         private const val KEY_DEVICE_ID = "device_id"
         private const val KEY_PENDING_PAYMENT = "pending_payment"
         private const val KEY_CALL_ME = "call_me"
+        private const val KEY_SPOKEN_NAME = "spoken_name"
         private const val KEY_PROXY_URL = "proxy_url"
         private const val KEY_USE_OWN_KEY = "use_own_key"
         private const val KEY_VOICE = "voice"

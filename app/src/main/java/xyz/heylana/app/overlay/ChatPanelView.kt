@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.os.Build
 import android.text.InputType
 import android.text.method.ScrollingMovementMethod
 import android.util.TypedValue
@@ -1300,23 +1301,29 @@ class ChatPanelView(context: Context) : LinearLayout(context), PanelReset.Resett
 
     fun focusInput() {
         input.requestFocus()
-        val controller = input.windowInsetsController
-        if (controller != null) {
-            controller.show(WindowInsets.Type.ime())
-        } else {
-            context.getSystemService(InputMethodManager::class.java)?.showSoftInput(input, 0)
+        // The insets controller is Android 11 and up; before that, and whenever the window
+        // has none, the input method manager is the only way to ask for the keyboard.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val controller = input.windowInsetsController
+            if (controller != null) {
+                controller.show(WindowInsets.Type.ime())
+                return
+            }
         }
+        context.getSystemService(InputMethodManager::class.java)?.showSoftInput(input, 0)
     }
 
     /** Opens the box for dictation without shoving the keyboard in the way. */
     fun hideKeyboard() {
-        val controller = input.windowInsetsController
-        if (controller != null) {
-            controller.hide(WindowInsets.Type.ime())
-        } else {
-            context.getSystemService(InputMethodManager::class.java)
-                ?.hideSoftInputFromWindow(windowToken, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val controller = input.windowInsetsController
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.ime())
+                return
+            }
         }
+        context.getSystemService(InputMethodManager::class.java)
+            ?.hideSoftInputFromWindow(windowToken, 0)
     }
 
     fun releaseInput() {

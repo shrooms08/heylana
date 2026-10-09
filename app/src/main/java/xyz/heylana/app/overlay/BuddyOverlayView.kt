@@ -3,6 +3,7 @@ package xyz.heylana.app.overlay
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
+import android.graphics.Point
 import android.os.Build
 import android.graphics.PointF
 import android.graphics.Rect
@@ -1592,14 +1593,34 @@ class BuddyOverlayView(context: Context) : FrameLayout(context) {
         }
     }
 
+    /**
+     * How much of the screen the disc may be put on: the whole display less the status and
+     * navigation bars. Window metrics arrived in Android 11; before that the same two numbers
+     * come from the display's real size and the bars this view is already told about.
+     */
     private fun refreshMetrics() {
-        val metrics = windowManager.currentWindowMetrics
-        val insets = metrics.windowInsets
-            .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
-        usableLeft = insets.left
-        usableTop = insets.top
-        usableWidth = metrics.bounds.width() - insets.left - insets.right
-        usableHeight = metrics.bounds.height() - insets.top - insets.bottom
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val metrics = windowManager.currentWindowMetrics
+            val insets = metrics.windowInsets
+                .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+            usableLeft = insets.left
+            usableTop = insets.top
+            usableWidth = metrics.bounds.width() - insets.left - insets.right
+            usableHeight = metrics.bounds.height() - insets.top - insets.bottom
+            return
+        }
+        @Suppress("DEPRECATION")
+        val size = Point().also { windowManager.defaultDisplay.getRealSize(it) }
+        @Suppress("DEPRECATION")
+        val bars = rootWindowInsets
+        @Suppress("DEPRECATION") val left = bars?.systemWindowInsetLeft ?: 0
+        @Suppress("DEPRECATION") val top = bars?.systemWindowInsetTop ?: 0
+        @Suppress("DEPRECATION") val right = bars?.systemWindowInsetRight ?: 0
+        @Suppress("DEPRECATION") val bottom = bars?.systemWindowInsetBottom ?: 0
+        usableLeft = left
+        usableTop = top
+        usableWidth = size.x - left - right
+        usableHeight = size.y - top - bottom
     }
 
     private fun clamp(value: Int, min: Int, max: Int): Int =

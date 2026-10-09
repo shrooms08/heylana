@@ -26,6 +26,7 @@ object GlassBlur {
      * The caller uses the answer to pick the matching glass fill.
      */
     fun apply(context: Context, params: WindowManager.LayoutParams): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return false
         if (!isAvailable(context)) return false
         params.flags = params.flags or WindowManager.LayoutParams.FLAG_BLUR_BEHIND
         params.blurBehindRadius = HeylanaTokens.dpInt(
@@ -37,6 +38,6 @@ object GlassBlur {
     /** Drops the blur again, for when the window goes back to being passive. */
     fun clear(params: WindowManager.LayoutParams) {
         params.flags = params.flags and WindowManager.LayoutParams.FLAG_BLUR_BEHIND.inv()
-        params.blurBehindRadius = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) params.blurBehindRadius = 0
     }
 }

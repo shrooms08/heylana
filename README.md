@@ -4,7 +4,7 @@ An on-screen AI buddy for the Solana Seeker: a small glass disc that floats over
 
 She is a companion and a guide for Solana users. She watches your back when you sign a transaction, explains any screen you are looking at, teaches the apps you already have, answers Solana questions with sources, and keeps up with what is happening in the ecosystem.
 
-**[Download the signed APK (v1.0.8)](https://github.com/shrooms08/heylana/releases/tag/v1.0.8)** — Android, built and tested on a Solana Seeker, running on mainnet.
+**[Download the signed APK (v1.2.2)](https://github.com/shrooms08/heylana/releases/tag/v1.2.2)** — **Android 10 or newer**, built and tested on a Solana Seeker, running on mainnet.
 
 ## What she does
 
@@ -19,11 +19,34 @@ She never says anything is "safe", never signs, and only listens while you hold 
 
 ## Install
 
-Download the APK from the [v1.0.8 release](https://github.com/shrooms08/heylana/releases/tag/v1.0.8) and install it on a Solana Seeker (or any Android 14+ device, though the Seed Vault beats need a Seeker).
+**You need Android 10 (2019) or newer.** On anything older, Android refuses the file with
+"There was a problem parsing the package" and does not say why — that message almost always
+means the phone is too old for the app, not that the download is broken. One APK covers every
+phone: arm64, arm32, x86 and x86-64 are all in it, and there is no separate download to pick.
+
+Download the APK from the [v1.2.2 release](https://github.com/shrooms08/heylana/releases/tag/v1.2.2) and install it. Your phone will ask you to allow installing from the browser; that is normal for an app outside the Play Store.
 
 After installing, grant the accessibility permission so she can read the screen: **Settings → Accessibility → Heylana → On → Allow**. Then open Heylana and tap **Start buddy**.
 
 Needs Wi-Fi or mobile data. On mainnet with the judge code, everything is unlimited until Nov 9.
+
+### What you get on which phone
+
+Everything that matters is the same everywhere: asking about any screen, pointing at the
+button, walk-throughs, her voice and ears, lessons, the signing warnings, the look-alike and
+recovery-phrase warnings and the phishing list. What changes on an older phone is only how
+she **looks**, because some of the drawing needs a newer Android:
+
+| | Needs | Below that |
+|---|---|---|
+| Blur behind the open panel | Android 12 | no blur; the panel carries itself with a heavier fill |
+| Shapes merging like goo as the box opens and closes | Android 12 | it scales and fades instead |
+| The glass lens on the disc, the beam that laps the rim, the light streak | Android 13 | the same shapes drawn as plain gradients |
+| The tick when a hold completes | Android 11 | the ordinary long-press tick |
+
+The wallet half — connecting, signing, sends, the pre-signature warnings — needs Seed Vault,
+so it needs a Seeker, whatever the Android version. On any other phone choose **Continue
+without a wallet**: everything else still works.
 
 ## Build it yourself
 

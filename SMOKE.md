@@ -1,6 +1,6 @@
 # Smoke test — the release build on mainnet
 
-This is the signed release APK, version **1.2.1**, with the worker on **mainnet**. Real
+This is the signed release APK, version **1.2.2**, with the worker on **mainnet**. Real
 money moves if you approve a send, so read every screen before you touch anything.
 
 The app talks to **api.heylana.xyz** and tells the wallet it is **heylana.xyz**. Both are
@@ -12,10 +12,12 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
 
 **Before you start**
 
+- The phone is on **Android 10 or newer**. Below that Android refuses the file with
+  "There was a problem parsing the package".
 - The Wallet app on the phone is on **mainnet** (not devnet).
 - The wallet you sign in with holds at least **0.02 USDC** and about **0.01 SOL** for fees.
 - The debug build is gone. Install the release one with
-  `adb install -r dist/heylana-1.2.1.apk`, or let Claude do it.
+  `adb install -r dist/heylana-1.2.2.apk`, or let Claude do it.
 - After installing, run `./scripts/a11y.sh` so screen reading is on.
 
 ---

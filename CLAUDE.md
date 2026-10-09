@@ -4,7 +4,7 @@ Heylana is an on-screen AI buddy for the Solana Seeker phone. It lives as a smal
 draggable sprite floating on top of every other app, always within reach, so the
 user can talk to it without leaving whatever they are doing. This repo is a
 hackathon build: an Android app (Kotlin, Jetpack Compose, Gradle Kotlin DSL,
-package `xyz.heylana.app`, minSdk 31) built in numbered phases. Phase 0 is the
+package `xyz.heylana.app`, minSdk 29) built in numbered phases. Phase 0 is the
 floating overlay buddy — the sprite, the drag-and-snap behaviour and the
 foreground service that keeps it alive. AI, network, wallet and accessibility
 features come in later phases and must not leak into earlier ones. Phase 1 adds
@@ -1422,6 +1422,29 @@ on devnet. Program-derived addresses need an ed25519 on-curve check, in
 `worker/src/pda.ts`, tested against the token-account vectors the app's payment test
 checked independently. .sol names go to `sdk-proxy-v2.sns.id`, which may report .sol
 as unsupported; Heylana says so rather than guessing.
+
+**minSdk is 29, and every newer API is guarded where it is called (polish-18).** It was 31,
+and a judge's Samsung on **Android 10** met "There was a problem parsing the package" — which
+is all an older Android says when an APK's `minSdkVersion` is above it. The APK was never at
+fault: one universal file, all four ABIs (`arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`, for the
+single `libandroidx.graphics.path.so`), no splits and no bundle, and the released file's
+SHA-256 matched the local one byte for byte. The floor is now **29 (Android 10)**, found by
+dropping minSdk and reading every `NewApi` lint error rather than guessing: window metrics
+(`BuddyOverlayView.refreshMetrics`, Android 11 — below it the display's real size and the
+view's own `systemWindowInset*`), the keyboard controller (`ChatPanelView.focusInput` and
+`hideKeyboard`, Android 11 — below it `InputMethodManager`, which was already the fallback),
+`setBlurBehindRadius` (`GlassBlur`, Android 12 — the `isAvailable` check was in another
+function, so the call site now carries its own), and `HapticFeedbackConstants.CONFIRM`
+(`HoldControl`, Android 11 — below it `LONG_PRESS`). `startForeground` is wrapped so a
+platform that refuses the `specialUse` type does not take the app down with it. **Nothing
+functional degrades below Android 12**; the blur behind (31), the gooey merges (31) and the
+lens, beam and streak (33) already had fallbacks and simply take them, and README.md has the
+table. **Going below 29 is possible but was not done**: it would need guards for
+`Typeface.create` with a weight (28), `Insets` fields, `Paint.setBlendMode`/`BlendMode.PLUS`,
+`TextView.setTextCursorDrawable` and `AudioRecord.getActiveRecordingConfiguration` (all 29) —
+all with easy fallbacks, none of them testable here, and Android 10 is six years old.
+**Only the Seeker can be tested from here**, so what is proved is that the APK installs and
+runs on 16; Android 10 is reasoned from the guards, not measured.
 
 **Version pins.** Mobile Wallet Adapter clientlib-ktx is 2.1.1 and sol4k 0.7.0:
 the newer releases are built with Kotlin 2.4 and this project's compiler cannot

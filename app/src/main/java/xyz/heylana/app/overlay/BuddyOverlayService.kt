@@ -3033,14 +3033,21 @@ class BuddyOverlayService : Service() {
             )
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        // The service type is named only where the platform knows it (Android 14 and up).
+        // Older versions take the notification alone, and a platform that refuses the call
+        // outright must not take the app down with it: the buddy simply does not start.
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        }.onFailure {
+            HeylanaLog.state("overlay: could not go foreground why=${it.javaClass.simpleName}")
         }
     }
 

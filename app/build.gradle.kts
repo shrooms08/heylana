@@ -96,10 +96,15 @@ android {
 
     defaultConfig {
         applicationId = "xyz.heylana.app"
-        minSdk = 31
+        // Android 10. The Seeker is on 16, but judges install this on their own phones, and
+        // an APK whose minSdk is above the phone fails with "There was a problem parsing the
+        // package" and no explanation. Everything above 29 is guarded where it is called
+        // (window metrics, the keyboard controller, cross-window blur, the confirm tick);
+        // below 29 there are more: see the minimum in README.md.
+        minSdk = 29
         targetSdk = 37
-        versionCode = 14
-        versionName = "1.2.1"
+        versionCode = 15
+        versionName = "1.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

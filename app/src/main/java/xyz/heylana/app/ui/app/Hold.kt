@@ -1,5 +1,6 @@
 package xyz.heylana.app.ui.app
 
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -79,7 +80,14 @@ fun HoldControl(
                         val left = ((1f - progress.value) * HOLD_MS).toInt()
                         progress.animateTo(1f, tween(left, easing = LinearEasing))
                         fired = true
-                        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        // CONFIRM is Android 11 and up; before it, the long-press tick.
+                        view.performHapticFeedback(
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                HapticFeedbackConstants.CONFIRM
+                            } else {
+                                HapticFeedbackConstants.LONG_PRESS
+                            }
+                        )
                         HeylanaLog.state("app: hold fired control=$description was_on=$isOn")
                         fire()
                         progress.animateTo(0f, tween(RESET_MS))

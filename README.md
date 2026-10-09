@@ -4,7 +4,7 @@ An on-screen AI buddy for the Solana Seeker: a small glass disc that floats over
 
 She is a companion and a guide for Solana users. She watches your back when you sign a transaction, explains any screen you are looking at, teaches the apps you already have, answers Solana questions with sources, and keeps up with what is happening in the ecosystem.
 
-**[Download the signed APK (v1.0.8)](https://github.com/shrooms08/heylana/releases/tag/v1.0.8)** — Android, built and tested on a Solana Seeker, running on mainnet.
+**[Download the signed APK (v1.2.1)](https://github.com/shrooms08/heylana/releases/tag/v1.2.1)** — Android, built and tested on a Solana Seeker, running on mainnet.
 
 ## What she does
 
@@ -19,7 +19,7 @@ She never says anything is "safe", never signs, and only listens while you hold 
 
 ## Install
 
-Download the APK from the [v1.0.8 release](https://github.com/shrooms08/heylana/releases/tag/v1.0.8) and install it on a Solana Seeker (or any Android 14+ device, though the Seed Vault beats need a Seeker).
+Download the APK from the [v1.2.1 release](https://github.com/shrooms08/heylana/releases/tag/v1.2.1) and install it on a Solana Seeker (or any Android 14+ device, though the Seed Vault beats need a Seeker).
 
 After installing, grant the accessibility permission so she can read the screen: **Settings → Accessibility → Heylana → On → Allow**. Then open Heylana and tap **Start buddy**.
 

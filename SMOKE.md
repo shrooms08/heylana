@@ -1,6 +1,6 @@
 # Smoke test — the release build on mainnet
 
-This is the signed release APK, version **1.1.0**, with the worker on **mainnet**. Real
+This is the signed release APK, version **1.2.1**, with the worker on **mainnet**. Real
 money moves if you approve a send, so read every screen before you touch anything.
 
 The app talks to **api.heylana.xyz** and tells the wallet it is **heylana.xyz**. Both are
@@ -15,7 +15,7 @@ on each spoken answer, and the ears on each hold. No `/pay/*` anywhere.
 - The Wallet app on the phone is on **mainnet** (not devnet).
 - The wallet you sign in with holds at least **0.02 USDC** and about **0.01 SOL** for fees.
 - The debug build is gone. Install the release one with
-  `adb install -r dist/heylana-1.1.0.apk`, or let Claude do it.
+  `adb install -r dist/heylana-1.2.1.apk`, or let Claude do it.
 - After installing, run `./scripts/a11y.sh` so screen reading is on.
 
 ---
@@ -134,6 +134,22 @@ already allowed; Settings → **Your name** shows both spellings with a **Say my
    - **Expect:** the Clock app comes to the front with a 5-minute timer, Heylana says
      "Timer set for 5 minutes.", the box melts away and the disc flies home.
 2. Cancel the timer in the Clock.
+
+## 9. Screen reading survives a strange window
+
+This is the crash of 9 October, which killed the whole app while Gmail was redrawing itself
+after the phone was turned. One odd window must now cost nothing at all.
+
+1. With the buddy running (section 2, step 1), open **Gmail**.
+2. **Turn the phone on its side**, wait for Gmail to redraw, and turn it back.
+   - **Expect:** nothing happens. No "Heylana keeps stopping", no crash dialog, the disc
+     is still on the edge of the screen.
+3. Open **Settings → Permissions** inside Heylana.
+   - **Expect:** **Screen reading** still has a tick. (Before the fix the app died here and
+     Android stopped binding it, so the tick went and reading failed until it was switched
+     off and on again.)
+4. Tap the disc, type **what is this screen for** and send it.
+   - **Expect:** an answer about whatever is in front — proof that reading still works.
 
 ---
 

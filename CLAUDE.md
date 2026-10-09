@@ -2145,6 +2145,26 @@ the second request to start nulled the first's counters out from under it; that 
 the `finally`, which Cloudflare answers as a **500**, and an ear lost its pass about a third
 of the time. `worker/test/worker.test.ts` fails without the fix.
 
+**An accessibility event is other people's data, and one bad event costs one event
+(polish-17).** On 9 October 2026 the release build died with a `NullPointerException` while
+Gmail redrew itself after the phone was turned: the window event's text list carried a
+**null entry**, and the title was built with `event.text.joinToString(" ") { it.toString() }`,
+which has no check in front of it because the Android API declares the list as holding
+non-null text. The service lives in the app's own process, so the crash took screen reading
+down with it — and Android then moves a service that crashed while bound to its crashed list
+and stops binding it, leaving the name in the setting ("Enabled is not running", above).
+Two things now stand between a strange window and that: `screen/ScreenEvent` reads an event
+with every field allowed to be absent (`titleOf` skips a null or blank piece, `windowOf`
+takes nullable package and class names), and `ScreenEvent.surviving` wraps the whole of
+`onAccessibilityEvent`, so any throwable at all is dropped with that event, logged as
+`screen: event dropped why=<exception>` and sent to Sentry **as handled** by
+`CrashReports.survived` — on the issue list, never a crash, never silent. Every other
+nullable field on an event or a node was already read through `?.`, `?:`, `mapNotNull` or a
+`runCatching`; the window list itself and a node's action list now are too.
+`ScreenEventTest` feeds a list with a null in it, an event with nothing on it at all, and a
+stream of events one of which throws, and holds the old expression to the exception it
+really threw.
+
 **Nothing that touches a view runs off the main thread.** The socket reads on
 OkHttp's thread and the microphone on an IO thread. Anything they report is handed
 back to the main thread before it reaches the overlay. Starting an animation from

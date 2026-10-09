@@ -19,6 +19,7 @@ import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
 import xyz.heylana.app.brain.Routing
 import xyz.heylana.app.brain.SigningScan
+import xyz.heylana.app.ops.CrashReports
 import xyz.heylana.app.settings.HeylanaSettings
 
 /**
@@ -59,8 +60,23 @@ class HeylanaAccessibilityService : AccessibilityService() {
     /**
      * Only reached while a session or a tap watch is registered, and even then it
      * does nothing but say what the screen did. No event is stored or logged.
+     *
+     * Nothing an event carries is trusted, and nothing it throws is fatal: this service
+     * runs in the app's own process, so one unreadable event used to take screen reading
+     * down until someone switched it off and on again. Now it costs that event alone, and
+     * the failure still goes to the crash report as a handled one.
      */
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        ScreenEvent.surviving(onError = ::eventFailed) { readEvent(event) }
+    }
+
+    /** One event could not be read. It is dropped, reported, and the next one is heard. */
+    private fun eventFailed(error: Throwable) {
+        HeylanaLog.state("screen: event dropped why=${error.javaClass.simpleName}")
+        CrashReports.survived("accessibility event", error)
+    }
+
+    private fun readEvent(event: AccessibilityEvent?) {
         val screen = watcher
         val taps = tapWatcher
         val windows = windowWatcher
@@ -85,11 +101,11 @@ class HeylanaAccessibilityService : AccessibilityService() {
                     // window's class, and whatever title the system sent with it. Enough to
                     // know a signing window has come up without touching the tree.
                     windows?.invoke(
-                        WindowEvent(
+                        ScreenEvent.windowOf(
                             packageName = from,
-                            className = event.className?.toString(),
-                            title = event.text.joinToString(" ") { it.toString() },
-                            at = android.os.SystemClock.uptimeMillis(),
+                            className = event.className,
+                            texts = event.text,
+                            at = android.os.SystemClock.uptimeMillis()
                         )
                     )
                 }
@@ -268,7 +284,10 @@ class HeylanaAccessibilityService : AccessibilityService() {
      * list at all, the active window alone.
      */
     private fun readWindows(): List<WindowMerge.Window> {
-        val found = windows
+        // The window list is the system's to give and it has been known to be missing
+        // outright; an entry in it can be null too. Neither is a reason to read nothing.
+        val found = runCatching { windows }.getOrNull().orEmpty()
+            .filterNotNull()
             .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
             .mapNotNull { window ->
                 val root = window.root ?: return@mapNotNull null
@@ -297,11 +316,19 @@ class HeylanaAccessibilityService : AccessibilityService() {
         var moreBelow = false
     }
 
-    /** Whether a scrolling node can still go down (or forward, which is down for a vertical list). */
-    private fun canScrollDown(node: AccessibilityNodeInfo): Boolean = node.actionList.any {
-        it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id ||
-            it.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id
-    }
+    /**
+     * Whether a scrolling node can still go down (or forward, which is down for a vertical
+     * list). The action list belongs to the app that drew the node, so neither it nor
+     * anything in it is assumed to be there.
+     */
+    @Suppress("SENSELESS_COMPARISON")
+    private fun canScrollDown(node: AccessibilityNodeInfo): Boolean =
+        runCatching { node.actionList }.getOrNull().orEmpty().any { action ->
+            action != null && (
+                action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id ||
+                    action.id == AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD.id
+                )
+        }
 
     /** Depth-first walk. Returns true if the node cap was hit. */
     @Suppress("DEPRECATION") // isChecked has no pre-API-36 replacement

@@ -5,6 +5,8 @@ import io.sentry.Breadcrumb
 import io.sentry.Sentry
 import io.sentry.SentryEvent
 import io.sentry.SentryLevel
+import io.sentry.exception.ExceptionMechanismException
+import io.sentry.protocol.Mechanism
 import io.sentry.android.core.SentryAndroid
 import xyz.heylana.app.BuildConfig
 import xyz.heylana.app.HeylanaLog
@@ -40,6 +42,23 @@ object CrashReports {
         val message = ReportScrub.text("$where kind=$kind status=${status ?: "none"} reason=${reason ?: "none"}")
         Sentry.addBreadcrumb(Breadcrumb().apply { category = PROBLEM; this.message = message; level = SentryLevel.WARNING })
         if (kind == "our_side") Sentry.captureMessage("problem: $message", SentryLevel.WARNING)
+    }
+
+    /**
+     * Something threw where it must not be allowed to take the app down — an accessibility
+     * event that could not be read, say. It is reported as **handled**, so it shows up on the
+     * issue list without being counted as a crash, with [where] naming the place. The
+     * exception's own text goes through [ReportScrub] like everything else, and nothing of
+     * what was on screen goes with it.
+     */
+    fun survived(where: String, error: Throwable) {
+        if (!Sentry.isEnabled()) return
+        val mechanism = Mechanism().apply {
+            type = "survived"
+            description = where
+            isHandled = true
+        }
+        Sentry.captureException(ExceptionMechanismException(mechanism, error, Thread.currentThread()))
     }
 
 
